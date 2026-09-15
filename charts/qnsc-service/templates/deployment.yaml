@@ -171,8 +171,67 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- with $svc.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+        {{- /* ── Sidecars ─────────────────────────────────────────────────────
+               Deliberately plain. §4c argues a large read-only artefact loaded
+               per replica — a ClamAV signature database, an ONNX model — belongs
+               behind a Service rather than inside every pod. That argument still
+               holds, and it is an OPTIMISATION, not a migration step: a sidecar
+               works on Kubernetes exactly as it did on ECS, so the move can be
+               like-for-like and the memory reclaimed afterwards.
+
+               Migrating and optimising at once means a regression could be either. */}}
+        {{- range $sc := $svc.sidecars }}
+        - name: {{ $sc.name }}
+          image: {{ $sc.image }}
+          {{- with $sc.command }}
+          command: {{ toJson . }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          {{- with $sc.ports }}
+          ports:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            requests:
+              cpu: {{ $sc.resources.cpu }}
+              memory: {{ $sc.resources.memory }}
+            limits:
+              memory: {{ $sc.resources.memory }}
+          {{- with $sc.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sc.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sc.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: {{ $sc.name }}-tmp
+              mountPath: /tmp
+            {{- with $sc.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- range $sc := $svc.sidecars }}
+        - name: {{ $sc.name }}-tmp
+          emptyDir: {}
+        {{- end }}
+        {{- with $svc.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
 {{- end }}
 {{- end }}

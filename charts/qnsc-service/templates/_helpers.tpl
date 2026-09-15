@@ -126,7 +126,7 @@ Helm already did.
        is nil rather than a nil-pointer panic. Templates then use
        `| default $d.x` for the actual value. Guarding at the resolver means no
        template needs `(($svc.drain)).x` noise. */ -}}
-{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "scaling" dict -}}
+{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "scaling" dict "sidecars" list -}}
 {{- $out := mergeOverwrite $base (deepCopy $preset) (deepCopy $svc) -}}
 {{- /* ── singleton ────────────────────────────────────────────────────────────
        Some workloads must never have two replicas — not even for the few seconds

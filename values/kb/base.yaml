@@ -1,10 +1,20 @@
-# qnsc-kb — measured from qnsc-kb-backend/infra/live/{prod,develop}/main.tf, 2026-09-15.
+# qnsc-kb
 #
-# Two things about this product shape the whole platform:
-#   - it is roughly HALF of both environments (§15), so §15d measures it first
-#   - the e5-large-instruct ONNX session is ~1.5 GB resident and BOTH api and
-#     worker load it — the second clamav, and the reason §4c anticipates an
-#     embedding service
+# ── LIKE-FOR-LIKE. This file mirrors qnsc-kb-backend/infra/live/prod/main.tf as
+#    it runs today: same CPU, same memory, same architecture, same shape.
+#
+# Nothing here is optimised, deliberately. If qnsc-kb behaves differently after
+# the move, the platform is the only thing that changed — which is the entire
+# point of a migration step. Optimising at the same time means a regression could
+# be either, and this is the product that is half of both environments.
+#
+# The optimisations are designed, costed and deferred:
+#   §4c   split clamav into `platform` — reclaims ~2 GB per api replica and is
+#         what unblocks arm64. Worth ~$35/month
+#   §4c   split the e5 model into an embedding service — makes scaling kb cheap
+#   §15d  right-size from measured p50 rather than allocated ceilings
+# Each is a values change in this file, after kb is running and measured.
+
 product: kb
 size: m
 
@@ -13,61 +23,99 @@ services:
     kind: http
     expose: public
     port: 8000
-    # arm64 becomes possible ONLY after clamav is split into `platform` (§4c).
-    # Until task 3.1 lands, this must be amd64 or the image will not run.
-    arch: arm64
+    # amd64 TODAY, because clamav/clamav publishes no arm64 tag and the sidecar
+    # is still in this pod. This flips to arm64 the day §4c's split lands — one
+    # line, and it is the largest single cost item in the estate (§15b).
+    arch: amd64
+    # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
+    #  request and a broken response mid-answer." — infra/live/prod/main.tf
     capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api }
-    # 6144 MB today MINUS clamd's 2048 sidecar, which moves to `platform`.
-    resources: { cpu: 1, memory: 4Gi }
+    # 1024 / 6144 exactly as allocated on ECS. The 6144 carries clamd's 2048 plus
+    # the e5-large-instruct ONNX session at ~1.5 GB resident.
+    resources: { cpu: 1, memory: 6Gi }
     # The ONNX session takes tens of seconds to load. Without a startupProbe the
     # liveness probe kills the pod mid-load, forever (§9j).
     startupPath: /livez
-    scaling: { type: rps, min: 2, max: 6, target: 100 }
+    scaling: { type: rps, min: 1, max: 6, target: 100 }
     slo:
       availability: 99.0
-      latency: { p99: 2s }        # RAG answers are not 500ms operations
+      latency: { p99: 2s }     # RAG answers are not 500 ms operations
+    env:
+      # localhost, because the sidecar shares the pod's network namespace — the
+      # same thing awsvpc gave the ECS task. The application variable is unchanged.
+      - name: MALWARE_SCANNER_HOST
+        value: "127.0.0.1"
+      - name: MALWARE_SCANNER_PORT
+        value: "3310"
+    sidecars:
+      - name: clamav
+        image: clamav/clamav:1.4
+        ports: [{ name: clamd, containerPort: 3310 }]
+        # 2048 is not a preference. At 1024 clamd came up ONLY on runs where the
+        # signature UPDATE had failed, because a failed update leaves the older,
+        # smaller database and that one fits. Tasks cycled for ~30 minutes per
+        # deploy and it read as intermittent rather than as a sizing error.
+        resources: { cpu: 256m, memory: 2Gi }
+        # clamd loads the whole database before answering anything. ECS capped the
+        # start period at 300s; Kubernetes does not, so this is 60 × 10s = 600s of
+        # headroom for a cold load.
+        startupProbe:
+          exec: { command: ["clamdcheck.sh"] }
+          periodSeconds: 10
+          failureThreshold: 60
+        livenessProbe:
+          exec: { command: ["clamdcheck.sh"] }
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 3
 
   worker:
     kind: worker
     expose: none
-    arch: arm64
-    capacity: spot                # "Celery redelivers an interrupted task"
+    arch: amd64
+    # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
+    #  so an interruption costs time rather than work." — same file.
+    capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
-    # 6144 MB today minus clamd's 1024. Loads the same model, plus PaddleOCR per
-    # scanned file.
-    resources: { cpu: 2, memory: 5Gi }
+    # 2048 / 6144 as allocated: the same model, plus clamav at 1024, plus beat,
+    # plus PaddleOCR per scanned file.
+    resources: { cpu: 2, memory: 6Gi }
     startupPath: /livez
-    scaling: { type: queue, queue: jobs, min: 1, max: 4 }
-
-  beat:
-    kind: worker
-    expose: none
-    arch: arm64
-    capacity: ondemand
-    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
-    command: ["celery", "-A", "src.workers.celery_app", "beat"]
-    resources: { cpu: 100m, memory: 256Mi }
-    # ── THE REASON THIS FIELD EXISTS ─────────────────────────────────────────
-    # "max_count stays 1 while Celery beat rides in this task — two replicas
-    #  would double every scheduled job."  — infra/live/prod/main.tf
-    #
-    # Celery beat holds no lock and cannot take one, so it is a true singleton:
-    # never two replicas, not even for the seconds a RollingUpdate overlaps them.
-    # Splitting it out of the worker task is what finally lets the worker scale
-    # horizontally — which the ECS module could not express.
-    singleton: true
+    # ── NOT SCALED, and this is a correctness constraint rather than a choice ──
+    # Celery beat still rides inside this container:
+    #   "max_count stays 1 while Celery beat rides in this task — two replicas
+    #    would double every scheduled job. Splitting beat into its own service is
+    #    the prerequisite for scaling the worker horizontally."
+    # So the worker stays at one replica, exactly as today. When beat is split out
+    # it becomes its own service with `singleton: true`, and only then does
+    # `scaling` belong here.
+    replicas: 1
+    sidecars:
+      - name: clamav
+        image: clamav/clamav:1.4
+        ports: [{ name: clamd, containerPort: 3310 }]
+        resources: { cpu: 256m, memory: 1Gi }
+        startupProbe:
+          exec: { command: ["clamdcheck.sh"] }
+          periodSeconds: 10
+          failureThreshold: 60
+    env:
+      - name: MALWARE_SCANNER_HOST
+        value: "127.0.0.1"
+      - name: MALWARE_SCANNER_PORT
+        value: "3310"
 
   migrator:
     kind: job
     expose: none
-    arch: arm64
+    arch: amd64
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator }
     resources: { cpu: 500m, memory: 1Gi }
 
 data:
-  # §5: dedicated in PROD despite being size M — pgvector, a ~16 GiB working set,
-  # and a workload shape unlike anything else in the estate.
+  # §5 — dedicated in PROD despite being size M: pgvector, a ~16 GiB working set,
+  # and a workload shape unlike anything else in the estate. Dev is shared.
   postgres:
     mode: dedicated
     pooling: pgbouncer
