@@ -1,0 +1,61 @@
+# External Secrets Operator. §8.
+#
+# helm upgrade --install external-secrets external-secrets/external-secrets \
+#   -n platform -f eso/values.yaml \
+#   --version <versions.yaml: platform.external-secrets.version>
+#
+# §2b — one of the THREE components whose API pins the Kubernetes version. Check
+# it before every control-plane bump; a removed API in a controller fails at
+# RECONCILE time rather than at upgrade time, so the cluster comes up and
+# workloads stop being managed, which is quieter and worse.
+#
+# ── WHAT THIS DOES NOT INSTALL ──────────────────────────────────────────────
+# No ClusterSecretStore. §8: "A SecretStore PER NAMESPACE, each with its own
+# service account and IRSA role — not one ClusterSecretStore. Cluster-wide is less
+# setup and means a single compromised namespace can read every product's secrets."
+#
+# The per-namespace SecretStore is rendered by the CHART, beside the workloads
+# that use it. This installs only the operator.
+
+installCRDs: true
+
+replicaCount: 1        # a reconciler. A restart costs a refresh interval.
+
+serviceAccount:
+  create: true
+  name: external-secrets
+  annotations:
+    # The operator's own role. It does NOT read secrets with this — each
+    # SecretStore names a product ServiceAccount, and ESO assumes THAT role via
+    # `auth.jwt.serviceAccountRef`. This role only needs to exist for the
+    # operator's own AWS calls.
+    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-ENV-external-secrets
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { memory: 128Mi }
+
+webhook:
+  replicaCount: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { memory: 64Mi }
+
+certController:
+  replicaCount: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { memory: 64Mi }
+
+# §9d — the operator's own metrics are worth keeping: an ExternalSecret that stops
+# syncing is exactly the 2026-09-06 failure shape, and `externalsecret_status_condition`
+# is what catches it before seven days pass.
+serviceMonitor:
+  enabled: false        # Alloy scrapes by annotation, not Prometheus Operator
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+
+nodeSelector:
+  karpenter.sh/capacity-type: spot

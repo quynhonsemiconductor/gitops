@@ -1,0 +1,20 @@
+# The TriggerAuthentication every SQS-scaled service references.
+#
+# gitops/charts/qnsc-service/templates/scaledobject.yaml names it `keda-irsa`, so
+# this must exist in EVERY product namespace — a ScaledObject cannot reference a
+# TriggerAuthentication in another namespace, and a missing one fails at scale
+# time rather than at sync time, which is the worse moment to find out.
+#
+# A ClusterTriggerAuthentication would avoid the duplication and is deliberately
+# not used, for §8's reason: cluster-wide credentials mean one compromised
+# namespace reaches every product's queues.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-irsa
+spec:
+  podIdentity:
+    provider: aws
+    # KEDA's operator assumes its own role (values.yaml above) and reads queue
+    # depth. It never consumes; the product's IRSA role does that.
+    identityOwner: operator

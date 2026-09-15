@@ -1,0 +1,52 @@
+# Alloy AGENT — DaemonSet. §9b.
+#
+# helm upgrade --install alloy-agent grafana/alloy \
+#   -n platform -f values-agent.yaml \
+#   --set-file alloy.configMap.content=agent.alloy \
+#   --version <versions.yaml: platform.alloy.version>
+#
+# §5 records why this is a DaemonSet and not a sidecar per service: it "replaces
+# four sidecar modules per service — otel_agent_api, otel_agent_worker,
+# firelens_agent_api, firelens_agent_worker — because ECS has no node-level agent
+# and every task needs its own collectors."
+#
+# It is also why §2 excludes Fargate profiles: "Fargate for EKS does not support
+# DaemonSets, which eliminates Alloy — and Alloy is one of the main reasons to do
+# this at all."
+
+controller:
+  type: daemonset
+
+  # Node shape changes system overhead: three m7g.2xlarge run three copies of
+  # this, six m7g.large run six (§15e). Prefer fewer, larger nodes.
+  tolerations:
+    - operator: Exists      # every node, including tainted ones
+
+alloy:
+  envFrom:
+    - secretRef:
+        name: grafana-cloud
+
+  extraEnv:
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef: { name: cluster-info, key: name }
+    - name: HOSTNAME
+      valueFrom:
+        fieldRef: { fieldPath: spec.nodeName }
+
+  resources:
+    requests: { cpu: 150m, memory: 256Mi }
+    limits:   { memory: 256Mi }
+
+  # pyroscope.ebpf needs these. Nothing else here does, and they are the reason
+  # this DaemonSet is worth reviewing when it is upgraded (§2b).
+  securityContext:
+    privileged: false
+    capabilities:
+      add: ["SYS_PTRACE", "BPF", "PERFMON"]
+      drop: ["ALL"]
+
+  mounts:
+    varlog: true            # container logs
+    dockercontainers: false # containerd, not docker

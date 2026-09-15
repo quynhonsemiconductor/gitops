@@ -1,0 +1,59 @@
+# Alloy GATEWAY — Deployment. §9b.
+#
+# helm upgrade --install alloy-gateway grafana/alloy \
+#   -n platform -f values-gateway.yaml \
+#   --set-file alloy.configMap.content=gateway.alloy \
+#   --version <versions.yaml: platform.alloy.version>
+
+controller:
+  type: deployment
+  replicas: 2
+
+  # ── THE HEADLESS SERVICE, and it is not cosmetic ───────────────────────────
+  # The agents export with routing_key = "traceID" against this service, so DNS
+  # must return EVERY pod address. A ClusterIP collapses that to one VIP, the
+  # routing stops working, and tail sampling silently decides on fragments of
+  # traces — output that looks correct and is not.
+  #
+  # Same failure shape as §4d's gRPC argument: a normal Service balances per
+  # connection, which is wrong whenever the thing being balanced has affinity.
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+service:
+  enabled: true
+  clusterIP: None        # HEADLESS
+  internalTrafficPolicy: Cluster
+
+alloy:
+  # `sys.env` in gateway.alloy reads these. ESO syncs the secret (§8); one
+  # credential in one place, which is the whole point.
+  envFrom:
+    - secretRef:
+        name: grafana-cloud
+
+  extraEnv:
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef: { name: cluster-info, key: name }
+
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { memory: 512Mi }        # §15d — memory only, never cpu
+
+  # The gateway holds up to 10s of traces in memory for the sampling decision,
+  # plus the exporter queue. It is the one component here that is stateful for
+  # seconds at a time, which is why it gets a PDB and two replicas.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
+
+# The gateway is a reconciler for telemetry, not a stateful service: a Spot
+# reclaim costs at most `decision_wait` of in-flight traces. Two replicas with a
+# PDB is enough; on-demand would be paying for the wrong thing.
+nodeSelector:
+  karpenter.sh/capacity-type: spot
+
+tolerations: []

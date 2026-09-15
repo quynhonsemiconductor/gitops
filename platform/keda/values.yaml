@@ -1,0 +1,53 @@
+# KEDA. §4b Axis 7.
+#
+# helm upgrade --install keda kedacore/keda \
+#   -n platform -f keda/values.yaml \
+#   --version <versions.yaml: platform.keda.version>
+#
+# ── WHY THIS IS HERE ON DAY ONE AND NOT LATER ───────────────────────────────
+# §4b: "CPU-target autoscaling is the wrong signal for almost everything here:
+# the Node and Python services on this estate are IO-bound, so CPU never reaches
+# the target, the HPA never fires, and the compensation is a permanently
+# over-provisioned replica floor."
+#
+# qnsc-kb's prod values show that problem already visible — `enable_autoscaling =
+# false` with an unused `cpu_target_pct = 60` sitting beside it.
+#
+# One controller answers four needs the design otherwise defers: request-rate for
+# http, queue depth for worker, scale-to-zero, and the cron scaler §5b reopened
+# for dev compute. Retrofitting it means unwinding fifteen HPA configurations,
+# which is why §15b calls it one of the two things that must be right at step 1.
+
+operator:
+  replicaCount: 1
+
+metricsServer:
+  replicaCount: 1
+
+resources:
+  operator:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 256Mi }
+  metricServer:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 256Mi }
+
+podIdentity:
+  aws:
+    irsa:
+      enabled: true
+      # §7c — derived, like everything else. The role needs sqs:GetQueueAttributes
+      # on qnsc-<env>-*, and nothing more: KEDA reads queue DEPTH, it does not
+      # consume messages. The product's own IRSA role does that.
+      roleArn: arn:aws:iam::608983206583:role/qnsc-ENV-keda
+
+prometheus:
+  metricServer:
+    enabled: true
+    podMonitor: { enabled: false }
+  operator:
+    enabled: true
+    podMonitor: { enabled: false }
+
+nodeSelector:
+  karpenter.sh/capacity-type: spot

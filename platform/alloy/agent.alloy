@@ -1,0 +1,214 @@
+// ── Alloy AGENT — DaemonSet, one per node ────────────────────────────────────
+//
+// §9b: node-local signals only. Container logs, cAdvisor, node-exporter,
+// kube-state-metrics, and eBPF profiles. Application OTLP goes to the GATEWAY,
+// not here.
+//
+// ── THE PART THE DESIGN DOC NAMED BUT DID NOT SPECIFY ────────────────────────
+//
+// §9b says tail sampling "needs every span of a trace to reach the same
+// collector" and that a DaemonSet cannot offer that. Correct — but running the
+// gateway with two replicas behind an ordinary ClusterIP does not fix it either:
+// spans of one trace still land on whichever replica the connection picked.
+//
+// The fix is here, in the agent: `otelcol.exporter.loadbalancing` with
+// routing_key = "traceID", resolving the gateway's HEADLESS service. Every span
+// carrying trace X goes to the same gateway pod, deterministically, and the
+// gateway keeps its two replicas.
+//
+// This is the same argument as §4d's headless Service for gRPC, arriving in a
+// different place: a normal Service balances per connection, which is wrong
+// whenever the thing being balanced has affinity.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
+
+discovery.kubernetes "pods" {
+  role = "pod"
+  selectors {
+    role  = "pod"
+    field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), "")
+  }
+}
+
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  // §9d — LOKI INDEXES LABELS ONLY, and this is the single most common way a
+  // small team turns a $50 bill into a four-figure one. Four labels, and nothing
+  // else. trace_id, user_id and request paths live in the BODY and are queried at
+  // read time.
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    target_label  = "app"
+  }
+  // Deliberately NOT `pod`: HPA and Spot churn regenerate pod names constantly,
+  // so every rollout would mint a fresh label set.
+  rule {
+    action = "labeldrop"
+    regex  = "__meta_kubernetes_pod_label_(.*)"
+  }
+}
+
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pods.output
+  forward_to = [loki.process.app.receiver]
+}
+
+loki.process "app" {
+  stage.cri {}
+
+  // Parse level out of structured JSON so it can be a label and a drop filter,
+  // without indexing anything else from the body.
+  stage.json {
+    expressions = { level = "level" }
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+
+  // §9d — /health access logs are typically ~40% of volume and none of the value.
+  stage.drop {
+    expression = ".*(GET|HEAD) /(healthz|livez|readyz).*"
+    drop_counter_reason = "health_check"
+  }
+
+  // Debug in production is noise someone will pay for.
+  stage.drop {
+    source = "level"
+    value  = "debug"
+    drop_counter_reason = "debug_in_prod"
+  }
+
+  forward_to = [loki.write.grafana.receiver]
+}
+
+loki.write "grafana" {
+  endpoint {
+    url = sys.env("GRAFANA_LOKI_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_LOKI_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+  external_labels = {
+    cluster = sys.env("CLUSTER_NAME"),
+  }
+}
+
+// ── Metrics ──────────────────────────────────────────────────────────────────
+
+prometheus.exporter.unix "node" {}
+
+prometheus.scrape "node" {
+  targets    = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.relabel.allowlist.receiver]
+}
+
+prometheus.scrape "cadvisor" {
+  targets = discovery.kubernetes.pods.targets
+  forward_to = [prometheus.relabel.allowlist.receiver]
+  scrape_interval = "60s"
+}
+
+// §9d — the allowlist. Default kube-state-metrics plus cAdvisor plus
+// node-exporter emits somewhere around 15-20k series for a small cluster; this
+// gets it to low thousands.
+//
+// Grafana Cloud's Adaptive Metrics does the same job automatically and better,
+// because it observes what dashboards and alerts actually READ. Turn it on and
+// treat this list as the floor, not the ceiling.
+prometheus.relabel "allowlist" {
+  forward_to = [prometheus.remote_write.grafana.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex = "(kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas.*|container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_oom_events_total|node_cpu_seconds_total|node_memory_MemAvailable_bytes|node_filesystem_avail_bytes|kube_node_status_condition|up)"
+    action = "keep"
+  }
+
+  // §9d — drop `pod` wherever a dashboard reads `app`. Pod names are the number
+  // one cardinality source with HPA and Spot churn.
+  rule {
+    regex  = "pod|instance|id"
+    action = "labeldrop"
+  }
+}
+
+prometheus.remote_write "grafana" {
+  endpoint {
+    url = sys.env("GRAFANA_PROM_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_PROM_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+  external_labels = {
+    cluster = sys.env("CLUSTER_NAME"),
+  }
+}
+
+// ── Traces: receive, then hand to the gateway BY TRACE ID ────────────────────
+
+otelcol.receiver.otlp "local" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+
+  output {
+    traces = [otelcol.exporter.loadbalancing.gateway.input]
+  }
+}
+
+otelcol.exporter.loadbalancing "gateway" {
+  // THE KEY LINE. Without routing_key = "traceID" the gateway's tail sampling
+  // sees fragments of traces and its decisions are meaningless — and it would
+  // fail QUIETLY, producing sampled output that looks fine.
+  routing_key = "traceID"
+
+  resolver {
+    dns {
+      // The gateway Service is HEADLESS so DNS returns every pod address. A
+      // ClusterIP would collapse this to one VIP and defeat the routing.
+      hostname = "alloy-gateway.platform.svc.cluster.local"
+      port     = 4317
+    }
+  }
+
+  protocol {
+    otlp {
+      client { tls { insecure = true } }
+    }
+  }
+}
+
+// ── Profiles — §9c's fourth signal ───────────────────────────────────────────
+//
+// eBPF, so it needs no code change and no SDK. It is what gives clamav — a
+// third-party image nobody here wrote — a CPU profile. §4d records the caveat:
+// for Go and gRPC the SDK is the baseline and eBPF is the bonus, not the reverse.
+
+pyroscope.ebpf "default" {
+  forward_to = [pyroscope.write.grafana.receiver]
+  targets    = discovery.relabel.pods.output
+}
+
+pyroscope.write "grafana" {
+  endpoint {
+    url = sys.env("GRAFANA_PYROSCOPE_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_PYROSCOPE_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+  external_labels = {
+    cluster = sys.env("CLUSTER_NAME"),
+  }
+}

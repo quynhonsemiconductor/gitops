@@ -1,0 +1,155 @@
+// ── Alloy GATEWAY — Deployment, two replicas ─────────────────────────────────
+//
+// §9b: "The gateway Deployment is REQUIRED, not an optimisation. Tail-based
+// sampling needs every span of a trace to reach the same collector, and a
+// DaemonSet cannot offer that."
+//
+// The agents guarantee that by exporting with routing_key = "traceID" against
+// this Deployment's HEADLESS service. See agent.alloy — without that line this
+// config produces sampled output that looks fine and is meaningless.
+//
+// It is also, per §8's argument applied to telemetry, the place where ONE
+// credential lives rather than one per node. On 2026-09-06 a rotated Grafana
+// credential was replaced with a wrong value and two products shipped no metrics
+// or traces for SEVEN DAYS. One secret in one Deployment is the smaller surface.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+otelcol.receiver.otlp "default" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+
+  output {
+    traces  = [otelcol.processor.tail_sampling.default.input]
+    metrics = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
+  }
+}
+
+// ── Tail sampling — §9b ──────────────────────────────────────────────────────
+//
+// Head sampling at 5% — the alternative — discards 95% of the ERRORS along with
+// 95% of the successes, which is exactly backwards. Tail sampling waits for the
+// trace to finish and then decides.
+//
+// decision_wait must exceed the slowest trace worth keeping. qnsc-kb's SLO is a
+// 2s p99 (RAG answers are not 500 ms operations), so 10s leaves room.
+otelcol.processor.tail_sampling "default" {
+  decision_wait            = "10s"
+  num_traces               = 50000
+  expected_new_traces_per_sec = 200
+
+  // Keep 100% of anything that failed.
+  policy {
+    name = "errors"
+    type = "status_code"
+    status_code { status_codes = ["ERROR"] }
+  }
+
+  // Keep 100% of anything slow. Threshold is above the loosest SLO in the estate
+  // so a slow trace is always kept, whichever product produced it.
+  policy {
+    name = "slow"
+    type = "latency"
+    latency { threshold_ms = 2000 }
+  }
+
+  // Keep 100% of anything touching authentication or payment, whatever it did.
+  // These are the traces someone asks about after the fact.
+  policy {
+    name = "sensitive-paths"
+    type = "string_attribute"
+    string_attribute {
+      key    = "http.route"
+      values = [".*/auth/.*", ".*/billing/.*", ".*/payment.*"]
+      enabled_regex_matching = true
+    }
+  }
+
+  // And 3% of everything else, which is what makes the bill small.
+  policy {
+    name = "baseline"
+    type = "probabilistic"
+    probabilistic { sampling_percentage = 3 }
+  }
+
+  output {
+    traces = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout         = "5s"
+  send_batch_size = 8192
+
+  output {
+    traces  = [otelcol.exporter.otlphttp.grafana.input]
+    metrics = [otelcol.exporter.otlphttp.grafana.input]
+    logs    = [otelcol.exporter.otlphttp.grafana.input]
+  }
+}
+
+otelcol.exporter.otlphttp "grafana" {
+  client {
+    endpoint = sys.env("GRAFANA_OTLP_URL")
+    auth     = otelcol.auth.basic.grafana.handler
+  }
+
+  // A backlog is better than dropped telemetry during a Grafana blip, but not
+  // unbounded — an exporter queue that grows forever OOMKills the gateway and
+  // takes every signal with it.
+  sending_queue {
+    enabled       = true
+    queue_size    = 5000
+    num_consumers = 4
+  }
+
+  retry_on_failure {
+    enabled          = true
+    initial_interval = "5s"
+    max_interval     = "30s"
+    max_elapsed_time = "5m"
+  }
+}
+
+otelcol.auth.basic "grafana" {
+  // ONE credential, from ONE secret, synced by ESO (§8). The 2026-09-06 incident
+  // was this value being updated in four separate secrets, one per product per
+  // environment, and being wrong in all four.
+  username = sys.env("GRAFANA_OTLP_USER")
+  password = sys.env("GRAFANA_TOKEN")
+}
+
+// ── §9h — the dead man's switch ──────────────────────────────────────────────
+//
+// "On 2026-09-06 a rotated Grafana credential was replaced with a wrong value and
+// rova and opshub shipped no metrics or traces for seven days. Nothing noticed,
+// because the thing that would have noticed was the thing that was broken."
+//
+// This metric is always 1. Grafana alerts when it STOPS arriving. Silence is the
+// failure signal, which is the only thing that survives the gateway being the
+// broken component.
+prometheus.exporter.self "gateway" {}
+
+prometheus.scrape "self" {
+  targets         = prometheus.exporter.self.gateway.targets
+  forward_to      = [prometheus.remote_write.heartbeat.receiver]
+  scrape_interval = "30s"
+}
+
+prometheus.remote_write "heartbeat" {
+  endpoint {
+    url = sys.env("GRAFANA_PROM_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_PROM_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+  external_labels = {
+    cluster = sys.env("CLUSTER_NAME"),
+    role    = "alloy-gateway",
+  }
+}
