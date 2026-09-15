@@ -1,0 +1,123 @@
+# One Application per (product, environment).
+#
+# ── WHY A LIST GENERATOR AND NOT TWELVE FILES ────────────────────────────────
+#
+# §11c requires the chart version to be pinned PER APPLICATION: "Twelve
+# Applications means twelve pins, which sounds like drift waiting to happen. It is
+# the opposite: a pin that is behind is visible in git, and a chart change that
+# only some products have taken is a state the system can be in deliberately
+# rather than an accident."
+#
+# The lists below preserve exactly that — every pin is its own line, bumping one
+# product is a one-line diff, and a product left behind is visible at a glance.
+# What they do NOT duplicate is the sync policy, the project, or the destination
+# shape, which should be identical everywhere and would otherwise be twelve copies
+# of the same paragraph with twelve chances to diverge.
+#
+# The trade, recorded so nobody is surprised by it: a change to the TEMPLATE below
+# reaches every Application at once. That is the §11c blast radius, moved from the
+# chart to this file — which is why the template changes rarely and the list
+# changes often. §11's promotion is a values-file change and touches neither.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: products
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  # Two generators rather than one, split by environment. The alternative — a
+  # single list with `prune: {{ if eq .env "dev" }}…` — does not work: a Go
+  # template opening a value makes it a YAML flow mapping, and templating a
+  # BOOLEAN field is not something ApplicationSet does cleanly. A generator-level
+  # template override is the supported shape, and it reads better anyway.
+  generators:
+    # ── dev ──────────────────────────────────────────────────────────────────
+    - list:
+        elements:
+          # qnsc-kb migrates FIRST (§17 step 2). Production has no state file, so
+          # dev is genuinely low-risk — and it proves more of the chart than
+          # anything else: PgBouncer, the migrator role, the worker kind, a 1.5 GB
+          # model needing a startupProbe, and the clamav sidecar.
+          - { product: kb,     env: dev, cluster: dev, chartVersion: "0.1.0" }
+          - { product: opshub, env: dev, cluster: dev, chartVersion: "0.1.0" }
+          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.1.0" }
+        template:
+          spec:
+            syncPolicy:
+              automated:
+                prune: true
+
+    # ── prod ─────────────────────────────────────────────────────────────────
+    - list:
+        elements:
+          - { product: kb,     env: prod, cluster: prod, chartVersion: "0.1.0" }
+          - { product: opshub, env: prod, cluster: prod, chartVersion: "0.1.0" }
+          # rova is LAST (§17 step 6) and soaks for two weeks. It is also the only
+          # product that actually tests the cutover — everything before it is a
+          # greenfield deploy that happens to use the chart.
+          - { product: rova,   env: prod, cluster: prod, chartVersion: "0.1.0" }
+        template:
+          spec:
+            syncPolicy:
+              automated:
+                # §11c — "a bad render should FAIL, not delete." In dev a stale
+                # resource is noise. In prod, a template bug that stops rendering
+                # a Deployment would otherwise delete it, and ArgoCD would report
+                # Synced while the service was gone.
+                prune: false
+
+    # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
+    # simply has no dev row — §5c: "Absence is the mechanism."
+
+  template:
+    metadata:
+      name: "{{.product}}-{{.env}}"           # §7c — ArgoCD Application naming
+    spec:
+      project: products
+      destination:
+        name: "{{.cluster}}"
+        namespace: "{{.product}}"
+
+      sources:
+        # The chart, pinned. Never a range, never a branch (§11c). ECR tag
+        # immutability means a version cannot be rewritten underneath this.
+        - repoURL: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
+          chart: charts/qnsc-service
+          targetRevision: "{{.chartVersion}}"
+          helm:
+            valueFiles:
+              # ArgoCD deep-merges these before Helm sees them, which is why the
+              # chart carries no dev/prod branch of its own.
+              - $values/values/{{.product}}/base.yaml
+              - $values/values/{{.product}}/{{.env}}.yaml
+        - repoURL: https://github.com/quynhonsemiconductor/gitops
+          targetRevision: main
+          ref: values
+
+      syncPolicy:
+        automated:
+          selfHeal: true
+          # `prune` comes from the generator above — it is the one thing that
+          # genuinely differs between dev and prod.
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          # Namespaces outlive any single sync and carry the labels §10's
+          # NetworkPolicies select on. Never pruned, in either environment.
+          - PruneLast=true
+        retry:
+          limit: 3
+          backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+      # §4 — migrations run as a PreSync hook, so a failed migration BLOCKS the
+      # sync rather than leaving Helm and ArgoCD disagreeing about the outcome.
+      # The Job's name carries the image tag, so ArgoCD sees a new Job each
+      # release rather than an immutable-field conflict.
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          # replicas is owned by the KEDA ScaledObject wherever scaling is set.
+          # Without this ArgoCD reports OutOfSync forever on every scaled service.
+          jqPathExpressions: [".spec.replicas"]

@@ -1,0 +1,37 @@
+# The app-of-apps. The ONE thing installed by hand; everything else follows.
+#
+# §13 lists "ArgoCD's own bootstrap — the chicken-and-egg: who installs the
+# installer" as a known unknown. This is the answer: OpenTofu creates the cluster
+# and installs ArgoCD from the version pinned in versions.yaml, then applies this
+# single Application. From that point ArgoCD manages the AppProject, both
+# ApplicationSets, and — through them — every product.
+#
+# Which means the rebuild rehearsal §13 demands has a defined path: recreate the
+# cluster, install ArgoCD, apply this file, wait. Time it, and write the number
+# into §13. Until that has been done, the RTO figures there are estimates and the
+# document says so.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: apps
+    directory:
+      recurse: false
+      # appsets/ is deliberately excluded from this path and picked up by the
+      # ApplicationSet controller directly — an app-of-apps that also manages the
+      # generators that manage it is a cycle nobody enjoys debugging at 2am.
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true]

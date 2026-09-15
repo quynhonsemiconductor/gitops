@@ -1,0 +1,87 @@
+# A full environment per pull request.
+#
+# §11 calls this "worth more than most of the rest of this document" for the
+# review link alone — but the second justification is the one that earns it a
+# place in step 1.
+#
+# §6b records three messaging bugs that were live in EVERY deployed environment
+# and invisible: one subscription missing, a filter matching values the codebase
+# never emits, and no raw_message_delivery. All three survived because
+# `scripts/localstack/01-bootstrap.sh` subscribed every queue, unfiltered, with
+# raw delivery on — it was MORE GENEROUS than the Terraform, so dev could not
+# reproduce prod and the bugs had nowhere to surface.
+#
+# A preview environment removes that class of failure by construction rather than
+# by discipline: it is built from the manifest that reaches production, against
+# real AWS resources. There is no second topology to drift from.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: preview
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - pullRequest:
+        github:
+          owner: quynhonsemiconductor
+          repo: gitops
+          tokenRef: { secretName: github-token, key: token }
+        # Opt-in. A preview environment costs real capacity and a database, so it
+        # is a label on the pull request rather than something every PR gets.
+        labels: [preview]
+        requeueAfterSeconds: 300
+
+  template:
+    metadata:
+      name: "preview-{{.branch_slug}}-{{.number}}"
+    spec:
+      project: products
+      destination:
+        name: dev                                  # previews live in the dev cluster
+        # §7c — `preview-` is what makes §12c's quarterly orphan check a script:
+        # anything carrying the prefix with no open pull request is garbage.
+        namespace: "preview-{{.branch_slug}}-{{.number}}"
+
+      sources:
+        - repoURL: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
+          chart: charts/qnsc-service
+          # Previews track the chart from the PULL REQUEST, not a pinned release —
+          # that is the point. A chart change is reviewed on a real cluster before
+          # any product pins the version it becomes.
+          targetRevision: "0.1.0"
+          helm:
+            valueFiles:
+              - $values/values/rova/base.yaml
+              - $values/values/rova/dev.yaml
+            parameters:
+              # The wildcard hostname is what makes this work at all. Routing per
+              # PR is an HTTPRoute in the preview namespace — an ordinary
+              # Kubernetes resource ArgoCD creates and deletes — rather than a
+              # Cloudflare config change per pull request (§3, §11).
+              - name: services.api.host
+                value: "rova-{{.number}}.preview.qnsc.vn"
+              - name: services.api.image.tag
+                value: "sha-{{.head_sha}}"
+              # A preview is not a place to discover capacity limits.
+              - name: size
+                value: xs
+        - repoURL: https://github.com/quynhonsemiconductor/gitops
+          targetRevision: "{{.head_sha}}"
+          ref: values
+
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+
+  # §11 — 5 concurrent, 72h TTL, auto-deleted. The namespace and everything in it
+  # goes when the pull request closes; the preview DATABASE is dropped by the same
+  # event, and must never be the dev instance — previews must not pollute dev data.
+  strategy:
+    type: AllAtOnce
+  syncPolicy:
+    preserveResourcesOnDeletion: false

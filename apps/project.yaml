@@ -1,0 +1,63 @@
+# The AppProject every product Application belongs to.
+#
+# §10b — ArgoCD holds credentials on BOTH clusters and is the one component whose
+# reach crosses the isolation boundary §2 otherwise insists on. This project is
+# where that reach is bounded: an Application in it may deploy the kinds listed
+# below, into product namespaces, from this repository and the chart registry, and
+# nothing else.
+#
+# It matters because "whoever can push to gitops can deploy anything" is only
+# acceptable while "anything" has an edge.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: products
+  namespace: argocd
+spec:
+  description: Product workloads. One Application per (product, environment).
+
+  sourceRepos:
+    - https://github.com/quynhonsemiconductor/gitops
+    - 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/charts/*
+
+  destinations:
+    - server: https://kubernetes.default.svc      # the prod cluster, where ArgoCD runs
+      namespace: "*"
+    - name: dev                                    # registered at bootstrap (§13)
+      namespace: "*"
+
+  # ── What a product Application may create ─────────────────────────────────
+  # An explicit allow-list rather than "*", so a chart that starts rendering
+  # something unexpected fails at sync instead of succeeding quietly.
+  namespaceResourceWhitelist:
+    - { group: "",                            kind: Service }
+    - { group: "",                            kind: ServiceAccount }
+    - { group: "",                            kind: ConfigMap }
+    - { group: apps,                          kind: Deployment }
+    - { group: batch,                         kind: Job }
+    - { group: batch,                         kind: CronJob }
+    - { group: policy,                        kind: PodDisruptionBudget }
+    - { group: networking.k8s.io,             kind: NetworkPolicy }
+    - { group: gateway.networking.k8s.io,     kind: HTTPRoute }
+    - { group: gateway.networking.k8s.io,     kind: GRPCRoute }
+    - { group: keda.sh,                       kind: ScaledObject }
+    - { group: external-secrets.io,           kind: ExternalSecret }
+    - { group: external-secrets.io,           kind: SecretStore }
+    - { group: monitoring.coreos.com,         kind: PrometheusRule }
+
+  # Cluster-scoped: only the namespace itself. A product cannot create a
+  # ClusterRole, a CRD, or a ValidatingAdmissionPolicy — those belong to the
+  # platform bootstrap, not to a chart §11c lets any engineer bump.
+  clusterResourceWhitelist:
+    - { group: "", kind: Namespace }
+
+  roles:
+    - name: developer
+      description: >-
+        §10b — sync on dev, read-only on prod. Production changes go through a
+        reviewed pull request in this repository, not through the ArgoCD UI.
+      policies:
+        - p, proj:products:developer, applications, get, products/*, allow
+        - p, proj:products:developer, applications, sync, products/*-dev, allow
+      groups:
+        - qnsc:developers

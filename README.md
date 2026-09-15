@@ -72,6 +72,24 @@ secret path       qnsc/prod/rova/database-url   a path, so one IAM wildcard scop
 Exactly one fact is declared in both repositories — `size` — and CI fails if the two
 disagree. Do not build a generator for it.
 
+## How a change reaches a cluster
+
+```
+apps/root.yaml          the ONE thing installed by hand (§13's bootstrap answer)
+  → apps/project.yaml   what a product Application may create — an allow-list,
+                        not "*", so an unexpected kind fails at sync
+  → appsets/products.yaml   one Application per (product, env), chart PINNED per row
+  → appsets/preview.yaml    one full environment per labelled pull request
+```
+
+Three kinds of change, three blast radii — worth knowing which one you are making:
+
+```
+a values file         one product, one environment      §11's promotion
+a chartVersion row    one product, one environment      §11c's pinned bump
+the appset TEMPLATE   EVERY Application at once         rare, and reviewed as such
+```
+
 ## Adding a product
 
 ```
