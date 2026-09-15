@@ -81,20 +81,25 @@ jobs:
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             rendered/
 
-      # ── §7c — the one fact declared twice ────────────────────────────────────
-      # Everything else crossing the gitops/infra boundary is derived and cannot
-      # drift. `size` genuinely can: OpenTofu picks an RDS instance class from it,
-      # the chart picks replica counts and PDBs from it, and neither reads the
-      # other's file at plan time.
+      # ── cross-repository contracts ───────────────────────────────────────────
+      # NOT a local script. Every contract that crosses a repository boundary is
+      # checked by ONE tool in `ci`, on the principle that repo-local tooling
+      # stays local and cross-repo contracts live where every repo can reach
+      # them. It replaced two ad-hoc scripts that were growing separately in
+      # gitops/scripts and infra/scripts.
       #
-      # continue-on-error until `infra` is checked out alongside — it reports
-      # unpaired products rather than failing on a migration that has not happened.
-      - name: size agrees between gitops and infra
+      # continue-on-error until `infra` is checked out beside this one — it
+      # reports unmigrated products rather than failing on them.
+      - name: platform conformance
         continue-on-error: true
         run: |
           pip install --quiet pyyaml
-          ./scripts/check-size-agreement.py --infra ../infra || \
-            echo "::warning::size disagrees between gitops and infra — see §7c"
+          if [ -d ../infra ]; then
+            ../ci/scripts/platform_conformance.py --root .. ||
+              echo "::warning::a cross-repository contract is broken"
+          else
+            echo "::notice::infra not checked out — conformance skipped"
+          fi
 
       # ── the golden render ────────────────────────────────────────────────────
       # Unit tests on a chart serving fifteen services are necessary and not

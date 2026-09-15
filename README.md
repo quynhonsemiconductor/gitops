@@ -156,6 +156,39 @@ no replicas when scaling set  a ScaledObject and a Deployment fight over the fie
                               on every reconcile
 ```
 
+## What checks what
+
+Three layers, and the third exists because the first two cannot see the bugs it
+catches.
+
+```
+helm lint · unittest      this chart, in isolation
+golden render             what this chart produces, as a reviewable diff
+platform conformance      contracts that CROSS repositories — ci/scripts/
+```
+
+A review on 2026-09-16 found five bugs in one day, every one the same shape: **a
+reference and its definition in different files, each individually valid.**
+`terraform validate`, `helm lint` and `helm unittest` all passed on all five.
+
+```
+api and worker had NO envFrom       they would have crashed on the first
+                                    DATABASE_URL read, with the ExternalSecret
+                                    beside them looking healthy
+KEDA queried a Prometheus           that nothing installs and nothing will
+platform/ referenced three secrets  nothing created
+five stacks read kms_key_arn        from the wrong remote state
+and private_route_table_ids         which no stack exports
+```
+
+Per-concern directories are the right structure and are exactly what lets this
+hide. The answer is not reorganising folders — it is `ci/scripts/platform_conformance.py`,
+which is the only tool that reads more than one repository.
+
+**Repo-local tooling stays local** (`scripts/render.sh` renders this chart).
+**Cross-repo contracts live in `ci`**, because no single repo can host a check
+that spans several.
+
 ## Versions
 
 Everything is pinned in `versions.yaml` — one file, so §2b's quarterly
