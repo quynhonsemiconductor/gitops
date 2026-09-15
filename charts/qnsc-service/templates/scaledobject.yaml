@@ -28,6 +28,14 @@ spec:
   triggers:
   {{- if eq $svc.scaling.type "rps" }}
     - type: prometheus
+      {{- /* §9i — there is NO in-cluster Prometheus. Metrics go to Grafana Cloud
+             (Mimir), so this queries the hosted endpoint and therefore NEEDS
+             credentials. An earlier version pointed at
+             prometheus.platform.svc.cluster.local:9090 with no auth, which does
+             not exist and never would have: the whole point of §9i is not
+             self-hosting a metrics store. */}}
+      authenticationRef:
+        name: keda-grafana
       metadata:
         serverAddress: {{ $.Values.prometheus.address }}
         query: sum(rate(http_server_request_duration_seconds_count{service_name="{{ include "qnsc.product" $ }}-{{ $name }}"}[2m]))

@@ -262,6 +262,9 @@ spec:
               value: 127.0.0.1
             - name: MALWARE_SCANNER_PORT
               value: "3310"
+          envFrom:
+            - secretRef:
+                name: kb-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -387,6 +390,9 @@ spec:
               value: 127.0.0.1
             - name: MALWARE_SCANNER_PORT
               value: "3310"
+          envFrom:
+            - secretRef:
+                name: kb-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp

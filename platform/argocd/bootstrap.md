@@ -28,6 +28,11 @@ helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
 kubectl apply -f ../gateway/gateway.yaml
 kubectl apply -f ../cloudflared/deployment.yaml
 
+# the platform's OWN credentials — Alloy CrashLoopBackOffs without them, and
+# cloudflared connects to nothing while the cluster looks healthy
+sed -i "s/ENV/${ENV}/g" ../secrets/*.yaml
+kubectl apply -f ../secrets/
+
 helm upgrade --install alloy-gateway grafana/alloy -n platform \
   -f ../alloy/values-gateway.yaml --set-file alloy.configMap.content=../alloy/gateway.alloy
 helm upgrade --install alloy-agent grafana/alloy -n platform \

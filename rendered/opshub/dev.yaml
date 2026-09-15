@@ -254,6 +254,9 @@ spec:
               value: pgbouncer
             - name: DATABASE_PORT
               value: "6432"
+          envFrom:
+            - secretRef:
+                name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -334,6 +337,9 @@ spec:
               value: pgbouncer
             - name: DATABASE_PORT
               value: "6432"
+          envFrom:
+            - secretRef:
+                name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp

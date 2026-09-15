@@ -84,3 +84,17 @@ tests:
     asserts:
       - isNull:
           path: spec.replicas
+
+  # ── Found in review, 2026-09-16 ──────────────────────────────────────────────
+  - it: attaches the product secret to every application container
+    # This was MISSING. api and worker rendered with envFrom absent entirely:
+    # PgBouncer got kb-app and the migrator Job got kb-migrator, but the
+    # applications themselves got nothing — no DATABASE_URL, no REDIS_URL, no API
+    # keys. They would have started and failed on the first line that read one,
+    # and the ExternalSecret beside them would have looked perfectly healthy.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: rova-app

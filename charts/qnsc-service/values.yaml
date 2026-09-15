@@ -98,7 +98,10 @@ otel:
 accountId: "608983206583"
 region: ap-southeast-1
 prometheus:
-  address: http://prometheus.platform.svc.cluster.local:9090
+  # §9i — Grafana Cloud, not an in-cluster Prometheus. There is no in-cluster
+  # metrics store by design: "Do not self-host LGTM." KEDA queries the hosted
+  # endpoint with the credentials in the keda-grafana TriggerAuthentication.
+  address: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
 
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.

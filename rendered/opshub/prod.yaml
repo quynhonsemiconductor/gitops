@@ -312,6 +312,9 @@ spec:
               value: pgbouncer
             - name: DATABASE_PORT
               value: "6432"
+          envFrom:
+            - secretRef:
+                name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -399,6 +402,9 @@ spec:
               value: pgbouncer
             - name: DATABASE_PORT
               value: "6432"
+          envFrom:
+            - secretRef:
+                name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -553,6 +559,22 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/opshub/migrator/
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keda-grafana
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: opshub
+    kind: SecretStore
+  target:
+    name: keda-grafana
+  dataFrom:
+    - find:
+        path: qnsc/prod/opshub/keda/
 ---
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -711,8 +733,10 @@ spec:
   cooldownPeriod: 300
   triggers:
     - type: prometheus
+      authenticationRef:
+        name: keda-grafana
       metadata:
-        serverAddress: http://prometheus.platform.svc.cluster.local:9090
+        serverAddress: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
         query: sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[2m]))
         threshold: "200"
 ---
@@ -759,3 +783,17 @@ spec:
         jwt:
           serviceAccountRef:
             name: external-secrets
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-grafana
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: keda-grafana
+      key: username
+    - parameter: password
+      name: keda-grafana
+      key: password

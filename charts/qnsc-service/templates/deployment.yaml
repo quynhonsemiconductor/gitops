@@ -175,10 +175,22 @@ spec:
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with $svc.envFrom }}
+          {{- /* ── The product's secrets ────────────────────────────────────
+                 THIS WAS MISSING. Before it, `api` and `worker` rendered with no
+                 envFrom at all: PgBouncer got kb-app and the migrator Job got
+                 kb-migrator, but the applications themselves got nothing — no
+                 DATABASE_URL, no REDIS_URL, no API keys. They would have started
+                 and failed on the first line that read one.
+                 The ExternalSecret that creates this is rendered beside them
+                 (§8); attaching it here is what makes it reach a process. */}}
           envFrom:
+            {{- if $.Values.data }}
+            - secretRef:
+                name: {{ include "qnsc.product" $ }}-app
+            {{- end }}
+            {{- with $svc.envFrom }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
