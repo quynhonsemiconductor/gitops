@@ -39,7 +39,7 @@ podIdentity:
       # §7c — derived, like everything else. The role needs sqs:GetQueueAttributes
       # on qnsc-<env>-*, and nothing more: KEDA reads queue DEPTH, it does not
       # consume messages. The product's own IRSA role does that.
-      roleArn: arn:aws:iam::608983206583:role/qnsc-ENV-keda
+      roleArn: arn:aws:iam::608983206583:role/qnsc-ENV-keda   # ENV = dev | prod. Created by infra/live/cluster-<env>
 
 prometheus:
   metricServer:

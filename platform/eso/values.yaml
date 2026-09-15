@@ -29,7 +29,7 @@ serviceAccount:
     # SecretStore names a product ServiceAccount, and ESO assumes THAT role via
     # `auth.jwt.serviceAccountRef`. This role only needs to exist for the
     # operator's own AWS calls.
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-ENV-external-secrets
+    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-ENV-external-secrets   # ENV = dev | prod. Created by infra/live/cluster-<env> (§7c)
 
 resources:
   requests: { cpu: 50m, memory: 128Mi }
