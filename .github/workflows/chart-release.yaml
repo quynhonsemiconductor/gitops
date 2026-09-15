@@ -1,0 +1,79 @@
+name: chart-release
+
+# Publish the chart to ECR as an OCI artefact. §11c, task 1.8.
+#
+# §11c requires the version to be pinned PER APPLICATION, and a pin is only
+# meaningful if the thing it points at cannot change underneath it. So this
+# publishes ONCE per version and ECR tag immutability makes a second push fail —
+# the same property §11 requires of images, applied to the artefact with more
+# reach.
+#
+# Releasing is deliberately manual. A chart that published on every merge to main
+# would reach every Application the moment someone bumped a pin, and §11c's whole
+# argument is that a chart change should roll out the way §17 migrates products:
+# one dev Application, soak, the rest of dev, then prod per product.
+
+on:
+  push:
+    tags: ["chart-v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "3.18.0"
+
+      - name: Version must match Chart.yaml
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#chart-v}"
+          chart=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
+          if [ "$tag" != "$chart" ]; then
+            echo "::error::tag chart-v${tag} does not match Chart.yaml version ${chart}."
+            echo "A pinned Application would then reference a version whose contents nobody can find (§11c)."
+            exit 1
+          fi
+
+      # The chart is published from a commit whose rendered output was reviewed.
+      # Re-rendering here catches a tag placed on a commit where rendered/ is
+      # stale — which would publish a chart nobody has seen the output of.
+      - name: rendered/ matches this commit
+        run: |
+          ./scripts/render.sh
+          git diff --exit-code rendered/ || {
+            echo "::error::rendered/ is stale at this tag. The golden render is the review artefact (§11c); publishing without it defeats the gate."
+            exit 1
+          }
+
+      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@main
+        id: aws
+        with:
+          role-arn: ${{ secrets.CHART_PUBLISH_ROLE_ARN }}
+          region: ${{ env.AWS_REGION }}
+          ecr-login: true
+
+      - name: Package and push
+        run: |
+          set -euo pipefail
+          helm package charts/qnsc-service --destination /tmp
+          version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
+
+          # Fails if the version already exists — ECR tag immutability is set on
+          # the chart repository for exactly this reason (§11c). A version that
+          # can be rewritten underneath a pinned Application is not pinned.
+          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${REGISTRY}/charts"
+
+          echo "::notice::published charts/qnsc-service:${version}"
+          echo "::notice::bump ONE dev Application in appsets/products.yaml, soak, then the rest (§11c)"
