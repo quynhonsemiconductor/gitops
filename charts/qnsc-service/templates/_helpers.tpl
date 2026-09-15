@@ -127,7 +127,29 @@ Helm already did.
        `| default $d.x` for the actual value. Guarding at the resolver means no
        template needs `(($svc.drain)).x` noise. */ -}}
 {{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "scaling" dict -}}
-{{- toYaml (mergeOverwrite $base (deepCopy $preset) (deepCopy $svc)) -}}
+{{- $out := mergeOverwrite $base (deepCopy $preset) (deepCopy $svc) -}}
+{{- /* ── singleton ────────────────────────────────────────────────────────────
+       Some workloads must never have two replicas — not even for the few seconds
+       a RollingUpdate overlaps them. qnsc-kb's Celery beat is the live example:
+       "max_count stays 1 while Celery beat rides in this task — two replicas
+       would double every scheduled job" (qnsc-kb-backend/infra/live/prod/main.tf).
+
+       This is NOT the same as "runs scheduled work". rova's worker runs seven
+       @Cron relays and scales to six safely, because AbstractOutboxRelay uses
+       SELECT … FOR UPDATE SKIP LOCKED and ExclusiveJob holds a cross-pod lock.
+       Singleton is for schedulers that hold no lock and cannot take one.
+
+       Fail rather than silently winning, because the failure mode of getting this
+       wrong is every scheduled job running twice — which looks like a data bug,
+       not a deployment bug. */ -}}
+{{- if $out.singleton -}}
+{{- if and $out.scaling $out.scaling.max (gt (int $out.scaling.max) 1) -}}
+{{- fail (printf "service %q: singleton and scaling.max=%v are contradictory. A singleton must never have two replicas — see qnsc-kb's beat" $name $out.scaling.max) -}}
+{{- end -}}
+{{- $_ := set $out "replicas" 1 -}}
+{{- $_ := unset $out "scaling" -}}
+{{- end -}}
+{{- toYaml $out -}}
 {{- end -}}
 
 

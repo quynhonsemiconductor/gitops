@@ -1,0 +1,74 @@
+# qnsc-kb — measured from qnsc-kb-backend/infra/live/{prod,develop}/main.tf, 2026-09-15.
+#
+# Two things about this product shape the whole platform:
+#   - it is roughly HALF of both environments (§15), so §15d measures it first
+#   - the e5-large-instruct ONNX session is ~1.5 GB resident and BOTH api and
+#     worker load it — the second clamav, and the reason §4c anticipates an
+#     embedding service
+product: kb
+size: m
+
+services:
+  api:
+    kind: http
+    expose: public
+    port: 8000
+    # arm64 becomes possible ONLY after clamav is split into `platform` (§4c).
+    # Until task 3.1 lands, this must be amd64 or the image will not run.
+    arch: arm64
+    capacity: mixed
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api }
+    # 6144 MB today MINUS clamd's 2048 sidecar, which moves to `platform`.
+    resources: { cpu: 1, memory: 4Gi }
+    # The ONNX session takes tens of seconds to load. Without a startupProbe the
+    # liveness probe kills the pod mid-load, forever (§9j).
+    startupPath: /livez
+    scaling: { type: rps, min: 2, max: 6, target: 100 }
+    slo:
+      availability: 99.0
+      latency: { p99: 2s }        # RAG answers are not 500ms operations
+
+  worker:
+    kind: worker
+    expose: none
+    arch: arm64
+    capacity: spot                # "Celery redelivers an interrupted task"
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
+    # 6144 MB today minus clamd's 1024. Loads the same model, plus PaddleOCR per
+    # scanned file.
+    resources: { cpu: 2, memory: 5Gi }
+    startupPath: /livez
+    scaling: { type: queue, min: 1, max: 4 }
+
+  beat:
+    kind: worker
+    expose: none
+    arch: arm64
+    capacity: ondemand
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
+    command: ["celery", "-A", "src.workers.celery_app", "beat"]
+    resources: { cpu: 100m, memory: 256Mi }
+    # ── THE REASON THIS FIELD EXISTS ─────────────────────────────────────────
+    # "max_count stays 1 while Celery beat rides in this task — two replicas
+    #  would double every scheduled job."  — infra/live/prod/main.tf
+    #
+    # Celery beat holds no lock and cannot take one, so it is a true singleton:
+    # never two replicas, not even for the seconds a RollingUpdate overlaps them.
+    # Splitting it out of the worker task is what finally lets the worker scale
+    # horizontally — which the ECS module could not express.
+    singleton: true
+
+  migrator:
+    kind: job
+    expose: none
+    arch: arm64
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator }
+    resources: { cpu: 500m, memory: 1Gi }
+
+data:
+  # §5: dedicated in PROD despite being size M — pgvector, a ~16 GiB working set,
+  # and a workload shape unlike anything else in the estate.
+  postgres:
+    mode: dedicated
+    pooling: pgbouncer
+    extensions: [vector, pgcrypto]

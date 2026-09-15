@@ -1,0 +1,47 @@
+# opshub — measured from opshub/infra/live/{prod,develop}/main.tf, 2026-09-15.
+#
+# Internal operations tool. Size M: an outage costs an inconvenienced colleague,
+# not revenue (§5). Production has never launched, which is why §17 migrates it
+# before rova.
+product: opshub
+size: m
+
+services:
+  api:
+    kind: http
+    # §4b — `protected`, not `public`. Cloudflare Access + Entra in front. An
+    # internal admin UI with only a WAF between it and the internet is how
+    # internal tools end up indexed.
+    expose: protected
+    port: 3000
+    arch: arm64
+    capacity: mixed
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api }
+    resources: { cpu: 1, memory: 2Gi }
+    scaling: { type: rps, min: 2, max: 6, target: 200 }
+    slo:
+      availability: 99.0        # §17 — P2. Nobody gets up at night for opshub
+      latency: { p99: 1s }
+
+  worker:
+    kind: worker
+    expose: none
+    arch: arm64
+    capacity: spot
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-worker }
+    resources: { cpu: 500m, memory: 1Gi }
+    # NOT a singleton, and the distinction matters. This worker runs @Cron relays
+    # and ExclusiveJob crons, but AbstractOutboxRelay uses
+    # SELECT … FOR UPDATE SKIP LOCKED and ExclusiveJob holds a CROSS-POD lock, so
+    # replicas divide the work rather than duplicating it. Contrast kb's beat.
+    scaling: { type: queue, min: 1, max: 4 }
+
+  migrator:
+    kind: job
+    expose: none
+    arch: arm64
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-migrator }
+    resources: { cpu: 500m, memory: 512Mi }
+
+data:
+  postgres: { mode: shared, pooling: pgbouncer }   # §5 — shared in prod AND dev

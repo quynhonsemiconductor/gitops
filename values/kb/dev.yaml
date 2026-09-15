@@ -1,0 +1,19 @@
+env: dev
+size: s
+data:
+  postgres: { mode: shared }      # dev is shared with no exceptions (§5)
+services:
+  api:
+    capacity: spot
+    resources: { cpu: 500m, memory: 3Gi }   # the model still has to fit
+    scaling: null
+    image: { tag: sha-PLACEHOLDER }
+  worker:
+    resources: { cpu: 1, memory: 3Gi }
+    scaling: null
+    image: { tag: sha-PLACEHOLDER }
+  beat:
+    capacity: spot
+    image: { tag: sha-PLACEHOLDER }
+  migrator:
+    image: { tag: sha-PLACEHOLDER }

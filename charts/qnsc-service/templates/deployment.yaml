@@ -26,6 +26,14 @@ spec:
   {{- if not (and $caps.scalable $svc.scaling) }}
   replicas: {{ $svc.replicas }}
   {{- end }}
+  {{- /* A RollingUpdate briefly runs the OLD and NEW pod at once, which for a
+         singleton scheduler means every job fires twice during every deploy.
+         Recreate takes the old one down first — a few seconds of no scheduler,
+         which is the correct trade for a thing that must be unique. */}}
+  {{- if $svc.singleton }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "qnsc.selectorLabels" (list $ $name) | nindent 6 }}
@@ -61,6 +69,12 @@ spec:
         - name: {{ $name }}
           image: {{ include "qnsc.image" (list $ $svc $name) }}
           imagePullPolicy: IfNotPresent
+          {{- with $svc.command }}
+          command: {{ toJson . }}
+          {{- end }}
+          {{- with $svc.args }}
+          args: {{ toJson . }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
