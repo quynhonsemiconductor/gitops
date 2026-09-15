@@ -69,3 +69,14 @@ tests:
       - equal:
           path: metadata.name
           value: api
+
+  - it: gives clamav a writable database directory
+    # freshclam writes to /var/lib/clamav. A sidecar that cannot update its
+    # signature database is the 2026-09 failure in reverse — clamd came up only on
+    # the runs where the update had FAILED, because the older database fit.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].volumeMounts[1].mountPath
+          value: /var/lib/clamav

@@ -37,6 +37,9 @@ services:
     # The ONNX session takes tens of seconds to load. Without a startupProbe the
     # liveness probe kills the pod mid-load, forever (§9j).
     startupPath: /livez
+    volumes:
+      - name: clamav-db
+        emptyDir: {}
     scaling: { type: rps, min: 1, max: 6, target: 100 }
     slo:
       availability: 99.0
@@ -57,6 +60,16 @@ services:
         # smaller database and that one fits. Tasks cycled for ~30 minutes per
         # deploy and it read as intermittent rather than as a sizing error.
         resources: { cpu: 256m, memory: 2Gi }
+        # freshclam WRITES the signature database here, so it cannot live on a
+        # read-only filesystem — and a sidecar that cannot update its database is
+        # the 2026-09 failure in reverse: clamd came up only on the runs where the
+        # update had FAILED, because the older, smaller database fit.
+        #
+        # emptyDir, not a PVC: §13 forbids PVCs, the database is re-downloadable,
+        # and a fresh pod fetching it is correct behaviour.
+        volumeMounts:
+          - name: clamav-db
+            mountPath: /var/lib/clamav
         # clamd loads the whole database before answering anything. ECS capped the
         # start period at 300s; Kubernetes does not, so this is 60 × 10s = 600s of
         # headroom for a cold load.
@@ -82,6 +95,9 @@ services:
     # plus PaddleOCR per scanned file.
     resources: { cpu: 2, memory: 6Gi }
     startupPath: /livez
+    volumes:
+      - name: clamav-db
+        emptyDir: {}
     # ── NOT SCALED, and this is a correctness constraint rather than a choice ──
     # Celery beat still rides inside this container:
     #   "max_count stays 1 while Celery beat rides in this task — two replicas
@@ -96,6 +112,9 @@ services:
         image: clamav/clamav:1.4
         ports: [{ name: clamd, containerPort: 3310 }]
         resources: { cpu: 256m, memory: 1Gi }
+        volumeMounts:
+          - name: clamav-db
+            mountPath: /var/lib/clamav
         startupProbe:
           exec: { command: ["clamdcheck.sh"] }
           periodSeconds: 10

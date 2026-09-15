@@ -354,11 +354,15 @@ spec:
           volumeMounts:
             - name: clamav-tmp
               mountPath: /tmp
+            - mountPath: /var/lib/clamav
+              name: clamav-db
       volumes:
         - name: tmp
           emptyDir: {}
         - name: clamav-tmp
           emptyDir: {}
+        - emptyDir: {}
+          name: clamav-db
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -476,11 +480,15 @@ spec:
           volumeMounts:
             - name: clamav-tmp
               mountPath: /tmp
+            - mountPath: /var/lib/clamav
+              name: clamav-db
       volumes:
         - name: tmp
           emptyDir: {}
         - name: clamav-tmp
           emptyDir: {}
+        - emptyDir: {}
+          name: clamav-db
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: apps/v1

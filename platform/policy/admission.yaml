@@ -1,0 +1,105 @@
+# ── §10 preventive controls, WITHOUT a policy engine ─────────────────────────
+#
+# An earlier draft used Kyverno. §2b lists the components whose APIs pin the
+# Kubernetes version and notes that every one of them is upgrade work a two-person
+# team will defer — so the design replaced it with ValidatingAdmissionPolicy, which
+# is CEL-based, IN-TREE, and pins nothing.
+#
+# That drops §2b's compatibility check from four components to three. Image
+# signature verification is the one thing CEL cannot do, and Sigstore
+# policy-controller stays for that alone.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: qnsc-image-tags
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps", ""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "pods"]
+  validations:
+    # §11 — `:latest` is how a develop build reached a production task definition
+    # (qnsc-kb-backend/infra/live/prod/main.tf:104). This stops a pod NAMING it;
+    # ECR tag immutability stops the tag MOVING. Both halves are needed.
+    - expression: >-
+        !object.spec.template.spec.containers.exists(c, c.image.endsWith(':latest'))
+      message: ":latest is forbidden. Use sha-<commit> in dev or v<version> in prod (§11)."
+      reason: Forbidden
+    # An untagged image is `:latest` wearing a disguise.
+    - expression: >-
+        object.spec.template.spec.containers.all(c, c.image.contains(':') || c.image.contains('@'))
+      message: "images must carry an explicit tag or digest (§11)."
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: qnsc-resources
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  validations:
+    # §10 — "nothing runs unbounded." A pod with no memory request is invisible to
+    # bin-packing, so the scheduler over-packs the node and something else is
+    # OOMKilled.
+    - expression: >-
+        object.spec.template.spec.containers.all(c,
+          has(c.resources) && has(c.resources.requests) &&
+          'cpu' in c.resources.requests && 'memory' in c.resources.requests)
+      message: "every container needs cpu and memory REQUESTS — they are the bin-packing unit (§15d)."
+      reason: Invalid
+    # ── The one that looks backwards ──────────────────────────────────────────
+    # §15d — a CPU LIMIT is forbidden, not required. CFS quota throttles on 100 ms
+    # bursts rather than averages, so an IO-bound service is throttled at 20%
+    # average CPU — and it presents as latency with no OOMKill, no restart and no
+    # alarm. Every service in this estate is that shape.
+    - expression: >-
+        object.spec.template.spec.containers.all(c,
+          !has(c.resources) || !has(c.resources.limits) || !('cpu' in c.resources.limits))
+      message: "CPU limits are forbidden (§15d). Set a request; memory limit == memory request."
+      reason: Invalid
+    # Memory IS required, and must equal the request: memory is not compressible,
+    # so bursting only defers an OOMKill to a worse moment and breaks bin-packing.
+    # Equal values also give Guaranteed QoS, so these are evicted last.
+    - expression: >-
+        object.spec.template.spec.containers.all(c,
+          has(c.resources.limits) && 'memory' in c.resources.limits &&
+          c.resources.limits.memory == c.resources.requests.memory)
+      message: "memory limit must equal memory request (§15d)."
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: qnsc-liveness-probes
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets"]
+  validations:
+    # §9j — the cascading-failure trap. "If liveness checks the database and the
+    # database slows down, Kubernetes kills every replica of every service at once,
+    # and a slowdown becomes an outage."
+    #
+    # The chart already hardcodes liveness to /livez and exposes readinessPath
+    # only. This catches anything that did not come from the chart, which is the
+    # case worth catching.
+    - expression: >-
+        object.spec.template.spec.containers.all(c,
+          !has(c.livenessProbe) || !has(c.livenessProbe.httpGet) ||
+          c.livenessProbe.httpGet.path == '/livez')
+      message: "liveness must be /livez and must not touch a dependency (§9j). Use readinessProbe for that."
+      reason: Invalid

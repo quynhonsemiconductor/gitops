@@ -1,0 +1,47 @@
+# Bindings. A ValidatingAdmissionPolicy does nothing until something binds it —
+# which is the failure mode to watch for: the policy exists, `kubectl get vap`
+# shows it, and nothing is enforced.
+#
+# Scoped to namespaces labelled qnsc.vn/tenant=product, so the platform's own
+# bootstrap (ArgoCD, ESO, Alloy) is exempt. Those are upstream charts this estate
+# does not control, and holding them to rules written for our own services would
+# mean forking them — §4c's argument, applied to policy.
+#
+# Written out three times rather than generated: this file is applied with kubectl
+# during bootstrap, before any chart exists to template it.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: qnsc-image-tags
+spec:
+  policyName: qnsc-image-tags
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        qnsc.vn/tenant: product
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: qnsc-resources
+spec:
+  policyName: qnsc-resources
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        qnsc.vn/tenant: product
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: qnsc-liveness-probes
+spec:
+  policyName: qnsc-liveness-probes
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        qnsc.vn/tenant: product
