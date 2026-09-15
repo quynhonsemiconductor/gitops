@@ -1,0 +1,21 @@
+# GENERATED — DO NOT EDIT BY HAND.
+#
+# CI writes this file on every deploy, and it is separate from prod.yaml for one
+# reason: `yq -i` REWRITES a whole file, and these values files carry reasoning
+# transcribed from the live OpenTofu — why qnsc-kb's api stays off Spot, why
+# clamav needs 2 GB, why the worker is pinned at one replica. A tag bump must not
+# be able to reflow or drop any of it.
+#
+# So the machine owns this file and humans own the others. It also makes a
+# promotion pull request a three-line diff instead of a diff against a file full
+# of prose (§11).
+services:
+  api:
+    image:
+      tag: sha-PLACEHOLDER
+  migrator:
+    image:
+      tag: sha-PLACEHOLDER
+  worker:
+    image:
+      tag: sha-PLACEHOLDER

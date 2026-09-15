@@ -7,6 +7,10 @@ templates:
 values:
   - ../../../values/kb/base.yaml
   - ../../../values/kb/prod.yaml
+  # The image tag lives in a MACHINE-OWNED file: `yq -i` rewrites whatever it
+  # touches, and the values files above carry reasoning transcribed from the live
+  # OpenTofu. CI writes only this one.
+  - ../../../values/kb/tags.prod.yaml
 
 tests:
   # ── §4c — like-for-like migration ───────────────────────────────────────────

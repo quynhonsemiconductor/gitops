@@ -7,10 +7,6 @@ services:
     capacity: spot           # dev has no revenue to protect
     resources: { cpu: 100m, memory: 512Mi }
     scaling: null            # autoscaling OFF in dev — fixed 1 replica
-    image: { tag: sha-PLACEHOLDER }
   worker:
     resources: { cpu: 100m, memory: 256Mi }
     scaling: null
-    image: { tag: sha-PLACEHOLDER }
-  migrator:
-    image: { tag: sha-PLACEHOLDER }

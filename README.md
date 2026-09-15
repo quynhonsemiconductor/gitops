@@ -46,10 +46,25 @@ before the chart sees anything. The chart renders one environment and does not k
 there is another.
 
 ```
-base.yaml   what the product is
-dev.yaml    what dev turns OFF — autoscaling, PDBs, realistic requests (§5b)
-prod.yaml   image tags, and anything genuinely prod-only
+base.yaml        what the product is — and WHY, transcribed from the live OpenTofu
+dev.yaml         what dev turns OFF — autoscaling, PDBs, realistic requests (§5b)
+prod.yaml        anything genuinely prod-only
+tags.<env>.yaml  GENERATED. Image tags. CI owns this file; humans own the others
 ```
+
+**The split is not cosmetic.** `yq -i` rewrites whatever file it touches, and CI
+runs it on every merge to main. `values/kb/base.yaml` carries 55 lines of reasoning
+copied out of the live OpenTofu — why the api stays off Spot, why clamav needs
+2 GB, why the worker is pinned at one replica. A tag bump must not be able to
+reflow or drop any of it.
+
+It also makes a promotion pull request a three-line diff instead of a diff against
+a file full of prose (§11).
+
+One trap worth knowing if you edit an overlay: a service key with nothing under it
+is `null`, not "no overrides" — and **null REPLACES the merged map** rather than
+merging into it, taking `kind` with it. A service that overrides nothing in an
+environment should not appear in that file at all.
 
 An `if eq .Values.env "prod"` in a template duplicates a merge Helm already did.
 

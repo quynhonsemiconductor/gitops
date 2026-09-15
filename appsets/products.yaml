@@ -92,6 +92,7 @@ spec:
               # chart carries no dev/prod branch of its own.
               - $values/values/{{.product}}/base.yaml
               - $values/values/{{.product}}/{{.env}}.yaml
+              - $values/values/{{.product}}/tags.{{.env}}.yaml
         - repoURL: https://github.com/quynhonsemiconductor/gitops
           targetRevision: main
           ref: values

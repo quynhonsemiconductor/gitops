@@ -56,6 +56,7 @@ spec:
             valueFiles:
               - $values/values/rova/base.yaml
               - $values/values/rova/dev.yaml
+              - $values/values/rova/tags.dev.yaml
             parameters:
               # The wildcard hostname is what makes this work at all. Routing per
               # PR is an HTTPRoute in the preview namespace — an ordinary

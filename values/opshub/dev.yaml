@@ -1,6 +1,6 @@
 env: dev
 size: s
 services:
-  api:      { capacity: spot, resources: { cpu: 500m, memory: 1Gi }, scaling: null, image: { tag: sha-PLACEHOLDER } }
-  worker:   { resources: { cpu: 250m, memory: 512Mi }, scaling: null, image: { tag: sha-PLACEHOLDER } }
-  migrator: { image: { tag: sha-PLACEHOLDER } }
+  api:      { capacity: spot, resources: { cpu: 500m, memory: 1Gi }, scaling: null, }
+  worker:   { resources: { cpu: 250m, memory: 512Mi }, scaling: null, }
+  migrator: { }

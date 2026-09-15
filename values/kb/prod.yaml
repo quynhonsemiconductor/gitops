@@ -1,5 +1,1 @@
 env: prod
-services:
-  api:      { image: { tag: sha-PLACEHOLDER } }
-  worker:   { image: { tag: sha-PLACEHOLDER } }
-  migrator: { image: { tag: sha-PLACEHOLDER } }

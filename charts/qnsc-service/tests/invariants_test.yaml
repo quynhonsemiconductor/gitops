@@ -9,6 +9,10 @@ templates:
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/prod.yaml
+  # The image tag lives in a MACHINE-OWNED file: `yq -i` rewrites whatever it
+  # touches, and the values files above carry reasoning transcribed from the live
+  # OpenTofu. CI writes only this one.
+  - ../../../values/rova/tags.prod.yaml
 
 tests:
   # ── §15d ────────────────────────────────────────────────────────────────────

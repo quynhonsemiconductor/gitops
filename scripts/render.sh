@@ -23,7 +23,7 @@ for base in values/*/base.yaml; do
     mkdir -p "rendered/${product}"
     helm template "$product" "$CHART" \
       --namespace "$product" \
-      -f "$base" -f "$envfile" \
+      -f "$base" -f "$envfile" -f "values/${product}/tags.${env}.yaml" \
       > "rendered/${product}/${env}.yaml"
     echo "  rendered ${product}/${env}  ($(grep -c '^kind:' "rendered/${product}/${env}.yaml") resources)"
   done

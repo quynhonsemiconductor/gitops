@@ -9,9 +9,5 @@ services:
     capacity: spot                  # dev has no revenue to protect
     resources: { cpu: 2, memory: 8Gi }
     scaling: null                   # §5b — autoscaling OFF in dev
-    image: { tag: sha-PLACEHOLDER }
   worker:
     resources: { cpu: 4, memory: 8Gi }
-    image: { tag: sha-PLACEHOLDER }
-  migrator:
-    image: { tag: sha-PLACEHOLDER }
