@@ -6,12 +6,21 @@
 #
 # Design reference: kubernetes-platform-design.md §4b (the eight axes), §5 (presets).
 
-# ── Required from the values files ───────────────────────────────────────────
-product: ""          # short slug: rova · opshub · kb · lms · solodesk · ai-dev-kit  (§7c)
-env: ""              # dev | prod. Never develop/production (§7c)
+# ── Required from the values files, and deliberately ABSENT here ─────────────
+#
+#   product   short slug: rova · opshub · kb · lms · solodesk · ai-dev-kit  (§7c)
+#   env       dev | prod. Never develop/production (§7c)
+#   services  at least one
+#
+# They carry no placeholder because values.schema.json requires them, and an empty
+# string would satisfy `required` while failing every pattern. The consequence is
+# that a bare `helm lint` FAILS, which is correct — this chart is not renderable
+# without a product. CI lints per values file:
+#
+#   helm lint charts/qnsc-service -f values/rova/base.yaml -f values/rova/prod.yaml
+
 size: s              # default preset; a service may override it
 
-services: {}
 # services:
 #   api:
 #     kind: http                 # http · grpc · realtime · worker · job · cron
@@ -90,3 +99,8 @@ accountId: "608983206583"
 region: ap-southeast-1
 prometheus:
   address: http://prometheus.platform.svc.cluster.local:9090
+
+# Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
+# versions in one place so the quarterly compatibility check is one diff.
+images:
+  pgbouncer: "1.24.1"

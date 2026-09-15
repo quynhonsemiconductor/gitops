@@ -1,0 +1,101 @@
+{{- if .Values.data }}
+{{- if .Values.data.postgres }}
+{{- if eq (.Values.data.postgres.pooling | default "none") "pgbouncer" }}
+{{- $d := .Values.defaults }}
+---
+{{- /* ── §5d, with one correction ────────────────────────────────────────────
+       §5d specifies "a PgBouncer SIDECAR, in transaction mode". Building it
+       showed the sidecar does not solve the problem §5d states.
+
+       Its own arithmetic: "HPA 2 → 6 api pods × pool of 10 = 60, workers × 10 =
+       30, migration job 5, × products sharing the instance = 300+ connections",
+       against ~200 for db.t4g.small.
+
+       A sidecar pools PER POD. Six api pods with a sidecar each still open
+       6 × pool_size connections to Postgres — halved, perhaps, but still LINEAR
+       IN REPLICAS, which is the thing that was supposed to stop growing. A shared
+       Deployment holds one pool regardless of how far the application scales, so
+       Postgres sees a constant number.
+
+       The sidecar form is not useless — it terminates the application's connection
+       churn locally, which matters with RDS IAM auth (§8) where every connection
+       mints a token. But it is an optimisation on top, not the fix.
+
+       Cost of the correction: one extra hop (~0.3 ms in-namespace) and a component
+       that must not fall over, hence two replicas and a PDB. */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  labels:
+    {{- include "qnsc.labels" (list . "pgbouncer") | nindent 4 }}
+spec:
+  replicas: {{ if eq (include "qnsc.env" .) "prod" }}2{{ else }}1{{ end }}
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list . "pgbouncer") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "qnsc.labels" (list . "pgbouncer") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+        - name: pgbouncer
+          image: bitnami/pgbouncer:{{ .Values.images.pgbouncer }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - { name: pgbouncer, containerPort: 6432 }
+          env:
+            {{- /* TRANSACTION mode. Session mode would hold a server connection
+                   for the life of a client connection, which pools nothing. */}}
+            - { name: PGBOUNCER_POOL_MODE, value: transaction }
+            - { name: PGBOUNCER_MAX_CLIENT_CONN, value: "1000" }
+            - { name: PGBOUNCER_DEFAULT_POOL_SIZE, value: {{ .Values.data.postgres.poolSize | default 20 | quote }} }
+            - { name: PGBOUNCER_PORT, value: "6432" }
+          envFrom:
+            - secretRef:
+                name: {{ include "qnsc.product" . }}-app
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { memory: 128Mi }
+          livenessProbe:
+            tcpSocket: { port: 6432 }
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  labels:
+    {{- include "qnsc.labels" (list . "pgbouncer") | nindent 4 }}
+spec:
+  type: ClusterIP
+  trafficDistribution: {{ .Values.defaults.trafficDistribution }}
+  selector:
+    {{- include "qnsc.selectorLabels" (list . "pgbouncer") | nindent 4 }}
+  ports:
+    - { name: pgbouncer, port: 6432, targetPort: 6432 }
+{{- if eq (include "qnsc.env" .) "prod" }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list . "pgbouncer") | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

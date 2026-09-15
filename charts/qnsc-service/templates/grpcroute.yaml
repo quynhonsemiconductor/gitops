@@ -1,0 +1,32 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if and (eq $caps.route "GRPCRoute") (has ($svc.expose | default "none") (list "public" "protected")) }}
+---
+{{- /* §4d — this will rarely render, and that is correct. gRPC through the
+       tunnel to the public internet needs gRPC enabled on the zone, http2Origin
+       on the connector, and bidirectional streaming is the part most likely to
+       disappoint. The design keeps gRPC INTERNAL and puts REST or gRPC-Web at the
+       edge — browsers cannot speak raw gRPC anyway.
+
+       If a genuinely public gRPC API is ever required, that is the second trigger
+       for §3's `ALB → Gateway` swap, because an ALB terminates HTTP/2 natively.
+       This template exists so the chart does not become the reason not to. */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $.Values.gateway.name }}
+      namespace: {{ $.Values.gateway.namespace }}
+  hostnames:
+    - {{ include "qnsc.host" (list $ $svc) | quote }}
+  rules:
+    - backendRefs:
+        - name: {{ $name }}
+          port: {{ $svc.port }}
+{{- end }}
+{{- end }}

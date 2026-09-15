@@ -1,0 +1,104 @@
+{{- /* §10 — "Namespaces are not isolation. Without this, seven products in one
+       cluster share a fate."
+
+       Default-deny first, then allow explicitly. These policies are namespace-wide
+       and render once, not per service — a per-service default-deny would be six
+       copies of the same rule with six chances to omit one. */}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+{{- /* DNS is exempt from default-deny or nothing resolves, and the failure looks
+       like every dependency being down at once. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+{{- /* §4b — the `platform` namespace holds services every product consumes:
+       clamd today, an embedding server later. This egress allow is the product
+       half of `expose: cluster`. Rendering it from the chart is the point: written
+       by hand, seven times, this exception is how default-deny quietly stops
+       meaning anything. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.gateway.namespace }} }
+---
+{{- /* AWS is reached over the NAT — RDS, Secrets Manager, SQS, ECR, and R2 at
+       Cloudflare. Egress to the internet is allowed; INGRESS is not, and that is
+       where the boundary actually sits (§3: the tunnel means there is no inbound
+       surface at all). */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-external
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
+{{- range $name, $_ := .Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if ne $caps.service "none" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-{{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ $name) | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- if has ($svc.expose | default "none") (list "public" "protected") }}
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $.Values.gateway.namespace }} }
+      ports:
+        - { protocol: TCP, port: {{ $svc.port }} }
+    {{- end }}
+    {{- if eq ($svc.expose | default "none") "cluster" }}
+    {{- /* §4b — reachable from any PRODUCT namespace, never the internet. The
+           label is what makes this expressible instead of hand-written. */}}
+    - from:
+        - namespaceSelector:
+            matchLabels: { qnsc.vn/tenant: product }
+      ports:
+        - { protocol: TCP, port: {{ $svc.port }} }
+    {{- end }}
+    - from:
+        - podSelector: {}          # same namespace, service to service
+      ports:
+        - { protocol: TCP, port: {{ $svc.port }} }
+{{- end }}
+{{- end }}

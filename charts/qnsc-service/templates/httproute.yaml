@@ -1,0 +1,46 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if and (eq $caps.route "HTTPRoute") (has ($svc.expose | default "none") (list "public" "protected")) }}
+---
+{{- /* §3 — Gateway API, never Ingress. Ingress is effectively frozen and Gateway
+       is where the ecosystem went; it is also what makes per-PR preview hostnames
+       an ordinary Kubernetes resource instead of a Cloudflare config change, and
+       what lets `grpc` have a route at all.
+
+       The route lives in the PRODUCT namespace and references a Gateway in
+       `platform`. That is the whole point of §3's correction: seven products'
+       routes in one cloudflared ConfigMap made ingress a shared mutable file,
+       which is the opposite of the per-namespace ownership everything else here
+       depends on. rova owns rova's route, in git, reconciled by ArgoCD. */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+  {{- if eq $svc.expose "protected" }}
+  annotations:
+    {{- /* §4b — `protected` is the state most of this estate needs and the one
+           most easily got wrong. The enforcement is Cloudflare Access with Entra
+           behind it, configured in `infra`; this annotation records the intent so
+           a reader of the manifest can see it, and so a route that SHOULD be
+           protected but is not shows up as a diff. */}}
+    qnsc.vn/access: cloudflare-access
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ $.Values.gateway.name }}
+      namespace: {{ $.Values.gateway.namespace }}
+  hostnames:
+    - {{ include "qnsc.host" (list $ $svc) | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $svc.pathPrefix | default "/" }}
+      backendRefs:
+        - name: {{ $name }}
+          port: {{ $svc.port }}
+{{- end }}
+{{- end }}

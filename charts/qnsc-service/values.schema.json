@@ -3,7 +3,11 @@
   "title": "qnsc-service values",
   "description": "The contract between gitops and the chart. `additionalProperties: false` is the point of this file: a values file with `singelton: true` should be REJECTED, not silently ignored. See kubernetes-platform-design.md §4b.",
   "type": "object",
-  "required": ["product", "env", "services"],
+  "required": [
+    "product",
+    "env",
+    "services"
+  ],
   "additionalProperties": false,
   "properties": {
     "product": {
@@ -12,20 +16,43 @@
       "description": "Short slug: rova · opshub · kb · lms · solodesk · ai-dev-kit. NOT qnsc-kb (§7c)."
     },
     "env": {
-      "enum": ["dev", "prod"],
+      "enum": [
+        "dev",
+        "prod"
+      ],
       "description": "Never develop/production. §7c decision 1."
     },
     "size": {
-      "enum": ["xs", "s", "m", "l"],
+      "enum": [
+        "xs",
+        "s",
+        "m",
+        "l"
+      ],
       "description": "A CRITICALITY tier, not a resource size. rova is L and the smallest workload in the estate (§5)."
     },
-    "accountId": { "type": "string", "pattern": "^[0-9]{12}$" },
-    "region": { "type": "string" },
-    "presets": { "type": "object" },
-    "defaults": { "type": "object" },
-    "gateway": { "type": "object" },
-    "otel": { "type": "object" },
-    "prometheus": { "type": "object" },
+    "accountId": {
+      "type": "string",
+      "pattern": "^[0-9]{12}$"
+    },
+    "region": {
+      "type": "string"
+    },
+    "presets": {
+      "type": "object"
+    },
+    "defaults": {
+      "type": "object"
+    },
+    "gateway": {
+      "type": "object"
+    },
+    "otel": {
+      "type": "object"
+    },
+    "prometheus": {
+      "type": "object"
+    },
     "data": {
       "type": "object",
       "additionalProperties": false,
@@ -34,68 +61,160 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "mode": { "enum": ["none", "shared", "dedicated"] },
-            "pooling": { "enum": ["pgbouncer", "rdsproxy", "none"] },
-            "extensions": { "type": "array", "items": { "type": "string" } },
-            "engine_version": { "type": "string" }
+            "mode": {
+              "enum": [
+                "none",
+                "shared",
+                "dedicated"
+              ]
+            },
+            "pooling": {
+              "enum": [
+                "pgbouncer",
+                "rdsproxy",
+                "none"
+              ]
+            },
+            "extensions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "engine_version": {
+              "type": "string"
+            },
+            "poolSize": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
-        "cache": { "type": "object" },
-        "storage": { "type": "object" },
-        "queue": { "type": "object" }
+        "cache": {
+          "type": "object"
+        },
+        "storage": {
+          "type": "object"
+        },
+        "queue": {
+          "type": "object"
+        }
       }
     },
     "services": {
       "type": "object",
       "minProperties": 1,
-      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,30}$" },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,30}$"
+      },
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "properties": {
           "kind": {
-            "enum": ["http", "grpc", "realtime", "worker", "job", "cron"],
+            "enum": [
+              "http",
+              "grpc",
+              "realtime",
+              "worker",
+              "job",
+              "cron"
+            ],
             "description": "Capabilities live in templates/_kinds.tpl, not in template conditionals."
           },
           "expose": {
-            "enum": ["public", "protected", "cluster", "internal", "none"],
+            "enum": [
+              "public",
+              "protected",
+              "cluster",
+              "internal",
+              "none"
+            ],
             "description": "`protected` is the state most of this estate needs and the one most easily got wrong (§4b)."
           },
-          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-          "size": { "enum": ["xs", "s", "m", "l"] },
-          "replicas": { "type": "integer", "minimum": 0 },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "size": {
+            "enum": [
+              "xs",
+              "s",
+              "m",
+              "l"
+            ]
+          },
+          "replicas": {
+            "type": "integer",
+            "minimum": 0
+          },
           "arch": {
-            "enum": ["arm64", "amd64"],
+            "enum": [
+              "arm64",
+              "amd64"
+            ],
             "description": "arm64 by default. amd64 only where no arm64 build exists — today that is clamav alone (§4b Axis 5)."
           },
           "capacity": {
-            "enum": ["spot", "ondemand", "mixed"],
+            "enum": [
+              "spot",
+              "ondemand",
+              "mixed"
+            ],
             "description": "§4b Axis 6. Defaults per kind; `realtime` defaults to ondemand because a reclaim drops every connection."
           },
           "singleton": {
             "type": "boolean",
             "description": "Never two replicas, INCLUDING during a RollingUpdate. For a scheduler that holds no lock and cannot take one — Celery beat. NOT for workers that run scheduled work safely via SKIP LOCKED or a cross-pod lock (§4b Axis 7)."
           },
-          "pdb": { "type": "boolean" },
-          "topologySpread": { "type": "boolean" },
-          "readinessPath": { "type": "string" },
+          "pdb": {
+            "type": "boolean"
+          },
+          "topologySpread": {
+            "type": "boolean"
+          },
+          "readinessPath": {
+            "type": "string"
+          },
           "startupPath": {
             "type": "string",
             "description": "Set for slow boots. qnsc-kb loads a ~1.5 GB ONNX session; without this the liveness probe kills the pod mid-load, forever (§9j)."
           },
-          "needsApiAccess": { "type": "boolean" },
-          "timeoutSeconds": { "type": "integer", "minimum": 1 },
-          "command": { "type": "array", "items": { "type": "string" } },
-          "args": { "type": "array", "items": { "type": "string" } },
+          "needsApiAccess": {
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "image": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "repo": { "type": "string" },
+              "repo": {
+                "type": "string"
+              },
               "tag": {
                 "type": "string",
-                "not": { "const": "latest" },
+                "not": {
+                  "const": "latest"
+                },
                 "description": "sha-<commit> in dev, v<version> in prod. NEVER latest — that is how a develop build reached a production task definition (§11)."
               }
             }
@@ -104,40 +223,92 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "cpu": { "type": ["string", "number"] },
-              "memory": { "type": "string" },
-              "gpu": { "type": "integer", "minimum": 1 }
+              "cpu": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "memory": {
+                "type": "string"
+              },
+              "gpu": {
+                "type": "integer",
+                "minimum": 1
+              }
             },
             "description": "Requests. The chart renders NO cpu limit and sets memory limit == request (§15d)."
           },
           "scaling": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": false,
-            "required": ["type"],
+            "required": [
+              "type"
+            ],
             "properties": {
-              "type": { "enum": ["rps", "queue", "cron"] },
-              "min": { "type": "integer", "minimum": 0 },
-              "max": { "type": "integer", "minimum": 1 },
-              "target": { "type": ["integer", "number"] },
+              "type": {
+                "enum": [
+                  "rps",
+                  "queue",
+                  "cron"
+                ]
+              },
+              "min": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "target": {
+                "type": [
+                  "integer",
+                  "number"
+                ]
+              },
               "queue": {
                 "type": "string",
                 "description": "The queue PURPOSE (email-bounce), not a URL. The chart derives the URL from account, region, env and product so infra and gitops cannot drift (§7c)."
               },
-              "timezone": { "type": "string" },
-              "start": { "type": "string" },
-              "end": { "type": "string" },
-              "desiredReplicas": { "type": "integer", "minimum": 0 }
+              "timezone": {
+                "type": "string"
+              },
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string"
+              },
+              "desiredReplicas": {
+                "type": "integer",
+                "minimum": 0
+              }
             }
           },
           "slo": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "availability": { "type": "number", "minimum": 90, "maximum": 100 },
+              "availability": {
+                "type": "number",
+                "minimum": 90,
+                "maximum": 100
+              },
               "latency": {
                 "type": "object",
                 "additionalProperties": false,
-                "properties": { "p99": { "type": "string" }, "p95": { "type": "string" } }
+                "properties": {
+                  "p99": {
+                    "type": "string"
+                  },
+                  "p95": {
+                    "type": "string"
+                  }
+                }
               }
             },
             "description": "Renders recording rules and burn-rate alerts. An SLO nobody will get out of bed for is not an SLO (§17)."
@@ -146,44 +317,115 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 },
-              "preStop": { "type": "array", "items": { "type": "string" } }
+              "terminationGracePeriodSeconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "preStop": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
             "description": "§4e — a realtime pod must stop accepting, send close frames, then exit."
           },
-          "env": { "type": "array", "items": { "type": "object" } },
-          "envFrom": { "type": "array", "items": { "type": "object" } },
-          "volumes": { "type": "array", "items": { "type": "object" } },
-          "volumeMounts": { "type": "array", "items": { "type": "object" } },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "envFrom": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "volumeMounts": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
           "sidecars": {
             "type": "array",
             "description": "A sidecar works on Kubernetes exactly as it did on ECS, so a migration can be like-for-like. §4c argues a large read-only artefact belongs behind a Service instead — that is an optimisation, taken after the move, not during it.",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["name", "image", "resources"],
+              "required": [
+                "name",
+                "image",
+                "resources"
+              ],
               "properties": {
-                "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$" },
-                "image": { "type": "string" },
-                "command": { "type": "array", "items": { "type": "string" } },
-                "ports": { "type": "array", "items": { "type": "object" } },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,30}$"
+                },
+                "image": {
+                  "type": "string"
+                },
+                "command": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
                 "resources": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "cpu": { "type": ["string", "number"] },
-                    "memory": { "type": "string" }
+                    "cpu": {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
+                    },
+                    "memory": {
+                      "type": "string"
+                    }
                   }
                 },
-                "startupProbe": { "type": "object" },
-                "livenessProbe": { "type": "object" },
-                "env": { "type": "array", "items": { "type": "object" } },
-                "volumeMounts": { "type": "array", "items": { "type": "object" } }
+                "startupProbe": {
+                  "type": "object"
+                },
+                "livenessProbe": {
+                  "type": "object"
+                },
+                "env": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "volumeMounts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
               }
             }
           }
         }
       }
+    },
+    "images": {
+      "type": "object"
     }
   }
 }

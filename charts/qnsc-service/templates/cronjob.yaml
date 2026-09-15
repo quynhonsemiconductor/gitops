@@ -1,0 +1,69 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if eq $caps.workload "CronJob" }}
+{{- $d := $.Values.defaults }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  schedule: {{ required (printf "service %q: `schedule` is required for kind cron" $name) $svc.schedule | quote }}
+  timeZone: {{ $svc.timezone | default "Asia/Ho_Chi_Minh" | quote }}
+  {{- /* Forbid, always. A cron that overruns its interval and starts a second
+         copy is the same class of bug as a replicated scheduler: it looks like a
+         data problem, not a scheduling one. If a job legitimately needs
+         concurrency, it is a `worker` reading a queue, not a cron. */}}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "qnsc.labels" (list $ $name) | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ $name }}
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          nodeSelector:
+            kubernetes.io/arch: {{ $svc.arch | default $d.arch }}
+            {{- with include "qnsc.capacitySelector" ($svc.capacity | default "spot") }}
+            {{- . | nindent 12 }}
+            {{- end }}
+          containers:
+            - name: {{ $name }}
+              image: {{ include "qnsc.image" (list $ $svc $name) }}
+              {{- with $svc.command }}
+              command: {{ toJson . }}
+              {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
+                  memory: {{ $svc.resources.memory | default $d.resources.memory }}
+                limits:
+                  memory: {{ $svc.resources.memory | default $d.resources.memory }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "qnsc.product" $ }}-app
+              {{- with $svc.env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+{{- end }}
+{{- end }}

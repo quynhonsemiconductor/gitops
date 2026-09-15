@@ -154,6 +154,29 @@ Helm already did.
 
 
 {{/*
+Public hostname — derived (§7c).
+
+  prod   rova.qnsc.vn
+  dev    rova.dev.qnsc.vn     one subdomain for the whole environment, so the
+                              tunnel and any wildcard cert cover it at once
+                              (§11 uses *.preview.qnsc.vn the same way)
+
+A service may override with `host:` when a product exposes more than one.
+*/}}
+{{- define "qnsc.host" -}}
+{{- $root := index . 0 -}}
+{{- $svc := index . 1 -}}
+{{- if $svc.host -}}
+{{- $svc.host -}}
+{{- else if eq (include "qnsc.env" $root) "prod" -}}
+{{- printf "%s.qnsc.vn" (include "qnsc.product" $root) -}}
+{{- else -}}
+{{- printf "%s.dev.qnsc.vn" (include "qnsc.product" $root) -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/*
 SQS queue URL — derived, never passed (§7c).
 
 A values file names the queue's PURPOSE (`email-bounce`); the account id, region

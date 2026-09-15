@@ -161,6 +161,17 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ printf "service.namespace=%s,deployment.environment=%s,service.version=%s"
                         (include "qnsc.product" $) (include "qnsc.env" $) ($svc.image.tag) }}
+            {{- /* §5d — the chart wires the pooler so no product has to discover
+                   it. Applications connect to pgbouncer, never to RDS directly;
+                   PgBouncer holds the real endpoint from the same secret. */}}
+            {{- if and $.Values.data $.Values.data.postgres }}
+            {{- if eq ($.Values.data.postgres.pooling | default "none") "pgbouncer" }}
+            - name: DATABASE_HOST
+              value: pgbouncer
+            - name: DATABASE_PORT
+              value: "6432"
+            {{- end }}
+            {{- end }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

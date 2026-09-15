@@ -1,0 +1,91 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc := include "qnsc.svc" (list $ $name) | fromYaml }}
+{{- if $svc.slo }}
+{{- $sn := printf "%s-%s" (include "qnsc.product" $) $name }}
+{{- $target := $svc.slo.availability | float64 }}
+{{- $budget := div (sub 100.0 $target) 100.0 }}
+---
+{{- /* §9e — the SLO is a CHART VALUE, so the alert is rendered beside the
+       Deployment rather than built by hand afterwards. That is the structural
+       answer to a measured failure: "alarms are configured" was true of this
+       account for weeks while every alarm topic had zero subscribers. An alert
+       that the chart renders cannot be forgotten, because it is not a separate
+       act of remembering.
+
+       Multi-window multi-burn-rate, not a threshold. A team of three cannot
+       absorb threshold noise, and a CPU threshold on an IO-bound service fires
+       for the wrong reasons anyway. These page on "this will exhaust the error
+       budget", which is the only question worth waking someone for.
+
+       §17 — severity follows the product, not the number. Only rova reaches a
+       phone; everything else waits for business hours, and the SLO targets were
+       chosen to match that (99.5 = 3.65h/month, 99.0 = 7.3h). An SLO nobody will
+       get out of bed for is not an SLO. */}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $name }}-slo
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  groups:
+    - name: {{ $sn }}.slo
+      rules:
+        {{- range $w := list "5m" "30m" "1h" "2h" "6h" "1d" "3d" }}
+        - record: slo:request_error_rate:ratio_rate{{ $w }}
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="{{ $sn }}",http_response_status_code=~"5.."}[{{ $w }}]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="{{ $sn }}"}[{{ $w }}]))
+          labels:
+            service: {{ $sn }}
+        {{- end }}
+
+    - name: {{ $sn }}.burnrate
+      rules:
+        {{- /* 14.4x over 1h burns 2% of a 30-day budget — an hour of this and a
+               tenth of the month is gone. The 5m window is the confirmation that
+               stops a momentary spike paging anyone. */}}
+        - alert: {{ $sn }}ErrorBudgetBurnFast
+          expr: |
+            slo:request_error_rate:ratio_rate1h{service="{{ $sn }}"} > (14.4 * {{ $budget }})
+            and
+            slo:request_error_rate:ratio_rate5m{service="{{ $sn }}"} > (14.4 * {{ $budget }})
+          for: 2m
+          labels:
+            severity: {{ if eq (include "qnsc.product" $) "rova" }}P1{{ else }}P2{{ end }}
+            product: {{ include "qnsc.product" $ }}
+            env: {{ include "qnsc.env" $ }}
+          annotations:
+            summary: "{{ $sn }} is burning its error budget 14x — {{ $target }}% target"
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/{{ $name }}.md"
+
+        - alert: {{ $sn }}ErrorBudgetBurnSlow
+          expr: |
+            slo:request_error_rate:ratio_rate6h{service="{{ $sn }}"} > (6 * {{ $budget }})
+            and
+            slo:request_error_rate:ratio_rate30m{service="{{ $sn }}"} > (6 * {{ $budget }})
+          for: 15m
+          labels:
+            severity: P2
+            product: {{ include "qnsc.product" $ }}
+            env: {{ include "qnsc.env" $ }}
+          annotations:
+            summary: "{{ $sn }} is burning its error budget 6x over 6h"
+
+        {{- /* §9h — the dead man's switch. On 2026-09-06 a rotated credential was
+               replaced with a wrong value and two products shipped no telemetry
+               for SEVEN DAYS. Nothing noticed, because the thing that would have
+               noticed was the thing that was broken. Silence is the failure
+               signal. */}}
+        - alert: {{ $sn }}NoTelemetry
+          expr: absent_over_time(http_server_request_duration_seconds_count{service_name="{{ $sn }}"}[10m])
+          for: 10m
+          labels:
+            severity: P2
+            product: {{ include "qnsc.product" $ }}
+            env: {{ include "qnsc.env" $ }}
+          annotations:
+            summary: "{{ $sn }} has reported no metrics for 10 minutes"
+{{- end }}
+{{- end }}
