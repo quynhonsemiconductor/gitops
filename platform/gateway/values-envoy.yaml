@@ -1,0 +1,44 @@
+# Envoy Gateway — the GatewayClass controller.
+#
+# helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+#   -n platform -f values-envoy.yaml \
+#   --version <versions.yaml: platform.envoy-gateway.version>
+#
+# Chosen over the alternatives for one reason: §4d needs GRPCRoute with a headless
+# backend, and Envoy is where the Gateway API implementations are most complete.
+# Nothing else in this design depends on which implementation runs — the swap
+# touches this file and the GatewayClass, and no HTTPRoute changes.
+
+deployment:
+  replicas: 2
+  pod:
+    nodeSelector:
+      karpenter.sh/capacity-type: spot
+  container:
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { memory: 256Mi }
+
+config:
+  envoyGateway:
+    provider:
+      type: Kubernetes
+      kubernetes:
+        envoyDeployment:
+          replicas: 2
+          pod:
+            # The data plane, so it carries every request. Two replicas plus a PDB
+            # rather than an on-demand floor: a Spot reclaim drains one and
+            # cloudflared retries through the other, which is a rescheduling event
+            # rather than a dropped request (§15).
+            nodeSelector:
+              karpenter.sh/capacity-type: spot
+          container:
+            resources:
+              requests: { cpu: 200m, memory: 512Mi }
+              limits:   { memory: 512Mi }
+        envoyService:
+          # ClusterIP, never LoadBalancer. §3: "Not needed: ALB/NLB (~$16/month
+          # each), AWS Load Balancer Controller, `Ingress` resources, cert-manager."
+          # cloudflared reaches this over the pod network.
+          type: ClusterIP

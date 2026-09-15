@@ -1,0 +1,48 @@
+# ── The Gateway — §3 ─────────────────────────────────────────────────────────
+#
+# One Gateway per cluster, in `platform`. Products own their own HTTPRoutes in
+# their own namespaces and attach to it.
+#
+# §3 records the correction that produced this shape. An earlier draft put routing
+# in cloudflared's config, "and that was wrong in a way worth recording: seven
+# products' routes in one ConfigMap makes ingress a SHARED MUTABLE FILE, which is
+# the opposite of the per-namespace ownership everything else here depends on —
+# and it puts half the routing in Cloudflare rather than in the repository ArgoCD
+# reconciles."
+#
+# So Cloudflare Tunnel replaces the LOAD BALANCER, not the routing layer.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: qnsc
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: qnsc
+  namespace: platform
+spec:
+  gatewayClassName: qnsc
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      # ── NO TLS, and that is the point ──────────────────────────────────────
+      # §3: "Cloudflare terminates TLS, so certificates are not a cluster
+      # concern." No cert-manager, no ACME, no renewal to forget. cloudflared
+      # dials out and speaks plain HTTP to this listener over the pod network.
+      allowedRoutes:
+        # Routes may attach from ANY namespace. That is what makes a route a
+        # per-product resource in git rather than a line in a shared file — the
+        # whole reason §3 chose Gateway API over stuffing routes into cloudflared.
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              qnsc.vn/tenant: product
+        kinds:
+          - kind: HTTPRoute
+          - kind: GRPCRoute
