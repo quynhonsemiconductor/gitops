@@ -1,0 +1,67 @@
+# Platform component versions — the single place they are pinned.
+#
+# §2b: "Before each upgrade, check API compatibility for the three things that pin
+# Kubernetes versions: ArgoCD, Alloy, External Secrets Operator." That check is one
+# diff against this file, and the quarterly upgrade is one PR.
+#
+# ⚠ VERIFY EVERY LINE BEFORE THE FIRST INSTALL. These were written 2026-09-15 from
+# what was current then; releases move. `helm search repo <chart> --versions` and the
+# EKS "supported versions" page are the authoritative answers, not this file.
+#
+# Rules
+#   - exact versions, never ranges. §11c's argument for pinning the chart applies
+#     to everything the chart depends on
+#   - bump one component per PR, with the upstream changelog linked
+#   - dev first, soak, then prod (§2b)
+
+kubernetes:
+  # Target the newest version EKS supports at install time, then hold N or N-1 and
+  # never reach N-3 (§2b). `trafficDistribution: PreferClose` (§9j) needs 1.31+;
+  # it is GA from 1.33, which is the floor this chart declares.
+  eks: "1.33"
+
+platform:
+  # ── The three that pin the Kubernetes version (§2b) ──────────────────────────
+  argo-cd:
+    chart: argo-cd
+    repo: https://argoproj.github.io/argo-helm
+    version: "8.5.0"          # ArgoCD 3.x
+  alloy:
+    chart: alloy
+    repo: https://grafana.github.io/helm-charts
+    version: "1.6.0"
+  external-secrets:
+    chart: external-secrets
+    repo: https://charts.external-secrets.io
+    version: "0.20.0"
+
+  # ── Everything else ──────────────────────────────────────────────────────────
+  keda:
+    chart: keda
+    repo: https://kedacore.github.io/charts
+    version: "2.18.0"
+  gateway-api:
+    # CRDs, applied directly — not a chart. Standard channel.
+    version: "v1.3.0"
+  envoy-gateway:
+    chart: gateway-helm
+    repo: oci://docker.io/envoyproxy
+    version: "1.5.0"
+  policy-controller:
+    # Sigstore — image signature verification only. Everything else is
+    # ValidatingAdmissionPolicy, which is in-tree and pins nothing (§10).
+    chart: policy-controller
+    repo: https://sigstore.github.io/helm-charts
+    version: "0.10.0"
+
+images:
+  cloudflared: "2026.8.1"
+  clamav: "1.5"               # amd64 only — the estate's one exception (§4c)
+  pgbouncer: "1.24.1"
+
+# ── Toolchain, for CI and for humans ─────────────────────────────────────────
+tools:
+  helm: "3.18"
+  kubeconform: "0.7.0"
+  helm-unittest: "0.8.2"
+  opentofu: "1.10"

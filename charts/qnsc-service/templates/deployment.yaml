@@ -1,0 +1,164 @@
+{{/*
+REFERENCE IMPLEMENTATION — every other template follows this shape.
+
+  1. loop over .Values.services
+  2. resolve the service (preset merged with its own values)
+  3. ask the KIND TABLE what it needs — never test the kind directly
+  4. render
+
+If you need a `if eq $svc.kind "..."` here, _kinds.tpl is missing a column.
+*/}}
+{{- range $name, $_ := .Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if eq $caps.workload "Deployment" }}
+{{- $d := $.Values.defaults }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  {{- /* Replicas are omitted when a ScaledObject owns them, or HPA and the
+         Deployment fight over the same field on every reconcile. */ -}}
+  {{- if not (and $caps.scalable $svc.scaling) }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "qnsc.labels" (list $ $name) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- /* §10 — Pod Security Standards `restricted` is ENFORCED per namespace.
+             Rendered here so no product has to rediscover it from an admission
+             rejection. */}}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: {{ $svc.arch | default $d.arch }}
+        {{- with include "qnsc.capacitySelector" ($svc.capacity | default "mixed") }}
+        {{- . | nindent 8 }}
+        {{- end }}
+      {{- if $svc.topologySpread }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "qnsc.selectorLabels" (list $ $name) | nindent 14 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $svc.drain.terminationGracePeriodSeconds | default $d.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "qnsc.image" (list $ $svc $name) }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if ne $caps.service "none" }}
+          ports:
+            - name: {{ if eq $svc.kind "grpc" }}grpc{{ else }}http{{ end }}
+              containerPort: {{ required (printf "service %q: `port` is required for kind %s" $name $svc.kind) $svc.port }}
+          {{- end }}
+
+          {{- /* ── §15d: the requests/limits rule ──────────────────────────────
+                 CPU    request only, NEVER a limit. CFS quota throttles on 100 ms
+                        bursts rather than averages, so an IO-bound service is
+                        throttled at 20% average CPU — and it presents as latency
+                        with no OOMKill, no restart and no alarm.
+                 memory limit == request. Memory is not compressible; bursting
+                        only defers an OOMKill to a worse moment, and it breaks
+                        the bin-packing the cost model assumes. Equal values also
+                        give Guaranteed QoS, so these are evicted last. */}}
+          resources:
+            requests:
+              cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
+              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+            limits:
+              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+              {{- if $svc.resources.gpu }}
+              nvidia.com/gpu: {{ $svc.resources.gpu }}
+              {{- end }}
+
+          {{- /* ── §9j: probe discipline ───────────────────────────────────────
+                 liveness  answers "is the process alive" and checks NOTHING else.
+                           A liveness probe that touches the database kills every
+                           replica of every service the moment the database slows
+                           down, turning a slowdown into an outage.
+                 readiness MAY check dependencies.
+                 startup   for slow boots — kb loads a ~1.5 GB ONNX session, which
+                           needs a startupProbe rather than a generous liveness
+                           threshold. */}}
+          {{- if ne $caps.workload "Job" }}
+          livenessProbe:
+            {{- if eq $svc.kind "grpc" }}
+            grpc: { port: {{ $svc.port }} }
+            {{- else }}
+            httpGet: { path: {{ $d.probes.livenessPath }}, port: {{ $svc.port | default 8080 }} }
+            {{- end }}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            {{- if eq $svc.kind "grpc" }}
+            grpc: { port: {{ $svc.port }} }
+            {{- else }}
+            httpGet: { path: {{ $svc.readinessPath | default $d.probes.readinessPath }}, port: {{ $svc.port | default 8080 }} }
+            {{- end }}
+            periodSeconds: 5
+            failureThreshold: 3
+          {{- if $svc.startupPath }}
+          startupProbe:
+            httpGet: { path: {{ $svc.startupPath }}, port: {{ $svc.port | default 8080 }} }
+            periodSeconds: 5
+            failureThreshold: 60
+          {{- end }}
+          {{- end }}
+
+          {{- /* §4e — a realtime pod must stop accepting, tell its clients to
+                 reconnect, and only then exit. Without it every deploy, every
+                 consolidation and every scale-in is a visible outage to whoever
+                 is connected. */}}
+          {{- if $svc.drain.preStop }}
+          lifecycle:
+            preStop:
+              exec:
+                command: {{ $svc.drain.preStop | toJson }}
+          {{- end }}
+
+          {{- /* §9a — resource attributes pinned in one place. Without them seven
+                 products name the same concept seven ways and no dashboard,
+                 alert or query is portable between them. */}}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $d.otelEndpoint | default $.Values.otel.endpoint }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ printf "%s-%s" (include "qnsc.product" $) $name }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ printf "service.namespace=%s,deployment.environment=%s,service.version=%s"
+                        (include "qnsc.product" $) (include "qnsc.env" $) ($svc.image.tag) }}
+            {{- with $svc.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $svc.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}
+{{- end }}

@@ -1,0 +1,89 @@
+# qnsc-service — defaults
+#
+# Nothing here is product-specific. A product supplies `product`, `env` and
+# `services` through gitops/values/<product>/{base,dev,prod}.yaml, and ArgoCD
+# deep-merges base with the environment file before Helm sees them.
+#
+# Design reference: kubernetes-platform-design.md §4b (the eight axes), §5 (presets).
+
+# ── Required from the values files ───────────────────────────────────────────
+product: ""          # short slug: rova · opshub · kb · lms · solodesk · ai-dev-kit  (§7c)
+env: ""              # dev | prod. Never develop/production (§7c)
+size: s              # default preset; a service may override it
+
+services: {}
+# services:
+#   api:
+#     kind: http                 # http · grpc · realtime · worker · job · cron
+#     expose: public             # public · protected · cluster · internal · none
+#     port: 3000
+#     arch: arm64                # arm64 default; amd64 only when no build exists
+#     capacity: mixed            # spot · ondemand · mixed. Defaults per kind (_kinds.tpl)
+#     image: { repo: "...", tag: "sha-abc123" }
+#     resources: { cpu: 500m, memory: 1Gi }
+#     scaling: { type: rps, min: 2, max: 6, target: 200 }
+#     slo: { availability: 99.5, latency: { p99: 500ms } }
+
+# ── Size presets — CRITICALITY tiers, not resource sizes ─────────────────────
+#
+# Every field below is an availability property. Resource size lives per service
+# in `resources`, because it is a measurement (§15d), not a category.
+#
+# rova is L and the SMALLEST workload in the estate: L means an outage costs
+# revenue, not that the product is big (§5).
+#
+# These describe the PRODUCTION shape. dev.yaml turns things off; the chart holds
+# no dev/prod branch of its own (see _helpers.tpl "SERVICE RESOLUTION").
+presets:
+  xs:
+    replicas: 1
+    pdb: false
+    topologySpread: false
+  s:
+    replicas: 1
+    pdb: false
+    topologySpread: false
+  m:
+    replicas: 2
+    pdb: true
+    topologySpread: true
+  l:
+    replicas: 3
+    pdb: true
+    topologySpread: true
+
+# ── Cross-cutting defaults ───────────────────────────────────────────────────
+defaults:
+  arch: arm64                    # §4b Axis 5. amd64 is the exception, per service
+  terminationGracePeriodSeconds: 30
+
+  # §9j — the cascading-failure trap. Liveness answers "is the process alive" and
+  # NOTHING ELSE. If liveness checks the database and the database slows down,
+  # Kubernetes kills every replica of every service at once and a slowdown becomes
+  # an outage. The chart exposes readinessPath only; liveness is hardcoded.
+  probes:
+    livenessPath: /livez         # MUST NOT touch a dependency
+    readinessPath: /readyz       # MAY check dependencies
+    startupPath: ""              # set for slow boots — kb loads a ~1.5 GB ONNX session
+
+  # §15d — requests are the bin-packing unit and therefore the bill.
+  #   CPU:    request only, NEVER a limit. CFS quota throttles on 100 ms bursts,
+  #           not averages, which is every IO-bound service here.
+  #   memory: limit == request. Memory is not compressible, so bursting only
+  #           defers an OOMKill to a worse moment, and it breaks bin-packing.
+  resources:
+    cpu: 100m
+    memory: 128Mi
+
+  # §9j — cheaper AND lower latency. Set on every Service.
+  trafficDistribution: PreferClose
+
+gateway:
+  name: qnsc
+  namespace: platform
+
+# §9a — resource attributes for every signal. Without a pinned convention, seven
+# products name the same concept seven ways and no dashboard is portable.
+otel:
+  endpoint: http://alloy-gateway.platform.svc.cluster.local:4317
+accountId: "608983206583"

@@ -1,0 +1,162 @@
+{{/*
+────────────────────────────────────────────────────────────────────────────────
+NAMING — design §7c
+
+Every name is DERIVED, never passed. `infra` computes the same strings from the
+same three variables, so nothing crosses the repository boundary and nothing can
+drift.
+
+A name encodes exactly the dimensions the thing varies on:
+
+  product only          ECR repository      rova-api
+                        (NO environment — promotion is "the same image gets a
+                        second tag", so a per-env repository would mean copying
+                        bytes and the attestation would stop covering prod)
+  product               namespace           rova        (the cluster IS the env)
+  service               Deployment          api         (the namespace IS the product)
+  product + env + svc   IRSA role           qnsc-prod-rova-api
+  env + product + name  secret path         qnsc/prod/rova/database-url
+────────────────────────────────────────────────────────────────────────────────
+*/}}
+
+{{/* Product slug. Short form: `kb`, not `qnsc-kb` (§7c decision 3). */}}
+{{- define "qnsc.product" -}}
+{{- required "values: `product` is required" .Values.product -}}
+{{- end -}}
+
+{{/* Environment. `dev` or `prod` — never `develop`/`production` (§7c decision 1). */}}
+{{- define "qnsc.env" -}}
+{{- $env := required "values: `env` is required" .Values.env -}}
+{{- if not (has $env (list "dev" "prod")) -}}
+{{- fail (printf "values: `env` must be dev or prod, got %q — see §7c" $env) -}}
+{{- end -}}
+{{- $env -}}
+{{- end -}}
+
+{{/* Service name inside the namespace: just `api`. The namespace says the product. */}}
+{{- define "qnsc.svcName" -}}
+{{- index . 1 -}}
+{{- end -}}
+
+{{/* IRSA role name: qnsc-prod-rova-api. Must be globally unique in the account. */}}
+{{- define "qnsc.roleName" -}}
+{{- $root := index . 0 -}}
+{{- printf "qnsc-%s-%s-%s" (include "qnsc.env" $root) (include "qnsc.product" $root) (index . 1) -}}
+{{- end -}}
+
+{{/* Secrets Manager prefix: qnsc/prod/rova — a path, so one IAM wildcard scopes it (§8). */}}
+{{- define "qnsc.secretPrefix" -}}
+{{- printf "qnsc/%s/%s" (include "qnsc.env" .) (include "qnsc.product" .) -}}
+{{- end -}}
+
+{{/* ECR image reference. Deliberately NO env — see the header. */}}
+{{- define "qnsc.image" -}}
+{{- $root := index . 0 -}}
+{{- $svc := index . 1 -}}
+{{- $name := index . 2 -}}
+{{- if $svc.image -}}
+{{- if not $svc.image.tag -}}
+{{- fail (printf "service %q: image.tag is required — the chart never defaults a tag, because `latest` is how a develop build reached production (§11)" $name) -}}
+{{- end -}}
+{{- printf "%s:%s" (required "image.repo is required" $svc.image.repo) $svc.image.tag -}}
+{{- else -}}
+{{- fail (printf "service %q: `image` is required" $name) -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/*
+────────────────────────────────────────────────────────────────────────────────
+LABELS — one definition, used by every resource.
+
+`app.kubernetes.io/*` are the standard set. `qnsc.vn/tenant=product` is what the
+`expose: cluster` NetworkPolicy selects on (§4b), so it is not decorative.
+────────────────────────────────────────────────────────────────────────────────
+*/}}
+{{- define "qnsc.labels" -}}
+{{- $root := index . 0 -}}
+{{- $name := index . 1 -}}
+app.kubernetes.io/name: {{ $name }}
+app.kubernetes.io/instance: {{ include "qnsc.product" $root }}
+app.kubernetes.io/part-of: {{ include "qnsc.product" $root }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+qnsc.vn/product: {{ include "qnsc.product" $root }}
+qnsc.vn/env: {{ include "qnsc.env" $root }}
+qnsc.vn/tenant: product
+{{- end -}}
+
+{{- define "qnsc.selectorLabels" -}}
+{{- $root := index . 0 -}}
+{{- $name := index . 1 -}}
+app.kubernetes.io/name: {{ $name }}
+app.kubernetes.io/instance: {{ include "qnsc.product" $root }}
+{{- end -}}
+
+
+{{/*
+────────────────────────────────────────────────────────────────────────────────
+SERVICE RESOLUTION
+
+Returns one service's EFFECTIVE configuration: the size preset with the service's
+own values merged over it.
+
+Environment overlay is NOT handled here and must not be. ArgoCD loads
+`base.yaml` then `dev.yaml`/`prod.yaml`, and Helm deep-merges them before the
+chart sees anything — so the chart only ever renders one environment and needs no
+branch for it. Putting `if eq .env "prod"` in a template would duplicate a merge
+Helm already did.
+
+  {{- $svc := include "qnsc.svc" (list $ $name) | fromYaml }}
+────────────────────────────────────────────────────────────────────────────────
+*/}}
+{{- define "qnsc.svc" -}}
+{{- $root := index . 0 -}}
+{{- $name := index . 1 -}}
+{{- $svc := index $root.Values.services $name -}}
+{{- if not $svc -}}
+{{- fail (printf "no service named %q in values.services" $name) -}}
+{{- end -}}
+{{- $size := $svc.size | default $root.Values.size | default "s" -}}
+{{- $preset := index $root.Values.presets $size -}}
+{{- if not $preset -}}
+{{- fail (printf "service %q: unknown size %q — valid: %s" $name $size (keys $root.Values.presets | sortAlpha | join ", ")) -}}
+{{- end -}}
+{{- $caps := include "qnsc.caps" (required (printf "service %q: `kind` is required" $name) $svc.kind) | fromYaml -}}
+{{- /* Seed every nested structure a template may reach into, so `$svc.drain.x`
+       is nil rather than a nil-pointer panic. Templates then use
+       `| default $d.x` for the actual value. Guarding at the resolver means no
+       template needs `(($svc.drain)).x` noise. */ -}}
+{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "scaling" dict -}}
+{{- toYaml (mergeOverwrite $base (deepCopy $preset) (deepCopy $svc)) -}}
+{{- end -}}
+
+
+{{/*
+Does this service get a PodDisruptionBudget?
+
+`always` ignores the size preset. §4e: a `realtime` pod without a PDB loses every
+connected client on an unguarded node drain, and Karpenter drains eagerly.
+*/}}
+{{- define "qnsc.wantsPDB" -}}
+{{- $svc := index . 0 -}}
+{{- $caps := index . 1 -}}
+{{- if eq $caps.pdb "always" -}}true
+{{- else if eq $caps.pdb "never" -}}
+{{- else if $svc.pdb -}}true
+{{- end -}}
+{{- end -}}
+
+
+{{/*
+Node scheduling for a capacity class (§4b Axis 6).
+
+`mixed` renders no constraint: the on-demand floor is a node-pool concern, not a
+pod concern, so a `mixed` pod is schedulable anywhere and Karpenter decides.
+*/}}
+{{- define "qnsc.capacitySelector" -}}
+{{- if eq . "spot" -}}
+karpenter.sh/capacity-type: spot
+{{- else if eq . "ondemand" -}}
+karpenter.sh/capacity-type: on-demand
+{{- end -}}
+{{- end -}}

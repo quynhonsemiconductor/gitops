@@ -1,0 +1,13 @@
+apiVersion: v2
+name: qnsc-service
+description: One chart for every QNSC service. See kubernetes-platform-design.md §4b.
+# APPLICATION, not library — §11c. A library chart needs a wrapper chart per
+# product, which is seven copies of boilerplate plus seven escape hatches where a
+# product can quietly hand-write a manifest. An application chart plus one values
+# file per (product, environment) has neither.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.33.0-0"   # trafficDistribution: PreferClose is GA from 1.33 (§9j)
+maintainers:
+  - name: QNSC Platform

@@ -1,0 +1,39 @@
+{{- range $name, $_ := .Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if ne $caps.service "none" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  {{- /* §4d — a HEADLESS Service for gRPC, and this is the whole reason the kind
+         exists separately. gRPC multiplexes many requests over one long-lived
+         HTTP/2 connection, and a normal ClusterIP balances at L4 — per CONNECTION.
+         So one client pins to one pod for the life of that connection and the
+         other replicas idle. clusterIP: None makes DNS return every pod address,
+         which is what lets the client round-robin. It is also why no service mesh
+         is needed for this. */}}
+  {{- if eq $caps.service "Headless" }}
+  clusterIP: None
+  {{- else }}
+  type: ClusterIP
+  {{- /* §9j — cross-AZ traffic is $0.01/GB each way, grows with the square of
+         service count, and appears on no per-service line item. One field, and it
+         lowers latency too. */}}
+  trafficDistribution: {{ $.Values.defaults.trafficDistribution }}
+  {{- end }}
+  selector:
+    {{- include "qnsc.selectorLabels" (list $ $name) | nindent 4 }}
+  ports:
+    - name: {{ if eq $svc.kind "grpc" }}grpc{{ else }}http{{ end }}
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      {{- if eq $svc.kind "grpc" }}
+      appProtocol: kubernetes.io/h2c
+      {{- end }}
+{{- end }}
+{{- end }}

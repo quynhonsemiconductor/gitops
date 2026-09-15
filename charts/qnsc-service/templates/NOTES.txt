@@ -1,0 +1,3 @@
+{{ include "qnsc.product" . }} / {{ include "qnsc.env" . }} — {{ len .Values.services }} service(s)
+{{ range $name, $_ := .Values.services }}
+  {{ $name }}{{ end }}

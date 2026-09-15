@@ -1,0 +1,42 @@
+# rova — measured from rova/infra/live/prod/main.tf on 2026-09-15.
+# Size L means an outage costs revenue, NOT that the product is big: rova is the
+# smallest workload in the estate (§5).
+product: rova
+size: l
+
+services:
+  api:
+    kind: http
+    expose: public
+    port: 3000
+    # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
+    # request and a broken response mid-answer." — rova/infra/live/prod/main.tf
+    # On Kubernetes a PDB plus drain plus multiple replicas makes a reclaim a
+    # rescheduling event, so `mixed` keeps one on-demand replica rather than a
+    # whole on-demand pool (§15).
+    capacity: mixed
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api }
+    resources: { cpu: 250m, memory: 1Gi }
+    scaling: { type: rps, min: 2, max: 10, target: 200 }
+    slo:
+      availability: 99.5
+      latency: { p99: 500ms }
+
+  worker:
+    kind: worker
+    expose: none
+    # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
+    # so an interruption costs time rather than work." — same file.
+    capacity: spot
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker }
+    resources: { cpu: 250m, memory: 512Mi }
+    scaling: { type: queue, min: 1, max: 6 }
+
+  migrator:
+    kind: job
+    expose: none
+    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator }
+    resources: { cpu: 250m, memory: 512Mi }
+
+data:
+  postgres: { mode: dedicated, pooling: pgbouncer }
