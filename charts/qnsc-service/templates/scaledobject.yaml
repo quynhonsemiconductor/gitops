@@ -1,0 +1,57 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if and $caps.scalable $svc.scaling }}
+---
+{{- /* §4b Axis 7 — KEDA, not a raw HPA, and from day one rather than later.
+       CPU-target autoscaling is the wrong signal for almost everything here: the
+       Node and Python services are IO-bound, so CPU never reaches the target, the
+       HPA never fires, and the compensation is a permanently over-provisioned
+       replica floor. qnsc-kb's prod values already show that shape —
+       `enable_autoscaling = false` with an unused `cpu_target_pct = 60` beside it.
+
+       One controller covers four needs: request-rate for http, queue depth for
+       worker, scale-to-zero, and the cron scaler §5b reopened. */}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $name }}
+  minReplicaCount: {{ $svc.scaling.min | default 1 }}
+  maxReplicaCount: {{ required (printf "service %q: scaling.max is required" $name) $svc.scaling.max }}
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+  {{- if eq $svc.scaling.type "rps" }}
+    - type: prometheus
+      metadata:
+        serverAddress: {{ $.Values.prometheus.address }}
+        query: sum(rate(http_server_request_duration_seconds_count{service_name="{{ include "qnsc.product" $ }}-{{ $name }}"}[2m]))
+        threshold: "{{ required (printf "service %q: scaling.target is required for type rps" $name) $svc.scaling.target }}"
+  {{- else if eq $svc.scaling.type "queue" }}
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-irsa
+      metadata:
+        queueURL: {{ include "qnsc.queueUrl" (list $ (required (printf "service %q: scaling.queue is required for type queue — name the PURPOSE (e.g. email-bounce); the URL is derived per §7c" $name) $svc.scaling.queue)) }}
+        queueLength: "{{ $svc.scaling.target | default 20 }}"
+        awsRegion: {{ $.Values.region }}
+  {{- else if eq $svc.scaling.type "cron" }}
+    {{- /* §5b reopened — dev compute to zero outside working hours. The database
+           half is solved separately by Aurora Serverless v2 at a 0 ACU floor, so
+           this schedule carries no risk of the 2026-09-13 friction. */}}
+    - type: cron
+      metadata:
+        timezone: {{ $svc.scaling.timezone | default "Asia/Ho_Chi_Minh" }}
+        start: {{ $svc.scaling.start }}
+        end: {{ $svc.scaling.end }}
+        desiredReplicas: "{{ $svc.scaling.desiredReplicas | default 1 }}"
+  {{- else }}
+    {{- fail (printf "service %q: unknown scaling.type %q — valid: rps, queue, cron" $name $svc.scaling.type) }}
+  {{- end }}
+{{- end }}
+{{- end }}

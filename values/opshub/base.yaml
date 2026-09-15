@@ -34,7 +34,7 @@ services:
     # and ExclusiveJob crons, but AbstractOutboxRelay uses
     # SELECT … FOR UPDATE SKIP LOCKED and ExclusiveJob holds a CROSS-POD lock, so
     # replicas divide the work rather than duplicating it. Contrast kb's beat.
-    scaling: { type: queue, min: 1, max: 4 }
+    scaling: { type: queue, queue: jobs, min: 1, max: 4 }
 
   migrator:
     kind: job

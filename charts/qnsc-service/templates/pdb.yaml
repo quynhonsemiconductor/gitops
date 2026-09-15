@@ -1,0 +1,25 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if include "qnsc.wantsPDB" (list $svc $caps) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+spec:
+  {{- /* A singleton cannot have a budget that blocks eviction, or the node never
+         drains and Karpenter consolidation stalls forever. maxUnavailable: 1 says
+         "this may go away", which for a scheduler is correct. */}}
+  {{- if $svc.singleton }}
+  maxUnavailable: 1
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ $name) | nindent 6 }}
+{{- end }}
+{{- end }}

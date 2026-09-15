@@ -154,6 +154,25 @@ Helm already did.
 
 
 {{/*
+SQS queue URL — derived, never passed (§7c).
+
+A values file names the queue's PURPOSE (`email-bounce`); the account id, region
+and `qnsc-<env>-<product>-` prefix are computed. `infra` builds the same string
+from the same three variables, so the URL never crosses the repository boundary
+and the two cannot drift.
+
+Pasting a full URL into values would be the exact mistake §7c exists to prevent.
+*/}}
+{{- define "qnsc.queueUrl" -}}
+{{- $root := index . 0 -}}
+{{- $queue := index . 1 -}}
+{{- printf "https://sqs.%s.amazonaws.com/%s/qnsc-%s-%s-%s"
+     $root.Values.region $root.Values.accountId
+     (include "qnsc.env" $root) (include "qnsc.product" $root) $queue -}}
+{{- end -}}
+
+
+{{/*
 Does this service get a PodDisruptionBudget?
 
 `always` ignores the size preset. §4e: a `realtime` pod without a PDB loses every

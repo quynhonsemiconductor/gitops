@@ -87,3 +87,6 @@ gateway:
 otel:
   endpoint: http://alloy-gateway.platform.svc.cluster.local:4317
 accountId: "608983206583"
+region: ap-southeast-1
+prometheus:
+  address: http://prometheus.platform.svc.cluster.local:9090

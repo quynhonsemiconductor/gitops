@@ -1,0 +1,72 @@
+{{- range $name, $_ := $.Values.services }}
+{{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
+{{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- if eq $caps.workload "Job" }}
+{{- $d := $.Values.defaults }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  {{- /* A fresh name per revision: a Job's pod template is immutable, so reusing
+         the name makes the second sync fail. */}}
+  name: {{ $name }}-{{ $svc.image.tag | replace ":" "-" | trunc 20 | trimSuffix "-" }}
+  labels:
+    {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+  annotations:
+    {{- /* §4 — an ArgoCD PreSync hook, NOT a Helm pre-upgrade hook. With ArgoCD
+           owning the lifecycle, Helm hook failure semantics and ArgoCD's sync
+           state disagree, producing releases that are "failed" in Helm and
+           "Synced" in ArgoCD. PreSync blocks the sync on migration failure, which
+           is the behaviour wanted. */}}
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  {{- /* §4 — explicit, because the default kills a slow migration part-way, which
+         is the worst possible moment. Recovery is covered by expand-and-contract
+         (§13): a half-applied migration leaves a forward-compatible schema, so
+         re-running the sync is safe. */}}
+  activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "qnsc.labels" (list $ $name) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: {{ $svc.arch | default $d.arch }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "qnsc.image" (list $ $svc $name) }}
+          {{- with $svc.command }}
+          command: {{ toJson . }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
+              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+            limits:
+              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+          envFrom:
+            {{- /* §5d — the MIGRATOR role, never the application role. The app role
+                   carries statement_timeout = 30s, which would kill the 600s
+                   migration above; and DDL rights have no business on the runtime
+                   role. */}}
+            - secretRef:
+                name: {{ include "qnsc.product" $ }}-migrator
+          {{- with $svc.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+{{- end }}

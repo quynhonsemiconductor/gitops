@@ -30,7 +30,7 @@ services:
     capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker }
     resources: { cpu: 250m, memory: 512Mi }
-    scaling: { type: queue, min: 1, max: 6 }
+    scaling: { type: queue, queue: email-bounce, min: 1, max: 6 }
 
   migrator:
     kind: job
