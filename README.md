@@ -88,14 +88,25 @@ that hand-writes a manifest is the seven-copies problem returning (§5).
 ## Working on the chart
 
 ```bash
-helm lint charts/qnsc-service
-helm template rova charts/qnsc-service -f values/rova/base.yaml -f values/rova/prod.yaml
-helm unittest charts/qnsc-service
+# lint is PER VALUES FILE — a bare `helm lint` fails by design, because the chart
+# is not renderable without a product (values.schema.json requires product, env
+# and services, and there are no empty placeholders for them)
+helm lint charts/qnsc-service -f values/rova/base.yaml -f values/rova/prod.yaml
+
+helm unittest charts/qnsc-service       # the platform invariants
+./scripts/render.sh                     # regenerate rendered/ — COMMIT THE RESULT
 ```
 
-A chart change is reviewed on its **rendered diff**, not its template diff. Unit
+**A chart change is reviewed on its rendered diff, not its template diff.** Unit
 tests pass while "this silently removes the PDB from every size-M service" ships;
-the golden render does not (§11c).
+the golden render does not (§11c). CI fails if `rendered/` is stale, and prints the
+diff — which is what the change does to production.
+
+The invariants under `charts/qnsc-service/tests/` each guard a decision that was
+expensive to reach and would be cheap to undo by accident: no CPU limits, memory
+limit equal to request, liveness pointing at nothing with a dependency, PSS
+`restricted`, `trafficDistribution` on every Service, and no `replicas` when a
+ScaledObject owns it.
 
 ## Things that look wrong and are not
 

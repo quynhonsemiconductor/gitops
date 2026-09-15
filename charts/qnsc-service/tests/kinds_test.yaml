@@ -1,0 +1,71 @@
+suite: kind capabilities
+# _kinds.tpl is the chart's central abstraction. These tests are what stops a
+# template from quietly growing a kind conditional that disagrees with the table.
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+values:
+  - ../../../values/kb/base.yaml
+  - ../../../values/kb/prod.yaml
+
+tests:
+  # ── §4c — like-for-like migration ───────────────────────────────────────────
+  - it: keeps clamav in the pod, as it runs on ECS today
+    # A sidecar works on Kubernetes exactly as it did on ECS, so the move can be
+    # like-for-like. Splitting it into `platform` is an optimisation taken AFTER
+    # the migration — optimising during it means a regression could be either.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 2
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: clamav
+      - equal:
+          path: spec.template.spec.containers[1].resources.limits.memory
+          value: 2Gi
+
+  - it: pins qnsc-kb to amd64 while clamav is in the pod
+    # clamav/clamav publishes no arm64 tag. This flips to arm64 the day the split
+    # lands — one line, and the largest single cost item in the estate.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector["kubernetes.io/arch"]
+          value: amd64
+
+  - it: gives the ONNX service a startupProbe
+    # The e5-large-instruct session is ~1.5 GB resident and takes tens of seconds
+    # to load. Without this the liveness probe kills the pod mid-load, forever.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - isNotNull:
+          path: spec.template.spec.containers[0].startupProbe
+
+  - it: leaves the worker at one replica while beat rides inside it
+    # "max_count stays 1 while Celery beat rides in this task — two replicas would
+    # double every scheduled job." Splitting beat out is the prerequisite for
+    # scaling the worker, and it has not happened yet.
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: renders a Service only for the kinds whose table row asks for one
+    # qnsc-kb has three services: api (http), worker (service: none) and migrator
+    # (service: none). Exactly one Service should exist. If this count changes,
+    # either _kinds.tpl changed or a template grew a conditional that disagrees
+    # with it — and both are worth noticing.
+    template: templates/service.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: api

@@ -1,0 +1,86 @@
+suite: platform invariants
+# Each test here guards a decision that was expensive to reach and would be cheap
+# to undo by accident. The section reference is the argument; this file is the
+# enforcement.
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/pdb.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/prod.yaml
+
+tests:
+  # ── §15d ────────────────────────────────────────────────────────────────────
+  - it: renders NO cpu limit, ever
+    # CFS quota throttles on 100 ms bursts rather than averages, so an IO-bound
+    # service is throttled at 20% average CPU — and it presents as latency with no
+    # OOMKill, no restart and no alarm. Every service in this estate is that shape.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+
+  - it: sets memory limit equal to memory request
+    # Memory is not compressible. Bursting above the request only defers an
+    # OOMKill to a worse moment and breaks the bin-packing the cost model assumes.
+    # Equal values also give Guaranteed QoS, so these pods are evicted last.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+
+  # ── §9j ─────────────────────────────────────────────────────────────────────
+  - it: points liveness at a dependency-free endpoint
+    # If liveness checks the database and the database slows down, Kubernetes
+    # kills every replica of every service at once, and a slowdown becomes an
+    # outage. The chart exposes readinessPath only; liveness is hardcoded.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /livez
+
+  # ── §10 ─────────────────────────────────────────────────────────────────────
+  - it: satisfies Pod Security Standards `restricted`
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop[0]
+          value: ALL
+
+  # ── §9j ─────────────────────────────────────────────────────────────────────
+  - it: sets trafficDistribution on every Service
+    # Cross-AZ traffic is $0.01/GB each way, grows with the square of service
+    # count, and appears on no per-service line item. One field, and it lowers
+    # latency too.
+    template: templates/service.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.trafficDistribution
+          value: PreferClose
+
+  # ── §4b Axis 7 ──────────────────────────────────────────────────────────────
+  - it: omits replicas when a ScaledObject owns them
+    # A ScaledObject and a Deployment otherwise fight over the field on every
+    # reconcile.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - isNull:
+          path: spec.replicas

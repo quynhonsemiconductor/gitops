@@ -1,0 +1,640 @@
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-external
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: opshub
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+      ports:
+        - { protocol: TCP, port: 3000 }
+    - from:
+        - podSelector: {}          # same namespace, service to service
+      ports:
+        - { protocol: TCP, port: 3000 }
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-opshub-api
+automountServiceAccountToken: false
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: migrator
+  labels:
+    app.kubernetes.io/name: migrator
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-opshub-migrator
+automountServiceAccountToken: false
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-opshub-worker
+automountServiceAccountToken: false
+---
+# Source: qnsc-service/templates/pgbouncer.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  labels:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferClose
+  selector:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/instance: opshub
+  ports:
+    - { name: pgbouncer, port: 6432, targetPort: 6432 }
+---
+# Source: qnsc-service/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferClose
+  selector:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+# Source: qnsc-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: opshub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/instance: opshub
+        app.kubernetes.io/part-of: opshub
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: opshub
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+    spec:
+      serviceAccountName: api
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        karpenter.sh/capacity-type: spot
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api:sha-PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 3000
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          livenessProbe:
+            httpGet: { path: /livez, port: 3000 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: 3000 }
+            periodSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy-gateway.platform.svc.cluster.local:4317
+            - name: OTEL_SERVICE_NAME
+              value: opshub-api
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-PLACEHOLDER
+            - name: DATABASE_HOST
+              value: pgbouncer
+            - name: DATABASE_PORT
+              value: "6432"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# Source: qnsc-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+      app.kubernetes.io/instance: opshub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+        app.kubernetes.io/instance: opshub
+        app.kubernetes.io/part-of: opshub
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: opshub
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+    spec:
+      serviceAccountName: worker
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        karpenter.sh/capacity-type: spot
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-worker:sha-PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 512Mi
+          livenessProbe:
+            httpGet: { path: /livez, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy-gateway.platform.svc.cluster.local:4317
+            - name: OTEL_SERVICE_NAME
+              value: opshub-worker
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-PLACEHOLDER
+            - name: DATABASE_HOST
+              value: pgbouncer
+            - name: DATABASE_PORT
+              value: "6432"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# Source: qnsc-service/templates/pgbouncer.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  labels:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+      app.kubernetes.io/instance: opshub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbouncer
+        app.kubernetes.io/instance: opshub
+        app.kubernetes.io/part-of: opshub
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: opshub
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+        - name: pgbouncer
+          image: bitnami/pgbouncer:1.24.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - { name: pgbouncer, containerPort: 6432 }
+          env:
+            - { name: PGBOUNCER_POOL_MODE, value: transaction }
+            - { name: PGBOUNCER_MAX_CLIENT_CONN, value: "1000" }
+            - { name: PGBOUNCER_DEFAULT_POOL_SIZE, value: "20" }
+            - { name: PGBOUNCER_PORT, value: "6432" }
+          envFrom:
+            - secretRef:
+                name: opshub-app
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { memory: 128Mi }
+          livenessProbe:
+            tcpSocket: { port: 6432 }
+            periodSeconds: 10
+---
+# Source: qnsc-service/templates/job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrator-sha-PLACEHOLDER
+  labels:
+    app.kubernetes.io/name: migrator
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrator
+        app.kubernetes.io/instance: opshub
+        app.kubernetes.io/part-of: opshub
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: opshub
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+    spec:
+      restartPolicy: Never
+      serviceAccountName: migrator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+        - name: migrator
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-migrator:sha-PLACEHOLDER
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              memory: 512Mi
+          envFrom:
+            - secretRef:
+                name: opshub-migrator
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: opshub
+    kind: SecretStore
+  target:
+    name: opshub-app
+  dataFrom:
+    - find:
+        path: qnsc/dev/opshub/app/
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-migrator
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: opshub
+    kind: SecretStore
+  target:
+    name: opshub-migrator
+  dataFrom:
+    - find:
+        path: qnsc/dev/opshub/migrator/
+---
+# Source: qnsc-service/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+    qnsc.vn/access: cloudflare-access
+spec:
+  parentRefs:
+    - name: qnsc
+      namespace: platform
+  hostnames:
+    - "opshub.dev.qnsc.vn"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: api
+          port: 3000
+---
+# Source: qnsc-service/templates/slo.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: api-slo
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: opshub
+    app.kubernetes.io/part-of: opshub
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: opshub
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  groups:
+    - name: opshub-api.slo
+      rules:
+        - record: slo:request_error_rate:ratio_rate5m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[5m]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate30m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[30m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[30m]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate1h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[1h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[1h]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate2h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[2h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[2h]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate6h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[6h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[6h]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate1d
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[1d]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[1d]))
+          labels:
+            service: opshub-api
+        - record: slo:request_error_rate:ratio_rate3d
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api",http_response_status_code=~"5.."}[3d]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[3d]))
+          labels:
+            service: opshub-api
+
+    - name: opshub-api.burnrate
+      rules:
+        - alert: opshub-apiErrorBudgetBurnFast
+          expr: |
+            slo:request_error_rate:ratio_rate1h{service="opshub-api"} > (14.4 * 0)
+            and
+            slo:request_error_rate:ratio_rate5m{service="opshub-api"} > (14.4 * 0)
+          for: 2m
+          labels:
+            severity: P2
+            product: opshub
+            env: dev
+          annotations:
+            summary: "opshub-api is burning its error budget 14x — 99% target"
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/api.md"
+
+        - alert: opshub-apiErrorBudgetBurnSlow
+          expr: |
+            slo:request_error_rate:ratio_rate6h{service="opshub-api"} > (6 * 0)
+            and
+            slo:request_error_rate:ratio_rate30m{service="opshub-api"} > (6 * 0)
+          for: 15m
+          labels:
+            severity: P2
+            product: opshub
+            env: dev
+          annotations:
+            summary: "opshub-api is burning its error budget 6x over 6h"
+        - alert: opshub-apiNoTelemetry
+          expr: absent_over_time(http_server_request_duration_seconds_count{service_name="opshub-api"}[10m])
+          for: 10m
+          labels:
+            severity: P2
+            product: opshub
+            env: dev
+          annotations:
+            summary: "opshub-api has reported no metrics for 10 minutes"
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: opshub
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: ap-southeast-1
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: external-secrets

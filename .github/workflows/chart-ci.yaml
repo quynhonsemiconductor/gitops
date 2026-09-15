@@ -1,0 +1,97 @@
+name: chart
+
+# §11c — the chart is a dependency shared by every service in the estate, so a bad
+# version of it reaches all of them at once. §11 promotes IMAGE tags through a
+# reviewable diff; this is the equivalent gate for the artefact with more reach.
+#
+# Three checks, in increasing order of what they catch:
+#   helm lint       the values files satisfy values.schema.json
+#   helm unittest   the platform invariants still hold
+#   golden render   THE CONTROL — the exact manifest diff for every Application
+
+on:
+  pull_request:
+    paths: [charts/**, values/**, rendered/**, .github/workflows/chart-ci.yaml]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: "3.18.0"
+  KUBECONFORM_VERSION: "0.7.0"
+  # The Kubernetes version manifests are validated against. Bump it in
+  # versions.yaml first — §2b keeps component versions in one place.
+  KUBE_VERSION: "1.33.0"
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+
+      # ── lint, per values file ────────────────────────────────────────────────
+      # A bare `helm lint` FAILS by design: this chart is not renderable without a
+      # product, because values.schema.json requires product, env and services and
+      # the chart carries no empty placeholders for them.
+      - name: helm lint
+        run: |
+          fail=0
+          for base in values/*/base.yaml; do
+            product=$(basename "$(dirname "$base")")
+            for env in dev prod; do
+              [ -f "values/${product}/${env}.yaml" ] || continue
+              echo "::group::lint ${product}/${env}"
+              helm lint charts/qnsc-service -f "$base" -f "values/${product}/${env}.yaml" || fail=1
+              echo "::endgroup::"
+            done
+          done
+          exit $fail
+
+      - name: helm unittest
+        run: helm unittest charts/qnsc-service
+
+      # ── kubeconform ──────────────────────────────────────────────────────────
+      # Validates the rendered output against real Kubernetes schemas, including
+      # the CRDs the platform depends on — Gateway API, KEDA, External Secrets and
+      # Prometheus Operator. Without the CRD catalogue those resources are skipped
+      # silently, which is worse than not running it.
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kc.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kc.tar.gz -C /tmp && sudo mv /tmp/kubeconform /usr/local/bin/
+
+      - name: kubeconform
+        run: |
+          ./scripts/render.sh
+          kubeconform \
+            -kubernetes-version "${KUBE_VERSION}" \
+            -strict \
+            -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered/
+
+      # ── the golden render ────────────────────────────────────────────────────
+      # Unit tests on a chart serving fifteen services are necessary and not
+      # sufficient. The failure to catch is "this change silently removes the
+      # PodDisruptionBudget from every size-M service", which passes every unit
+      # test ever written. The committed render makes it a line in a diff.
+      - name: golden render is current
+        run: |
+          ./scripts/render.sh
+          if ! git diff --exit-code --stat rendered/; then
+            echo "::error::rendered/ is stale. Run ./scripts/render.sh and commit the result."
+            echo "The diff above is what this change does to production."
+            git diff rendered/
+            exit 1
+          fi
