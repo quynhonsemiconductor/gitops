@@ -1,0 +1,14 @@
+# Default owner for everything in this repo.
+# Enforced via the main-protection ruleset (require_code_owner_review).
+#
+# §10b — review here is a PRODUCTION ACCESS CONTROL, not a code-quality
+# convention: "whoever can push to `gitops` can deploy anything, because ArgoCD
+# will faithfully apply it."
+* @quynhonsemiconductor/rally-maintainers
+
+# ── The two paths where review matters most ─────────────────────────────────
+# A chart change reaches every Application at once (§11c), and a prod tag bump is
+# the promotion itself (§11). Both are already covered by the wildcard above;
+# they are listed so the reason is visible in a review.
+/charts/                  @quynhonsemiconductor/rally-maintainers
+/values/*/tags.prod.yaml  @quynhonsemiconductor/rally-maintainers
