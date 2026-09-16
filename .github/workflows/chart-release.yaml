@@ -33,7 +33,7 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: "3.18.0"
+          version: "4.3.0"
 
       - name: Version must match Chart.yaml
         run: |
