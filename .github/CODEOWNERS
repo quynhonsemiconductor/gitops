@@ -4,11 +4,14 @@
 # §10b — review here is a PRODUCTION ACCESS CONTROL, not a code-quality
 # convention: "whoever can push to `gitops` can deploy anything, because ArgoCD
 # will faithfully apply it."
-* @quynhonsemiconductor/rally-maintainers
+#
+# `platform-infra` rather than a product team: this repository deploys EVERY
+# product, so no single product's maintainers should own it.
+* @quynhonsemiconductor/platform-infra
 
 # ── The two paths where review matters most ─────────────────────────────────
-# A chart change reaches every Application at once (§11c), and a prod tag bump is
-# the promotion itself (§11). Both are already covered by the wildcard above;
-# they are listed so the reason is visible in a review.
-/charts/                  @quynhonsemiconductor/rally-maintainers
-/values/*/tags.prod.yaml  @quynhonsemiconductor/rally-maintainers
+# A chart change reaches every Application at once (§11c), and a prod tag bump IS
+# the promotion (§11). Both are covered by the wildcard above; they are listed so
+# the reason is visible to whoever is reviewing.
+/charts/                  @quynhonsemiconductor/platform-infra
+/values/*/tags.prod.yaml  @quynhonsemiconductor/platform-infra
