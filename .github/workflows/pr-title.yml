@@ -1,0 +1,32 @@
+# =============================================================================
+# PR title — Conventional Commits. The house standard; every other repo has it.
+#
+# It matters more here than in a product repo. `chart-release.yaml` publishes on
+# a `chart-v*` tag, and §11c requires that version to be pinned per Application —
+# so the commit history is what a reader consults when asking "what changed
+# between chart 0.1.0 and 0.2.0, and which Applications took it?"
+#
+# Under squash-merge the commit message IS the PR title.
+# =============================================================================
+name: PR title
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title:
+    # This name IS the check context. Do not rename it.
+    name: PR title (conventional commits)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: quynhonsemiconductor/ci/actions/pr-title-conventional-commits@v1

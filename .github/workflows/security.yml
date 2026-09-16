@@ -1,0 +1,56 @@
+# =============================================================================
+# Security · Scan — thin caller of the shared suite in `ci`.
+#
+# This repo builds no container and ships no dependencies, so `scan_container`
+# is off and there is nothing for osv-scanner to read. What it DOES hold is worth
+# scanning for two reasons:
+#
+#   SECRETS    it is PUBLIC, and it holds infrastructure configuration. Secret
+#              VALUES live in Secrets Manager and never enter git (§8) — this is
+#              the check that keeps that true rather than assumed
+#   WORKFLOWS  chart-release.yaml pushes to ECR and bump-gitops-tag writes to
+#              other repositories. Both hold credentials, and a workflow with a
+#              script-injection sink is a credential leak. zizmor is the check
+#              for that class
+# =============================================================================
+name: Security · Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # NO `branches:` filter, deliberately — rova's backend-security.yml records
+    # why: on `pull_request` the filter matches the BASE branch, so a stacked PR
+    # aimed at the branch below it silently gets no scan at all.
+  schedule:
+    - cron: "0 4 * * 1" # weekly — catch CVEs disclosed between pushes
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actions-security:
+    permissions:
+      contents: read
+      security-events: write
+    uses: quynhonsemiconductor/ci/.github/workflows/actions-security.yml@v1
+    with:
+      blocking: true
+
+  security:
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    uses: quynhonsemiconductor/ci/.github/workflows/security.yml@v1
+    with:
+      product: gitops
+      # No Dockerfile here — the chart deploys images, it does not build them.
+      scan_container: false
+      # Semgrep's TypeScript and Node rulesets have nothing to read: this repo is
+      # YAML, Go templates and two Python scripts.
+      semgrep_config: p/default p/owasp-top-ten
