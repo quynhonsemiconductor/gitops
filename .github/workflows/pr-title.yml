@@ -11,7 +11,13 @@
 name: PR title
 
 on:
-  pull_request_target:
+  # `pull_request`, NOT `pull_request_target` — which is what this used and what
+  # zizmor rates a HIGH `dangerous-triggers`. That trigger runs in the BASE
+  # repository's context with its token, which is only worth the risk when a
+  # workflow must see a fork's pull request. This repository is private and takes
+  # none, the job checks out nothing, and every other repository in the estate
+  # uses `pull_request` for exactly this check.
+  pull_request:
     types: [opened, edited, synchronize, reopened]
 
 concurrency:

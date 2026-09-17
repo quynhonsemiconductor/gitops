@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  HELM_VERSION: "3.18.0"
+  HELM_VERSION: "4.3.0"
   KUBECONFORM_VERSION: "0.7.0"
   # The Kubernetes version manifests are validated against. Bump it in
   # versions.yaml first — §2b keeps component versions in one place.
@@ -29,9 +29,13 @@ jobs:
   chart:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Nothing here pushes a git ref — the chart is published to ECR as an
+        # OCI artefact, and the tag bump happens in `ci`'s bump-gitops-tag with
+        # its own token. A persisted credential would have nothing to do.
+        with: { persist-credentials: false }
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
 
@@ -50,7 +54,17 @@ jobs:
             for env in dev prod; do
               [ -f "values/${product}/${env}.yaml" ] || continue
               echo "::group::lint ${product}/${env}"
-              helm lint charts/qnsc-service -f "$base" -f "values/${product}/${env}.yaml" || fail=1
+              # THE SAME THREE FILES render.sh passes, in the same order. Linting a
+              # different value set from the one that renders is how this check
+              # failed on every run since the repository was created: without
+              # tags.<env>.yaml there is no image tag, and job.yaml derives the
+              # Job's NAME from it (a Job's pod template is immutable, so the name
+              # must change per revision). No tag, no valid name, ERROR at
+              # job.yaml:12.
+              helm lint charts/qnsc-service \
+                -f "$base" \
+                -f "values/${product}/${env}.yaml" \
+                -f "values/${product}/tags.${env}.yaml" || fail=1
               echo "::endgroup::"
             done
           done

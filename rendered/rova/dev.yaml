@@ -7,6 +7,7 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -23,6 +24,7 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -36,6 +38,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: platform }
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -50,6 +53,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -80,6 +84,7 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: 3000 }
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -97,6 +102,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-api
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -114,6 +120,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-migrator
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -131,6 +138,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-worker
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: v1
@@ -153,6 +161,7 @@ spec:
     app.kubernetes.io/instance: rova
   ports:
     - { name: pgbouncer, port: 6432, targetPort: 6432 }
+
 ---
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
@@ -177,6 +186,7 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
+
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -219,7 +229,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -249,7 +259,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-PLACEHOLDER
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -263,6 +273,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -305,7 +316,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -332,7 +343,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-PLACEHOLDER
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -346,6 +357,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: apps/v1
@@ -406,12 +418,13 @@ spec:
           livenessProbe:
             tcpSocket: { port: 6432 }
             periodSeconds: 10
+
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-PLACEHOLDER
+  name: migrator-sha-0000000
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -447,7 +460,7 @@ spec:
         kubernetes.io/arch: arm64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-0000000
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -462,6 +475,7 @@ spec:
           envFrom:
             - secretRef:
                 name: rova-migrator
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -478,6 +492,7 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/rova/app/
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -494,6 +509,7 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/rova/migrator/
+
 ---
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -522,6 +538,7 @@ spec:
       backendRefs:
         - name: api
           port: 3000
+
 ---
 # Source: qnsc-service/templates/slo.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -627,6 +644,7 @@ spec:
             env: dev
           annotations:
             summary: "rova-api has reported no metrics for 10 minutes"
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
