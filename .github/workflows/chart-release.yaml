@@ -29,11 +29,15 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Nothing here pushes a git ref — the chart is published to ECR as an
+        # OCI artefact, and the tag bump happens in `ci`'s bump-gitops-tag with
+        # its own token. A persisted credential would have nothing to do.
+        with: { persist-credentials: false }
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: "3.18.0"
+          version: "4.3.0"
 
       - name: Version must match Chart.yaml
         run: |
@@ -57,7 +61,7 @@ jobs:
             exit 1
           }
 
-      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@main
+      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@v1
         id: aws
         with:
           role-arn: ${{ secrets.CHART_PUBLISH_ROLE_ARN }}

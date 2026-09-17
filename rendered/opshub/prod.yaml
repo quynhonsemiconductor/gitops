@@ -7,6 +7,7 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -23,6 +24,7 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -36,6 +38,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: platform }
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -50,6 +53,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
+
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -80,6 +84,7 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: 3000 }
+
 ---
 # Source: qnsc-service/templates/pdb.yaml
 apiVersion: policy/v1
@@ -100,6 +105,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: api
       app.kubernetes.io/instance: opshub
+
 ---
 # Source: qnsc-service/templates/pdb.yaml
 apiVersion: policy/v1
@@ -120,6 +126,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: worker
       app.kubernetes.io/instance: opshub
+
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: policy/v1
@@ -132,6 +139,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: pgbouncer
       app.kubernetes.io/instance: opshub
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -149,6 +157,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-opshub-api
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -166,6 +175,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-opshub-migrator
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -183,6 +193,7 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-opshub-worker
 automountServiceAccountToken: false
+
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: v1
@@ -205,6 +216,7 @@ spec:
     app.kubernetes.io/instance: opshub
   ports:
     - { name: pgbouncer, port: 6432, targetPort: 6432 }
+
 ---
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
@@ -229,6 +241,7 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
+
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -321,6 +334,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -411,6 +425,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+
 ---
 # Source: qnsc-service/templates/pgbouncer.yaml
 apiVersion: apps/v1
@@ -471,6 +486,7 @@ spec:
           livenessProbe:
             tcpSocket: { port: 6432 }
             periodSeconds: 10
+
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
@@ -527,6 +543,7 @@ spec:
           envFrom:
             - secretRef:
                 name: opshub-migrator
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -543,6 +560,7 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/opshub/app/
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -559,6 +577,7 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/opshub/migrator/
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -575,6 +594,7 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/opshub/keda/
+
 ---
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -605,6 +625,7 @@ spec:
       backendRefs:
         - name: api
           port: 3000
+
 ---
 # Source: qnsc-service/templates/slo.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -710,6 +731,7 @@ spec:
             env: prod
           annotations:
             summary: "opshub-api has reported no metrics for 10 minutes"
+
 ---
 # Source: qnsc-service/templates/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -739,6 +761,7 @@ spec:
         serverAddress: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
         query: sum(rate(http_server_request_duration_seconds_count{service_name="opshub-api"}[2m]))
         threshold: "200"
+
 ---
 # Source: qnsc-service/templates/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -768,6 +791,7 @@ spec:
         queueURL: https://sqs.ap-southeast-1.amazonaws.com/608983206583/qnsc-prod-opshub-jobs
         queueLength: "20"
         awsRegion: ap-southeast-1
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -783,6 +807,7 @@ spec:
         jwt:
           serviceAccountRef:
             name: external-secrets
+
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: keda.sh/v1alpha1
