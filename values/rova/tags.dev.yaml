@@ -12,10 +12,10 @@
 services:
   api:
     image:
-      tag: sha-PLACEHOLDER
+      tag: sha-0000000
   migrator:
     image:
-      tag: sha-PLACEHOLDER
+      tag: sha-0000000
   worker:
     image:
-      tag: sha-PLACEHOLDER
+      tag: sha-0000000

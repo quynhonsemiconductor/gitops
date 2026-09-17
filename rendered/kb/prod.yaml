@@ -290,7 +290,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -324,7 +324,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=prod,service.version=sha-PLACEHOLDER
+              value: service.namespace=kb,deployment.environment=prod,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -430,7 +430,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -461,7 +461,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=prod,service.version=sha-PLACEHOLDER
+              value: service.namespace=kb,deployment.environment=prod,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -576,7 +576,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-PLACEHOLDER
+  name: migrator-sha-0000000
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -612,7 +612,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator:sha-0000000
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

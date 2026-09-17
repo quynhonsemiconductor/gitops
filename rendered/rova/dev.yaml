@@ -229,7 +229,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -259,7 +259,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-PLACEHOLDER
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -316,7 +316,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -343,7 +343,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-PLACEHOLDER
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
@@ -424,7 +424,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-PLACEHOLDER
+  name: migrator-sha-0000000
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -460,7 +460,7 @@ spec:
         kubernetes.io/arch: arm64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-PLACEHOLDER
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-0000000
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

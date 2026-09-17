@@ -54,7 +54,17 @@ jobs:
             for env in dev prod; do
               [ -f "values/${product}/${env}.yaml" ] || continue
               echo "::group::lint ${product}/${env}"
-              helm lint charts/qnsc-service -f "$base" -f "values/${product}/${env}.yaml" || fail=1
+              # THE SAME THREE FILES render.sh passes, in the same order. Linting a
+              # different value set from the one that renders is how this check
+              # failed on every run since the repository was created: without
+              # tags.<env>.yaml there is no image tag, and job.yaml derives the
+              # Job's NAME from it (a Job's pod template is immutable, so the name
+              # must change per revision). No tag, no valid name, ERROR at
+              # job.yaml:12.
+              helm lint charts/qnsc-service \
+                -f "$base" \
+                -f "values/${product}/${env}.yaml" \
+                -f "values/${product}/tags.${env}.yaml" || fail=1
               echo "::endgroup::"
             done
           done
