@@ -311,7 +311,7 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
-            httpGet: { path: /readyz, port: 8000 }
+            httpGet: { path: /health/ready, port: 8000 }
             periodSeconds: 5
             failureThreshold: 3
           startupProbe:
@@ -443,18 +443,6 @@ spec:
               memory: 6Gi
             limits:
               memory: 6Gi
-          livenessProbe:
-            httpGet: { path: /livez, port: 8080 }
-            periodSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            httpGet: { path: /readyz, port: 8080 }
-            periodSeconds: 5
-            failureThreshold: 3
-          startupProbe:
-            httpGet: { path: /livez, port: 8080 }
-            periodSeconds: 5
-            failureThreshold: 60
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-gateway.platform.svc.cluster.local:4317

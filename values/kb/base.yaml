@@ -37,6 +37,19 @@ services:
     # The ONNX session takes tens of seconds to load. Without a startupProbe the
     # liveness probe kills the pod mid-load, forever (§9j).
     startupPath: /livez
+    # THE APP SERVES `/health/ready`, NOT `/readyz`. `src/api/main.py:793` mounts
+    # the readiness handler there — it checks Postgres and Redis — and the chart's
+    # default `/readyz` 404s, so the pod would never become Ready, the Service
+    # would have no endpoints, and the tunnel would serve nothing.
+    #
+    # Found 2026-09-19 in the pre-apply audit; all three products had a version of
+    # this, each with different paths. The ECS path never surfaced it because the
+    # Dockerfile HEALTHCHECK already points at /health/live (Dockerfile:290).
+    #
+    # Liveness is not set here and cannot be: the chart hardcodes `/livez` (§9j)
+    # and admission.yaml denies anything else — so the APP gained a `/livez` route
+    # instead, which is also what makes `startupPath: /livez` above resolve.
+    readinessPath: /health/ready
     volumes:
       - name: clamav-db
         emptyDir: {}
@@ -94,7 +107,18 @@ services:
     # 2048 / 6144 as allocated: the same model, plus clamav at 1024, plus beat,
     # plus PaddleOCR per scanned file.
     resources: { cpu: 2, memory: 6Gi }
-    startupPath: /livez
+    # NO `startupPath`, and this used to say `/livez`. It rendered a startupProbe
+    # with an httpGet against port 8080 on a container that serves no HTTP at all —
+    # `kind: worker` is `service: none`, and this worker is a Celery consumer.
+    # Removed 2026-09-20 with the chart fix that gates probes on `$caps.service`;
+    # a value that renders nothing is worse than no value, because it reads as
+    # protection that is not there.
+    #
+    # The ONNX load it was meant to cover is unaffected: with no liveness probe,
+    # nothing kills a worker that takes tens of seconds to load a model. What is
+    # lost is rollout gating — the pod reports Ready before it is consuming — which
+    # for a Celery queue is a delay, not a loss. See the comment in the chart's
+    # deployment.yaml.
     volumes:
       - name: clamav-db
         emptyDir: {}

@@ -114,7 +114,50 @@ spec:
                  startup   for slow boots — kb loads a ~1.5 GB ONNX session, which
                            needs a startupProbe rather than a generous liveness
                            threshold. */}}
-          {{- if ne $caps.workload "Job" }}
+          {{- /* PROBES ARE GATED ON `service`, NOT ONLY ON "not a Job".
+
+                 This condition used to be `ne $caps.workload "Job"`, which gave an
+                 httpGet liveness AND readiness probe to `kind: worker` — a kind
+                 whose own capability row says `service: none`, because it serves
+                 no HTTP at all. With no `port` in its values the probes fell back
+                 to `port | default 8080` and asked an unbound port for /livez.
+
+                 That is a CrashLoopBackOff on every worker in the estate, not a
+                 warning: liveness fails on connection refused, the kubelet
+                 restarts the container, and the Deployment never reports Ready so
+                 ArgoCD sits Progressing and then Degraded. rova, opshub and
+                 qnsc-kb all declare a worker, and rova's is explicit about why
+                 there is nothing to probe — apps/worker/src/main.ts:15,
+                 "createApplicationContext: no HTTP driver needed — worker is
+                 queue/cron only".
+
+                 Found 2026-09-19 in the pre-apply audit. It would not have
+                 appeared until the first sync: the manifests are valid, helm lint
+                 and helm unittest pass, and nothing in CI knows which ports a
+                 product's image binds.
+
+                 A worker gets NO liveness probe deliberately. The correct
+                 liveness signal for a queue consumer is the process exiting,
+                 which Kubernetes already restarts; an HTTP probe would only be a
+                 second, weaker copy of that. If a worker ever needs a real
+                 liveness signal it should expose one and set `port`, at which
+                 point this condition picks it up on its own.
+
+                 IT ALSO DROPS A `startupProbe`, and qnsc-kb's worker is the case
+                 to understand: it declared `startupPath: /livez` while serving no
+                 HTTP, so that probe was as broken as the other two. Losing it
+                 costs nothing on the restart side — with no liveness probe,
+                 nothing kills a worker that takes ten minutes to load a 1.5 GB
+                 ONNX session; it simply takes ten minutes.
+
+                 What it does cost is ROLLOUT GATING: the pod reports Ready as
+                 soon as the container starts, so a RollingUpdate can retire the
+                 old replica before the new one is actually consuming from the
+                 queue. For a queue that is a delay, not a loss — messages wait —
+                 which is why this is recorded rather than worked around. A worker
+                 that cannot tolerate even that should expose a real readiness
+                 endpoint and set `port`. */}}
+          {{- if and (ne $caps.workload "Job") (ne $caps.service "none") }}
           livenessProbe:
             {{- if eq $svc.kind "grpc" }}
             grpc: { port: {{ $svc.port }} }

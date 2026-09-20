@@ -14,6 +14,12 @@ services:
     # internal tools end up indexed.
     expose: protected
     port: 3000
+    # Same shape as rova, same cause: `app.setGlobalPrefix('v1')` at
+    # apps/api/src/bootstrap/app.bootstrap.ts:115 puts the health controller
+    # behind /v1, so the chart's default `/readyz` 404s. Both products share it
+    # because both share app-platform's health controller. See rova/base.yaml for
+    # the full note — including the liveness half, which values cannot fix.
+    readinessPath: /v1/readyz
     arch: arm64
     capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api }
