@@ -1,0 +1,128 @@
+# ── clamd signature freshness alert — §4c, §9e, §9h ─────────────────────────
+#
+# A PrometheusRule, the SAME object the chart renders for every service's SLO
+# (charts/qnsc-service/templates/slo.yaml). clamd has no request-rate SLO — it is
+# a daemon, not an HTTP product — so instead of a burn-rate alert this rule alerts
+# on the ONE thing §4c says must be monitored and not assumed: signature freshness.
+#
+# Hand-written rather than chart-rendered for the same reason the Deployment is:
+# clamd is platform plumbing, outside §11 and outside the qnsc-service chart. The
+# SHAPE matches slo.yaml exactly — apiVersion monitoring.coreos.com/v1, a groups
+# list, alert rules with expr/for/labels/annotations — so it is scraped, routed
+# and rendered in Grafana the same way every other alert in the estate is.
+#
+# ── WHY THIS ALERT IS CRITICAL: STALE IS WORSE THAN DOWN ─────────────────────
+# §4c, verbatim: "Stale antivirus is worse than absent antivirus: it fails
+# silently and it passes an audit." A DOWN clamd is caught immediately — the
+# client (task 3.1) fails CLOSED, uploads are rejected, someone notices within
+# minutes. A STALE clamd is the opposite: it accepts every scan, returns CLEAN,
+# and passes infected files that were caught by signatures published after its
+# database froze. Nothing fails, no upload is blocked, no error is logged — the
+# control is gone while the reassurance remains. That is why the severity below
+# is P1-shaped despite clamd not itself being revenue: a silent malware bypass in
+# a knowledge-base product that ingests user uploads is a security incident, not a
+# degraded-service page-next-business-day.
+#
+# ── §9e: AN ALERT CANNOT EXIST WITHOUT A ROUTE ───────────────────────────────
+# §9e / slo.yaml: an alert rendered without somewhere to go is the "alarms are
+# configured, every topic has zero subscribers" failure. So every rule here
+# carries the same routing labels slo.yaml sets — severity, product, env — which
+# is what Alertmanager routes on (§9h / §17's P1/P2 table), plus a runbook
+# annotation. The runbook link is the human half of the route: a page with no
+# runbook is a wakeup with no next step.
+#
+# ── THE METRIC ───────────────────────────────────────────────────────────────
+# clamav_signature_age_seconds is emitted by the freshclam-age-exporter sidecar
+# in deployment.yaml. It is `now - mtime(newest .cvd/.cld)`, so it climbs whenever
+# freshclam stops succeeding, and it is -1 when NO database is present at all
+# (a pod that has never completed its first freshclam). Both are alerted below.
+#
+# NOTE on scrape path (§9d): the current alloy allowlist (alloy/agent.alloy,
+# outside task 2.7's scope) keeps a fixed set of series names and would drop this
+# metric. The metric and this rule are correct and complete for 2.7; when task 3.1
+# turns clamd into a live dependency, clamav_signature_age_seconds must be added
+# to that allowlist regex (or Grafana Adaptive Metrics left to keep it) or the
+# alert evaluates against an absent series. Flagged here so 3.1 finds it, since
+# editing alloy/ is not this task's to do.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: clamd-signature-freshness
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: clamd
+    app.kubernetes.io/part-of: platform
+spec:
+  groups:
+    - name: clamd.signature-freshness
+      rules:
+        # >24h stale (task 2.7's threshold). freshclam publishes daily; 24h of no
+        # successful update means at least one publication was missed, and every
+        # signature added since is a gap the scanner cannot see. `for: 30m` so a
+        # single slow update cycle does not page — but once past 24h, 30m of
+        # confirmation is nothing against a day already lost.
+        - alert: ClamdSignaturesStale
+          expr: clamav_signature_age_seconds > 24 * 60 * 60
+          for: 30m
+          labels:
+            # P1: stale-passes-infected is a silent security-control failure, not
+            # a degraded service (see header). §17's P1 is "page at any hour" —
+            # correct here, because every hour stale is more uploads scanned
+            # against a blind engine that report CLEAN.
+            severity: P1
+            product: platform
+            env: ENV   # set dev/prod at apply — see platform/README.md placeholders
+            component: clamd
+          annotations:
+            summary: "clamd signatures are >24h stale — it is passing anything published since, and reporting CLEAN"
+            description: >-
+              clamav_signature_age_seconds has exceeded 24h, so freshclam has not
+              successfully updated. A stale clamd fails SILENTLY: it accepts scans
+              and passes files caught by newer signatures (§4c). Treat as a
+              security-control outage, not a service degradation.
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/clamd.md"
+
+        # No database at all: the exporter emits -1 when it finds no .cvd/.cld.
+        # A pod that has never completed its first freshclam is scanning with an
+        # EMPTY engine — worse than stale, it catches nothing — but readiness
+        # should keep it out of the Service, so this firing means either the probe
+        # is wrong or freshclam never succeeded. Separate alert because the cause
+        # and the fix differ from "stale".
+        - alert: ClamdNoSignatureDatabase
+          expr: clamav_signature_age_seconds == -1
+          for: 15m
+          labels:
+            severity: P1
+            product: platform
+            env: ENV
+            component: clamd
+          annotations:
+            summary: "clamd has NO signature database — it is scanning with an empty engine"
+            description: >-
+              The freshclam exporter reports no .cvd/.cld present (metric == -1) for
+              15m. clamd's first freshclam has not completed. If any pod is Ready in
+              this state it is passing every file. Check freshclam logs and egress
+              to the mirror.
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/clamd.md"
+
+        # §9h dead-man's switch, applied to clamd: the metric itself going ABSENT
+        # is its own failure. If the exporter, the pod, or the scrape path breaks,
+        # ClamdSignaturesStale can NEVER fire (there is no series to exceed 24h) —
+        # which is precisely the "the thing that would notice was the thing that
+        # broke" failure §9h records. Silence is the signal.
+        - alert: ClamdSignatureMetricAbsent
+          expr: absent_over_time(clamav_signature_age_seconds[15m])
+          for: 15m
+          labels:
+            severity: P2
+            product: platform
+            env: ENV
+            component: clamd
+          annotations:
+            summary: "clamd freshness metric is absent — the staleness alert is blind"
+            description: >-
+              No clamav_signature_age_seconds for 15m. The exporter or scrape is
+              broken, so ClamdSignaturesStale cannot fire. Restore the metric before
+              trusting the freshness alerts (§9h).
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/clamd.md"

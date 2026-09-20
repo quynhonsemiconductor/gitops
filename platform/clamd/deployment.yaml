@@ -1,0 +1,328 @@
+# ── clamd — §4c, task 2.7 ────────────────────────────────────────────────────
+#
+# The estate's ONE shared antivirus daemon, one Deployment instead of a sidecar
+# per task. §4c: qnsc-kb ran clamav as a sidecar in every api and worker task, so
+# every replica carried a second ~1 GB process and a second signature database to
+# keep fresh. Extracting it to a platform service is the same move §4c makes for
+# the e5 ONNX session: shared plumbing, not per-product weight.
+#
+# ── DEPLOYED BUT NOT YET USED. DO NOT DELETE. ────────────────────────────────
+# task 2.7 is marked PARTIAL "deferred by design": clamav STAYS a sidecar in
+# qnsc-kb for the like-for-like migration, and it is task 3.1 ("Split clamav out
+# of qnsc-kb") that actually repoints qnsc-kb's upload scanner at this Service and
+# removes the sidecar. So between 2.7 and 3.1 this Deployment runs with zero
+# clients. An idle clamd is the DESIGNED state, not dead code — it exists so 3.1
+# is a client-config change against a Service that already answers on 3310, not a
+# new platform component landed under migration pressure. Read §4c and task 3.1
+# before removing anything here.
+#
+# ── WHY THIS IS HAND-WRITTEN PLAIN YAML, not the chart ───────────────────────
+# platform/README.md: "Everything here is the platform's own plumbing, not a
+# product — so it is not rendered by the chart and does not go through §11's
+# promotion." clamd has no repository, no SLO-per-endpoint, no IRSA role, no
+# tunnel route. Running it through qnsc-service would mint a ServiceAccount the
+# `services` contract then expects an IRSA role for (check_services), and promote
+# it through §11 as if it were revenue code. So the 2.7 axes are expressed here
+# directly, one Kubernetes object per axis, rather than as a values file.
+#
+# ── THE FOUR AXES OF 2.7, MADE CONCRETE ──────────────────────────────────────
+#   kind: http        Deployment + ClusterIP Service on 3310 (below)
+#   expose: cluster   ClusterIP + NetworkPolicy from product namespaces only
+#                     (below). No HTTPRoute, no Gateway, no tunnel route — clamd
+#                     is not reachable from the internet and must never be.
+#   arch: amd64       nodeSelector kubernetes.io/arch: amd64. §3.2 / §4b Axis 5:
+#                     ClamAV ships NO arm64 tag, and this one sidecar is the SOLE
+#                     reason qnsc-kb (8 vCPU / 24 GiB) is pinned to x86. Isolating
+#                     clamd here as the estate's one amd64 workload is what lets
+#                     everything else move to Graviton. Building an arm64 ClamAV
+#                     was rejected in §4c: it would mean owning CVE patching for a
+#                     security-critical image with a team of three.
+#   capacity: ondemand  nodeSelector karpenter.sh/capacity-type: on-demand.
+#                     §4c: a scan in flight during a Spot reclaim is a failed scan,
+#                     and §4c's client (task 3.1) is FAIL CLOSED — a failed scan
+#                     blocks the upload. On-demand trades cost for not turning Spot
+#                     churn into user-visible upload failures.
+#
+# Both selector keys are satisfiable by the `ondemand` NodePool in
+# platform/compute/nodepools.yaml, which allows kubernetes.io/arch in
+# [arm64, amd64] and karpenter.sh/capacity-type in [on-demand]. The `schedulable`
+# conformance contract walks this file and fails if that ever stops being true.
+#
+# ── WHERE THE CLIENT TIMEOUT/RETRY BELONGS (task 3.1, NOT here) ──────────────
+# §4c: upload scanning is FAIL CLOSED with a 5 s connect / 30 s scan timeout and
+# ONE retry, so a rolling restart of clamd is a blip rather than an error shown to
+# a user. That is the CLIENT's behaviour — qnsc-kb's upload path in task 3.1 —
+# not clamd's. clamd has no knob for it and nothing here implements it. This note
+# is the marker 3.1 looks for: the timeout/retry lives in the qnsc-kb upload
+# scanner that dials clamd.svc:3310, not in this Deployment.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamd
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: clamd
+    app.kubernetes.io/part-of: platform
+spec:
+  # 2 replicas in prod (task 2.7). ENV placeholder — set 2 for prod, 1 for dev.
+  # Dev gets 1 on purpose: dev has no revenue and no PDB pressure, and clamd's
+  # ~1 GB database resident per replica is real cost on the on-demand floor pool
+  # (nodepools.yaml caps that pool at 16 vCPU / 64 GiB). Two replicas in prod is
+  # the availability floor §4c names — enough that a rolling restart or a single
+  # node loss never leaves the scanner with zero answers while the FAIL-CLOSED
+  # client is blocking uploads. One replica in dev accepts a brief scan outage on
+  # restart because the only client is a developer, not a paying customer.
+  replicas: 2   # ENV: prod=2, dev=1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clamd
+  strategy:
+    # RollingUpdate with maxUnavailable 0: never drop below the running replica
+    # count during a rollout, because the client fails closed — a moment with zero
+    # ready clamd pods is a moment every upload in qnsc-kb is rejected. surge a
+    # new pod first, wait for it ready, then retire the old one.
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clamd
+        app.kubernetes.io/part-of: platform
+    spec:
+      # §10 Pod Security Standards restricted — the platform namespace enforces it
+      # (namespaces/platform.yaml). The official clamav image runs as USER 100
+      # specifically for runAsNonRoot compatibility (Cisco-Talos/clamav PR #666),
+      # so this needs no image change.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 100
+        fsGroup: 100
+        seccompProfile: { type: RuntimeDefault }
+      # Spread across zones: two replicas on one node is one node's worth of HA,
+      # and a single Spot-adjacent node loss would then take out the whole
+      # scanner while the fail-closed client blocks every upload. ScheduleAnyway,
+      # not DoNotSchedule — a scanner that will not schedule is worse than one not
+      # perfectly spread.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: clamd
+      nodeSelector:
+        # arch: amd64 (§3.2 — ClamAV has no arm64 image). satisfiable by the
+        # `ondemand` NodePool, which allows [arm64, amd64].
+        kubernetes.io/arch: amd64
+        # capacity: ondemand (§4c — a Spot reclaim mid-scan is a failed scan, and
+        # the client fails closed). satisfiable by the `ondemand` NodePool.
+        karpenter.sh/capacity-type: on-demand
+      containers:
+        - name: clamd
+          # Pinned in versions.yaml under images.clamav. NOT :latest — the
+          # admission policy qnsc-image-tags rejects it, and a moving antivirus
+          # tag is how an unreviewed engine reaches prod. The digest/tag moving is
+          # stopped by ECR immutability; naming :latest is stopped by policy.
+          image: clamav/clamav:1.5   # versions.yaml → images.clamav
+          # This one image runs BOTH freshclam (the updater) and clamd (the
+          # daemon). The sidecar exporter below reads the database this process
+          # keeps fresh; it does not run freshclam itself.
+          ports:
+            - { name: clamd, containerPort: 3310, protocol: TCP }
+          securityContext:
+            allowPrivilegeEscalation: false
+            # ClamAV tolerates a read-only root filesystem AS LONG AS its writable
+            # paths are mounted rw (below). §10: readOnlyRootFilesystem is the
+            # rule; the emptyDirs are the documented exception clamav needs, not a
+            # reason to abandon the rule. Without this a compromised clamd could
+            # rewrite its own binary or engine on disk.
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            # NO CPU LIMIT. policy/admission.yaml qnsc-resources REJECTS a cpu
+            # limit outright (§15d): CFS quota throttles on 100 ms bursts, and a
+            # signature scan is a burst of CPU — a limit would throttle it into
+            # the client's 30 s scan timeout and present as a failed scan with no
+            # OOMKill and no alarm. request only.
+            requests: { cpu: 500m, memory: 2Gi }
+            # memory limit == memory request (admission qnsc-resources): memory is
+            # not compressible and equal values give Guaranteed QoS, evicted last.
+            # 2Gi covers the ~1 GB resident signature database plus scan buffers;
+            # revisit from measurement with task 2.9, not from this guess.
+            limits: { memory: 2Gi }
+          volumeMounts:
+            # The signature database. freshclam writes .cvd/.cld here and clamd
+            # loads them, so it MUST be writable even though the root fs is not.
+            # emptyDir, not a PVC: the database is a cache, rebuilt from the
+            # mirror on every pod start (§4c rejected owning the image; it does
+            # not own the database either). A fresh pod does an initial freshclam.
+            - { name: clamav-db, mountPath: /var/lib/clamav }
+            # clamd's pid file and unix socket, and freshclam's lock. On a
+            # read-only root these must be writable or the daemon fails to start
+            # with a cryptic "cannot create /run/clamav/clamd.pid" and CrashLoops.
+            - { name: run, mountPath: /run/clamav }
+            # scan work area — clamd unpacks archives to /tmp.
+            - { name: tmp, mountPath: /tmp }
+          startupProbe:
+            # The FIRST database load is slow — a cold pod runs freshclam and then
+            # clamd parses ~1 GB of signatures, which can take minutes. A liveness
+            # probe during that window would kill the pod before it ever became
+            # ready, forever (the §9j cascade, one pod). startupProbe gives it up
+            # to 10 min (30 × 20s) before liveness takes over.
+            tcpSocket: { port: 3310 }
+            periodSeconds: 20
+            failureThreshold: 30
+          livenessProbe:
+            # §9j — the PROCESS, and nothing else. A TCP accept on 3310 proves
+            # clamd is alive; it deliberately does NOT run a VERSION/PING scan,
+            # because tying liveness to database load would kill every replica at
+            # once during a slow freshclam and turn an update into an outage.
+            tcpSocket: { port: 3310 }
+            periodSeconds: 30
+          readinessProbe:
+            # Readiness gates the Service: a pod that has not finished loading
+            # signatures must not receive scans. TCP accept is the cheap proxy;
+            # clamd does not accept on 3310 until it is ready to scan.
+            tcpSocket: { port: 3310 }
+            periodSeconds: 10
+
+        # ── freshclam staleness exporter (§4c signature-freshness monitoring) ──
+        # A sidecar that reads the mtime of the .cvd/.cld files clamd's freshclam
+        # keeps and exports their age as a Prometheus metric. Chosen over parsing
+        # clamd's VERSION command because the file mtime is what freshclam itself
+        # updates on a successful refresh: if freshclam is failing (bad mirror,
+        # broken egress, the 2026-09-06-style wrong-credential class of bug) the
+        # files stop being touched and the age climbs — which is EXACTLY the
+        # failure the >24h alert must catch. A VERSION scrape would still return a
+        # build date from the last-loaded database and hide a stuck updater.
+        #
+        # textfile-collector shape: the sidecar writes a .prom file, node-exporter
+        # style, and serves it on 9101. It shares the clamav-db mount read-only so
+        # it can stat the files without any capability or write access.
+        - name: freshclam-age-exporter
+          image: clamav/clamav:1.5   # versions.yaml → images.clamav (same image, has sh + stat)
+          command: ["/bin/sh", "-c"]
+          args:
+            # Emit clamav_signature_age_seconds = now - newest(.cvd/.cld mtime),
+            # in the Prometheus text format, and serve it. No package installs on
+            # a read-only rootfs: a tiny shell loop writing a file that a trivial
+            # nc-less HTTP responder would serve is fragile, so we use clamd's own
+            # base image which carries busybox `httpd`. The metric name and HELP
+            # match what the PrometheusRule in prometheusrule.yaml alerts on.
+            - |
+              set -eu
+              DB=/var/lib/clamav
+              OUT=/run/metrics/metrics.prom
+              mkdir -p /run/metrics
+              while true; do
+                newest=0
+                for f in "$DB"/*.cvd "$DB"/*.cld; do
+                  [ -e "$f" ] || continue
+                  m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+                  [ "$m" -gt "$newest" ] && newest="$m"
+                done
+                now=$(date +%s)
+                if [ "$newest" -eq 0 ]; then age=-1; else age=$((now - newest)); fi
+                {
+                  echo "# HELP clamav_signature_age_seconds Age of the newest ClamAV signature database file. -1 means no database present."
+                  echo "# TYPE clamav_signature_age_seconds gauge"
+                  echo "clamav_signature_age_seconds $age"
+                } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+                sleep 60
+              done &
+              # busybox httpd serving the textfile dir on 9101.
+              exec httpd -f -p 9101 -h /run/metrics
+          ports:
+            - { name: metrics, containerPort: 9101, protocol: TCP }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            # Trivial: a shell loop and a static-file server. No cpu limit (§15d),
+            # memory limit == request (admission qnsc-resources).
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 32Mi }
+          volumeMounts:
+            # read-only: the exporter only stats the files, it never writes them.
+            - { name: clamav-db, mountPath: /var/lib/clamav, readOnly: true }
+            # the textfile output dir, writable on a read-only rootfs.
+            - { name: metrics, mountPath: /run/metrics }
+      volumes:
+        - { name: clamav-db, emptyDir: {} }
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - { name: metrics, emptyDir: {} }
+---
+# ── kind: http (Service half) · expose: cluster ─────────────────────────────
+# ClusterIP on 3310, clamd's INSTREAM port. This is what task 3.1's qnsc-kb
+# upload scanner dials: clamd.platform.svc.cluster.local:3310. No externalName, no
+# LoadBalancer, no Gateway route — clamd must never be reachable from outside the
+# cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamd
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: clamd
+    app.kubernetes.io/part-of: platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: clamd
+  ports:
+    - { name: clamd, port: 3310, targetPort: 3310, protocol: TCP }
+    # The exporter is a separate port on the same Service so the collector can
+    # scrape it by name. Not on the 3310 port because scans and metrics are
+    # different consumers with different NetworkPolicy rules.
+    - { name: metrics, port: 9101, targetPort: 9101, protocol: TCP }
+---
+# ── expose: cluster (the platform-side NetworkPolicy) ────────────────────────
+# §4b: `expose: cluster` renders "a Service, plus ingress from any namespace
+# labelled qnsc.vn/tenant=product". The chart writes the PRODUCT half
+# (allow-egress-platform in qnsc-service/templates/networkpolicy.yaml); this is
+# the clamd half, hand-written because clamd is not rendered by the chart.
+#
+# The platform namespace is exempt from the chart's default-deny (it has no
+# default-deny NetworkPolicy), so ATTACHING this policy to the clamd pods is what
+# switches clamd to deny-except-listed for ingress: reachable on 3310 from product
+# namespaces only, and the exporter on 9101 from the observability collector.
+# Without it clamd would be reachable from anywhere in the cluster — the opposite
+# of `cluster` exposure, which is product-namespaces-only and never the internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clamd
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: clamd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: clamd
+  policyTypes: [Ingress]
+  ingress:
+    # scans: from any product namespace, on 3310. This is the exact mirror of the
+    # chart's product-side allow-egress-platform — the pair is what `expose:
+    # cluster` means, and the schedulable/secret-refs contracts exist because a
+    # pair like this living in two files is where the estate has been bitten.
+    - from:
+        - namespaceSelector:
+            matchLabels: { qnsc.vn/tenant: product }
+      ports:
+        - { protocol: TCP, port: 3310 }
+    # metrics: from the observability collector in the platform namespace, on
+    # 9101. Alloy runs a per-node agent that scrapes pods on its own node
+    # (alloy/agent.alloy), so allow ingress from within the platform namespace to
+    # the exporter port only. Scans (3310) are NOT opened to platform — only
+    # product namespaces scan.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+      ports:
+        - { protocol: TCP, port: 9101 }

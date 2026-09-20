@@ -1,0 +1,120 @@
+# ── ArgoCD cluster registration — §2, §5b, §13 ───────────────────────────────
+#
+# WHAT THIS CLOSES. appsets/products.yaml templates `destination.name:
+# "{{.cluster}}"` with the values `dev` and `prod`. ArgoCD resolves a destination
+# NAME — not a server URL — against Secrets in THIS namespace carrying the label
+# `argocd.argoproj.io/secret-type: cluster`. No such Secret existed anywhere in the
+# repository (`platform/secrets/cluster-info.yaml` is an unrelated ConfigMap in the
+# `platform` namespace, read by Alloy, not by ArgoCD). Without these two Secrets
+# EVERY Application — including rova-dev — fails to reconcile with
+# `Cluster "dev" not found` / `Cluster "prod" not found`, and never syncs. This is
+# the file that makes the destination names resolve.
+#
+# ── HUB-AND-SPOKE: ONE ARGOCD, IN PROD, MANAGING BOTH (§2, §5b) ───────────────
+# ArgoCD runs in the PROD cluster (argocd/values.yaml annotates the controller and
+# repo-server ServiceAccounts with arn:aws:iam::608983206583:role/qnsc-prod-argocd).
+# That single instance manages prod locally and dev remotely — §2's isolation claim
+# is footnoted for exactly this: "no shared control plane EXCEPT the deployer".
+#
+# So the two destinations are NOT symmetric, and the asymmetry is the whole point:
+#   prod  is the cluster ArgoCD lives in  → in-cluster, no cross-cluster auth
+#   dev   is remote                       → assume the argocd role into dev's API
+#
+# ── endpoint_public_access = false ON BOTH CLUSTERS ──────────────────────────
+# infra/live/cluster-{dev,prod}/main.tf set `endpoint_public_access = false`. The
+# dev API server has NO public endpoint, so the hub reaches the spoke over PRIVATE
+# networking only — the `server` URL below is dev's PRIVATE endpoint, and the
+# prod repo-server/controller pods must have a network path to it (shared VPC or
+# peering at task 0.6's /20 cluster tier). There is no internet fallback: if that
+# path is missing, dev syncs fail with a dial timeout, not an auth error.
+---
+# ── prod — the cluster ArgoCD RUNS IN ────────────────────────────────────────
+#
+# DECISION: in-cluster (https://kubernetes.default.svc), NOT a full remote
+# registration. Justification:
+#   - ArgoCD's controller/repo-server already run here and already hold a
+#     ServiceAccount token for THIS API server. Registering prod as a "remote"
+#     cluster would mean handing ArgoCD an endpoint + CA + role-assumption config
+#     to reach the very API server it is already talking to through the in-cluster
+#     token — indirection with a second failure mode and nothing gained.
+#   - It needs NO infra output. cluster-prod exports `cluster_endpoint` but NOT the
+#     cluster CA (see the dev note below), so a remote prod registration could not
+#     even be completed offline without inventing the CA. In-cluster sidesteps that
+#     entirely: the reserved URL below needs no endpoint and no CA.
+#   - §5b's saving ("ArgoCD reaches both clusters") is unaffected — prod is free.
+#
+# `https://kubernetes.default.svc` is the reserved in-cluster server URL ArgoCD
+# recognises. `name: prod` is what appsets/products.yaml matches on for the prod row.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-prod
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: prod
+  server: https://kubernetes.default.svc
+  # No `config` block: an in-cluster destination uses the pod's own ServiceAccount
+  # token, so there is nothing to assume and no CA to carry.
+---
+# ── dev — REMOTE, reached by assuming the argocd role into dev's API ──────────
+#
+# The mechanism: the prod repo-server/controller run as the IRSA role
+# `arn:aws:iam::608983206583:role/qnsc-prod-argocd` (cluster-prod output
+# `argocd_role_arn`). cluster-dev/iam.tf grants THAT role an EKS access entry with
+# AmazonEKSClusterAdminPolicy (`aws_eks_access_entry.argocd`). So ArgoCD reaches
+# dev by generating an EKS bearer token with `awsAuthConfig`, which the access
+# entry already authorises. No second credential, no kubeconfig on disk.
+#
+# ⚠ BLOCKED ON A MISSING INFRA OUTPUT — CANNOT BE COMPLETED OFFLINE AS-IS.
+# A cluster Secret's `config` MUST carry the API server's CA to verify TLS
+# (endpoint_public_access is false; there is no public cert chain to fall back on).
+# infra/live/cluster-dev/outputs.tf exports:
+#     cluster_name, cluster_endpoint, oidc_provider_arn, oidc_issuer,
+#     kubernetes_version, platform_role_arns
+# It does NOT export the cluster certificate authority. The value needed is
+#     aws_eks_cluster.this.certificate_authority[0].data   (base64 PEM)
+# which is not surfaced anywhere in this repository. It cannot be invented, so:
+#
+#   INFRA ACTION REQUIRED (someone owning infra/live/cluster-dev):
+#     add an output exporting the dev cluster CA, e.g.
+#       output "cluster_certificate_authority_data" {
+#         value = aws_eks_cluster.this.certificate_authority[0].data
+#       }
+#     then substitute it into `caData` below. `cluster_endpoint` already exists and
+#     feeds `server`.
+#
+# Until that output exists these placeholders stand UNRESOLVED and dev registration
+# is incomplete. They are written in the §7c `qnsc-ENV-…` placeholder spirit —
+# a human replaces them at bootstrap — but two of them (endpoint, CA) come from
+# infra state, not from a sed of ENV.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-dev
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: dev
+  # cluster-dev output `cluster_endpoint`. PRIVATE endpoint — reachable only from
+  # inside the VPC because endpoint_public_access is false.
+  server: DEV_CLUSTER_ENDPOINT           # infra: cluster-dev output cluster_endpoint
+  config: |
+    {
+      "awsAuthConfig": {
+        "clusterName": "qnsc-dev",
+        "roleARN": "arn:aws:iam::608983206583:role/qnsc-prod-argocd"
+      },
+      "tlsClientConfig": {
+        "caData": "DEV_CLUSTER_CA_DATA"
+      }
+    }
+    # DEV_CLUSTER_CA_DATA — base64 PEM of dev's API server CA. NOT currently an
+    # infra output (see the ⚠ block above); cluster-dev must export
+    # certificate_authority[0].data before this resolves. `roleARN` is the hub's
+    # own role assuming INTO dev, which cluster-dev/iam.tf already authorises via
+    # aws_eks_access_entry.argocd + AmazonEKSClusterAdminPolicy.

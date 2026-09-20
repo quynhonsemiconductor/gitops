@@ -1,0 +1,106 @@
+# The NodeClass every custom NodePool in this directory references. §2, §3, task 0.6.
+#
+# ── WHY THIS FILE EXISTS AT ALL ──────────────────────────────────────────────
+#
+# `infra/live/cluster-{dev,prod}` enables EKS Auto Mode with
+# `compute_config.node_pools = ["general-purpose"]`, and AWS documents that pool
+# as: amd64 ONLY, on-demand ONLY, C/M/R families, generation 5 or newer, and
+# NOT MODIFIABLE — you can enable or disable it, nothing else. The `system` pool
+# supports arm64 but carries a `CriticalAddonsOnly` taint and is not enabled here
+# (§2 chose no dedicated system pool, deliberately).
+#
+# Every pod this estate renders asks for something that pool cannot offer:
+#
+#   gitops/values/*/*.yaml    kubernetes.io/arch: arm64
+#   platform/argocd           karpenter.sh/capacity-type: spot
+#   platform/eso · keda       karpenter.sh/capacity-type: spot
+#   platform/alloy gateway    karpenter.sh/capacity-type: spot
+#   platform/gateway envoy    karpenter.sh/capacity-type: spot
+#   platform/cloudflared      arch: arm64 AND capacity-type: spot
+#
+# So without this directory the first apply produces a cluster on which ArgoCD
+# itself never schedules — and `apps/root.yaml`, the one thing installed by hand,
+# is an Application that nothing is running to reconcile. The symptom is `Pending`
+# with `0/N nodes are available: node(s) didn't match Pod's node affinity/selector`,
+# which reads like a broken manifest rather than a missing node pool.
+#
+# `cluster-prod/README.md` still says system pods "run on the general SPOT pool".
+# That pool was never created. This is it.
+#
+# ── BEFORE APPLYING ──────────────────────────────────────────────────────────
+#
+# Replace ENV with `dev` or `prod`, the same placeholder convention as
+# eso/values.yaml and keda/values.yaml (see platform/README.md).
+#
+# Then VERIFY the security-group selector against the real cluster, because it is
+# the one value here derived from an AWS naming convention rather than from this
+# repository:
+#
+#   aws ec2 describe-security-groups \
+#     --filters Name=tag:kubernetes.io/cluster/qnsc-ENV,Values=owned \
+#     --query 'SecurityGroups[].{id:GroupId,name:GroupName}'
+#
+# One result, named `eks-cluster-sg-qnsc-ENV-*`. If it returns zero, the tag key
+# differs on your cluster and nodes will never launch — a NodeClass that matches
+# nothing fails at RUNTIME, silently, not at admission.
+---
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  # NOT `default`. AWS provisions a NodeClass called `default` whenever a built-in
+  # NodePool is enabled, and `general-purpose` is enabled here — naming this one
+  # `default` would collide with a resource AWS owns.
+  name: qnsc
+spec:
+  # The SAME role `cluster_config.node_role_arn` already passes
+  # (`aws_iam_role.node`, named "${local.name}-node" in cluster-*/iam.tf).
+  #
+  # That is not a convenience, it is what avoids a second bootstrap step: a custom
+  # NodeClass normally needs its own EKS access entry of type EC2 with
+  # AmazonEKSAutoNodePolicy, and EKS creates exactly that automatically for the
+  # node role at cluster creation. Reuse the role, inherit the access entry.
+  # Point this at a NEW role and nodes join nothing until you create one by hand.
+  role: qnsc-ENV-node
+
+  # ── The /20 tier, task 0.6 ────────────────────────────────────────────────
+  #
+  # Tagged by `tf-modules/modules/network`'s `aws_subnet.cluster`. Selector terms
+  # match exact values with no wildcards, which is why `Name` cannot address three
+  # per-AZ subnets and these two tags exist instead. `Network` is what stops a dev
+  # NodeClass matching a prod subnet.
+  #
+  # NOT the private subnets. Those are /24, they hold the ECS estate that is still
+  # serving production, and AWS has no operation that resizes a subnet — see the
+  # comment on `cluster_subnet_cidrs` in the runtime stacks. Auto Mode reserves a
+  # /28 per node up front, so a /24 exhausts at roughly fifteen nodes per AZ and
+  # §15c's failure #2 arrives as pods stuck in `ContainerCreating`.
+  subnetSelectorTerms:
+    - tags:
+        Tier: cluster
+        Network: qnsc-runtime-ENV
+
+  securityGroupSelectorTerms:
+    - tags:
+        kubernetes.io/cluster/qnsc-ENV: owned
+
+  # NO podSubnetSelectorTerms, and that is a decision rather than an omission.
+  #
+  # Auto Mode can put pods on secondary ENIs in a different subnet from the node
+  # (`podSubnetSelectorTerms` + `podSecurityGroupSelectorTerms`, which must be set
+  # together). This estate does not, because it buys nothing here and costs pod
+  # density: the node's primary ENI is then reserved for the node IP and cannot
+  # carry pods. Nodes and pods share the /20, which has room for both.
+  #
+  # The reason to revisit is SECURITY-GROUP SEPARATION — different rules for
+  # node-to-node traffic than for pod-to-pod. §10 does not ask for that today.
+
+  # §13 — this is the read-only root plus the read/write data volume, encrypted
+  # with the cluster CMK by Auto Mode. 80Gi is sized for qnsc-kb: a 1.5 GB ONNX
+  # model in the image, plus layer cache for a repo whose images are large enough
+  # that §3 moved ECR pulls onto an S3 gateway endpoint. The default is smaller
+  # and an image that will not unpack fails at `ContainerCreating`, which looks
+  # identical to the IP-exhaustion failure above and is not.
+  ephemeralStorage:
+    size: "80Gi"
+    iops: 3000
+    throughput: 125

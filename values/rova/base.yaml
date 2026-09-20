@@ -9,6 +9,21 @@ services:
     kind: http
     expose: public
     port: 3000
+    # THE APP SERVES `/v1/readyz`, NOT `/readyz`. `app.setGlobalPrefix('v1')` in
+    # apps/api/src/bootstrap/app.bootstrap.ts:120 puts every route behind /v1,
+    # the health controller included. The chart's default readinessPath is
+    # `/readyz`, which 404s — the pod would never become Ready, the Service would
+    # have no endpoints, and the tunnel would serve nothing.
+    #
+    # Found 2026-09-19 in the pre-apply audit. The ECS path never surfaced it:
+    # the ALB target group and the Dockerfile HEALTHCHECK both already point at
+    # /v1/healthz (rova/Dockerfile:143). The chart was the only consumer guessing.
+    #
+    # ⚠ LIVENESS IS STILL BROKEN AND CANNOT BE FIXED HERE. The chart hardcodes
+    # liveness to `/livez` — not a per-service value, deliberately (§9j) — and
+    # platform/policy/admission.yaml DENIES any other path. rova serves no
+    # `/livez` at all, so the api CrashLoopBackOffs until the app exposes one.
+    readinessPath: /v1/readyz
     # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
     # request and a broken response mid-answer." — rova/infra/live/prod/main.tf
     # On Kubernetes a PDB plus drain plus multiple replicas makes a reclaim a

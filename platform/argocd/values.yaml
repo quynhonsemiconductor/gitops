@@ -83,9 +83,23 @@ controller:
 
 repoServer:
   replicas: 2
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-argocd
+  # NO IRSA ANNOTATION, and the one that used to be here was INERT.
+  #
+  # It named `qnsc-prod-argocd`, whose trust policy in
+  # `infra/live/cluster-prod/iam.tf` allows exactly one subject:
+  # `system:serviceaccount:argocd:argocd-application-controller`. This pod's
+  # ServiceAccount is `argocd-repo-server`, so the token exchange would have
+  # failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity" — the
+  # same ServiceAccount-name-versus-trust-condition mismatch already recorded for
+  # eso and keda on 2026-09-16, found again here on 2026-09-19.
+  #
+  # Removed rather than fixed by widening the trust, deliberately: that role is
+  # what cluster-dev grants an EKS access entry to, so adding this subject would
+  # hand dev cluster-admin to the component that renders untrusted Helm charts.
+  #
+  # The repo-server needs no AWS identity. It pulls the chart with the repository
+  # Secret in `ecr-credential.yaml`, which a CronJob keeps current because an ECR
+  # token lasts 12 hours.
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 512Mi }

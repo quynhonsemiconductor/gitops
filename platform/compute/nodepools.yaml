@@ -1,0 +1,180 @@
+# The node pools §2 describes and the cluster stacks never created. §2, §4b Axis 6.
+#
+# §2: "node pools general (Spot, diverse families) / ondemand (small floor) /
+# amd64; NO dedicated on-demand system pool". `cluster-prod/README.md` goes further
+# and says system pods "run on the general SPOT pool with PDBs and topology
+# spread". None of that existed — see nodeclass.yaml for what the built-in
+# `general-purpose` pool actually provides and why nothing schedules without this.
+#
+# Replace ENV with `dev` or `prod` before applying, and read the LIMITS section at
+# the bottom of each pool: they differ per environment and an unbounded dev
+# cluster is how a Spot experiment becomes a bill.
+#
+# ── WHAT THE CHART ASKS FOR, AND WHICH POOL ANSWERS ──────────────────────────
+#
+#   values `capacity:`   rendered nodeSelector                    pool
+#   spot                 karpenter.sh/capacity-type: spot         general
+#   ondemand             karpenter.sh/capacity-type: on-demand    ondemand
+#   mixed                (nothing — §4b leaves it to the pools)   general, by weight
+#
+#   values `arch:`       rendered nodeSelector                    pool
+#   arm64                kubernetes.io/arch: arm64                either
+#   amd64                kubernetes.io/arch: amd64                either
+#
+# Both pools allow both architectures on purpose. Splitting them by arch would
+# double the pools and express nothing the pod's own selector does not already say,
+# and §3.2 will move qnsc-kb to arm64 while clamd (§4c) stays amd64 for as long as
+# ClamAV has no arm64 image — so both architectures are permanent, not a migration.
+#
+# ── THE ONE PLACE §2 IS NOT EXPRESSIBLE AS WRITTEN ───────────────────────────
+#
+# §2 calls the on-demand pool a "small floor". Karpenter has no way to say "keep
+# 20% of capacity on-demand": a NodePool is one capacity type, and there is no
+# cross-pool ratio. So "floor" is implemented as a CHOICE PER SERVICE — `capacity:
+# ondemand` in a values file — plus this pool existing as the fallback Karpenter
+# uses when Spot capacity is unavailable for a `mixed` pod.
+#
+# That is a real difference from what §2 implies and it is recorded here rather
+# than discovered during a Spot reclaim. §4e already relies on it: `realtime`
+# defaults to `capacity: ondemand`, which is the floor, chosen by the workload that
+# needs it instead of by a percentage nobody can tune.
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: general
+spec:
+  # HIGHER THAN `ondemand`, so a pod with no capacity-type selector — `capacity:
+  # mixed`, which §4b renders as no constraint at all — lands on Spot. Without a
+  # weight Karpenter's choice between two matching pools is not something to rely
+  # on, and `mixed` is the default for every api service in the estate.
+  weight: 100
+
+  template:
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: qnsc
+
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+
+        # DIVERSE FAMILIES IS THE WHOLE POINT, not a default worth leaving alone.
+        # §2: "Instance-family diversity beats two on-demand nodes, because what
+        # kills a Spot workload is a CORRELATED reclaim across one capacity pool."
+        # Pinning a family here would reintroduce exactly that correlation.
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "r"]
+
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["5"]
+
+        # Sized rather than unbounded. The largest workload in the estate is 1.0
+        # vCPU / 3.0 GiB (rova, and `size: l` is a CRITICALITY tier, not a resource
+        # size — §7c), so a 32-vCPU node is a single Spot reclaim taking out far
+        # more pods than it needs to. Small nodes also reclaim independently,
+        # which is the same argument as family diversity one level down.
+        - key: eks.amazonaws.com/instance-cpu
+          operator: In
+          values: ["2", "4", "8"]
+
+  disruption:
+    # `Balanced`, not `WhenEmptyOrUnderutilized`. The aggressive policy repacks
+    # whenever it is cheaper, and §4e's `realtime` kind spends a 300s termination
+    # grace period plus a preStop hook on every drain — consolidating a node to
+    # save cents while disconnecting clients is the wrong trade. `Balanced` scores
+    # disruption against saving and skips the ones that do not pay.
+    consolidationPolicy: Balanced
+    consolidateAfter: 1m
+
+    budgets:
+      # Auto Mode's default is a single 10% budget. This keeps that and adds a
+      # blackout, because §2b's upgrade cadence and §9's alerting both assume
+      # somebody is awake: 10% of a small cluster is one node, and one node is a
+      # meaningful fraction of a service at min replicas.
+      - nodes: "10%"
+      # UTC. 02:00-06:00 ICT is 19:00-23:00 UTC the previous day — the window
+      # where a Spot reclaim has nobody watching. Voluntary disruption only;
+      # AWS's own two-minute Spot interruption ignores budgets, which is what
+      # PDBs and topology spread are for.
+      - nodes: "0"
+        schedule: "0 19 * * *"
+        duration: 4h
+
+  limits:
+    # A COST CEILING, which the built-in pools do not have. Sized well above
+    # §15's measured estate and well below anything that could run away: rova at
+    # 1.0 vCPU / 3.0 GiB is the largest single workload, and §15d has not been run
+    # yet (task 2.9), so this is a guard rail rather than a budget. Revisit WITH
+    # 2.9, from measurement, not from this comment.
+    cpu: "64"
+    memory: 256Gi
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: ondemand
+spec:
+  # LOWER than `general`, so this pool is reached only by a pod that explicitly
+  # asks for `capacity-type: on-demand` (§4e's `realtime`, §4c's clamd) or by a
+  # `mixed` pod when Spot capacity is genuinely unavailable. See the header: this
+  # is what "small floor" means in a system with no cross-pool ratio.
+  weight: 10
+
+  template:
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: qnsc
+
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "r"]
+
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["5"]
+
+        - key: eks.amazonaws.com/instance-cpu
+          operator: In
+          values: ["2", "4"]
+
+  disruption:
+    # STRICTER THAN `general`, and for the opposite reason. Everything that ends up
+    # here is here because it must not be interrupted — `realtime` (§4e), clamd
+    # (§4c). Consolidation is voluntary disruption of exactly those pods, so this
+    # pool only ever removes nodes that are already empty.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
+
+    budgets:
+      - nodes: "10%"
+      - nodes: "0"
+        schedule: "0 19 * * *"
+        duration: 4h
+
+  # Deliberately small. This is a floor, not a tier: if on-demand usage ever
+  # approaches this, something that should be Spot is not, and hitting the ceiling
+  # is how that gets noticed. See §12's per-product cost tags.
+  limits:
+    cpu: "16"
+    memory: 64Gi
