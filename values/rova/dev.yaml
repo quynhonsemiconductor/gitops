@@ -10,3 +10,11 @@ services:
   worker:
     resources: { cpu: 100m, memory: 256Mi }
     scaling: null
+
+# The data tier's endpoint. An endpoint is NOT a credential, which is the whole
+# reason `auth: iam` needs no secret: there is nothing here worth protecting, and
+# the token that is worth protecting never exists at rest.
+# Source: `tofu output -raw postgres_endpoint` in infra/live/data-dev.
+data:
+  postgres:
+    host: qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com

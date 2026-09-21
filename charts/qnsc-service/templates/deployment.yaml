@@ -208,11 +208,41 @@ spec:
                    it. Applications connect to pgbouncer, never to RDS directly;
                    PgBouncer holds the real endpoint from the same secret. */}}
             {{- if and $.Values.data $.Values.data.postgres }}
-            {{- if eq ($.Values.data.postgres.pooling | default "none") "pgbouncer" }}
+            {{- $pg := $.Values.data.postgres }}
+            {{- $pooling := $pg.pooling | default "none" }}
+            {{- if eq $pooling "pgbouncer" }}
             - name: DATABASE_HOST
               value: pgbouncer
             - name: DATABASE_PORT
               value: "6432"
+            {{- else if $pg.host }}
+            {{- /* ── WHY THIS BRANCH HAD TO EXIST ────────────────────────────
+                   DATABASE_HOST used to be emitted ONLY for pgbouncer, so
+                   `pooling: none` rendered an application with no database host
+                   at all. The pooler was not optional in practice, it was the
+                   only way the connection got configured — and PgBouncer cannot
+                   do IAM auth, nor does its image still exist upstream.
+                   Connecting directly is now a first-class mode. */}}
+            - name: DATABASE_HOST
+              value: {{ $pg.host | quote }}
+            - name: DATABASE_PORT
+              value: "5432"
+            {{- with $pg.name }}
+            - name: DATABASE_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $pg.user }}
+            - name: DATABASE_USER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /* §8 — under IAM there is NO password to inject. The app mints a
+                   token per connection from its IRSA identity, so this one
+                   variable is the difference between a secret that must exist
+                   and one that must not. */}}
+            {{- with $pg.auth }}
+            - name: DATABASE_AUTH
+              value: {{ . | quote }}
             {{- end }}
             {{- end }}
             {{- with $svc.env }}

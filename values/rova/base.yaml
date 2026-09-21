@@ -54,4 +54,20 @@ services:
     resources: { cpu: 250m, memory: 512Mi }
 
 data:
-  postgres: { mode: dedicated, pooling: pgbouncer }
+  postgres:
+    mode: dedicated
+    # ── NOT pgbouncer, and this is a deliberate reversal of §5d's mechanism ────
+    # PgBouncer holds STATIC credentials, and rova's roles are members of
+    # `rds_iam` with no password — so it cannot authenticate on the app's behalf
+    # whatever else it does for connection counts. Its upstream image is also
+    # gone: bitnami/pgbouncer has zero tags, only bitnamilegacy does.
+    #
+    # §5d's PROBLEM (a connection count that grows with replicas) is real and
+    # unsolved by this line. The answer for prod is RDS Proxy, which does IAM
+    # natively and is already in the chart's `pooling` enum. In dev, one replica
+    # with the role's CONNECTION LIMIT 40 as a backstop makes it moot.
+    pooling: none
+    # §8 — mint a token per connection; store no password anywhere.
+    auth: iam
+    name: rova
+    user: rova

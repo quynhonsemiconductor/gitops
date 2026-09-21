@@ -1,1 +1,11 @@
 env: prod
+
+# ⚠ HOST DELIBERATELY UNSET. `infra/live/data-prod` has not been applied, so this
+# endpoint does not exist yet. The chart emits no DATABASE_HOST without it and the
+# application fails its own env validation at boot with a precise message — which
+# is the correct outcome, and strictly better than a placeholder that resolves to
+# the wrong database.
+# Fill from `tofu output -raw postgres_endpoint` in infra/live/data-prod.
+# data:
+#   postgres:
+#     host: <qnsc-shared-prod endpoint>
