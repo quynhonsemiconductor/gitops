@@ -106,4 +106,19 @@ prometheus:
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.
 images:
+  # ⚠ THIS IMAGE DOES NOT EXIST, AND FIXING THAT WOULD NOT HELP.
+  #
+  # `bitnami/pgbouncer` was withdrawn upstream and now has ZERO tags; only
+  # `bitnamilegacy/pgbouncer` still carries 1.24.1. So any product rendering
+  # `pooling: pgbouncer` today lands in ImagePullBackOff.
+  #
+  # Repointing at the legacy repo is NOT the fix, because a pullable PgBouncer
+  # still cannot authenticate: every product role is a member of `rds_iam` and
+  # has no password, while PgBouncer holds static credentials and cannot mint a
+  # token. It would trade a clear pull failure for a confusing auth failure.
+  #
+  # The exit is `pooling: none` with `auth: iam` (see values/rova), or RDS Proxy
+  # for prod connection limits. rova has moved; opshub and kb still request
+  # pgbouncer and MUST migrate before they deploy — kb needs the equivalent of
+  # db/pg-iam.ts in Python first.
   pgbouncer: "1.24.1"

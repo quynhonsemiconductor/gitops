@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "qnsc-service values",
-  "description": "The contract between gitops and the chart. `additionalProperties: false` is the point of this file: a values file with `singelton: true` should be REJECTED, not silently ignored. See kubernetes-platform-design.md §4b.",
+  "description": "The contract between gitops and the chart. `additionalProperties: false` is the point of this file: a values file with `singelton: true` should be REJECTED, not silently ignored. See kubernetes-platform-design.md \u00a74b.",
   "type": "object",
   "required": [
     "product",
@@ -13,14 +13,14 @@
     "product": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,30}$",
-      "description": "Short slug: rova · opshub · kb · lms · solodesk · ai-dev-kit. NOT qnsc-kb (§7c)."
+      "description": "Short slug: rova \u00b7 opshub \u00b7 kb \u00b7 lms \u00b7 solodesk \u00b7 ai-dev-kit. NOT qnsc-kb (\u00a77c)."
     },
     "env": {
       "enum": [
         "dev",
         "prod"
       ],
-      "description": "Never develop/production. §7c decision 1."
+      "description": "Never develop/production. \u00a77c decision 1."
     },
     "size": {
       "enum": [
@@ -29,7 +29,7 @@
         "m",
         "l"
       ],
-      "description": "A CRITICALITY tier, not a resource size. rova is L and the smallest workload in the estate (§5)."
+      "description": "A CRITICALITY tier, not a resource size. rova is L and the smallest workload in the estate (\u00a75)."
     },
     "accountId": {
       "type": "string",
@@ -87,6 +87,25 @@
             "poolSize": {
               "type": "integer",
               "minimum": 1
+            },
+            "auth": {
+              "enum": [
+                "password",
+                "iam"
+              ],
+              "description": "Credential mechanism. `iam` mints a short-lived token per connection and needs no stored password \u2014 which is the only mode an `rds_iam` role can accept. `password` expects DATABASE_URL or DATABASE_PASSWORD in the product secret."
+            },
+            "host": {
+              "type": "string",
+              "description": "RDS endpoint. NOT a secret \u2014 an endpoint is not a credential, and keeping it in values rather than Secrets Manager is what lets `auth: iam` store no secret at all."
+            },
+            "name": {
+              "type": "string",
+              "description": "Database name."
+            },
+            "user": {
+              "type": "string",
+              "description": "Postgres role to connect as."
             }
           }
         },
@@ -133,7 +152,7 @@
               "internal",
               "none"
             ],
-            "description": "`protected` is the state most of this estate needs and the one most easily got wrong (§4b)."
+            "description": "`protected` is the state most of this estate needs and the one most easily got wrong (\u00a74b)."
           },
           "port": {
             "type": "integer",
@@ -157,7 +176,7 @@
               "arm64",
               "amd64"
             ],
-            "description": "arm64 by default. amd64 only where no arm64 build exists — today that is clamav alone (§4b Axis 5)."
+            "description": "arm64 by default. amd64 only where no arm64 build exists \u2014 today that is clamav alone (\u00a74b Axis 5)."
           },
           "capacity": {
             "enum": [
@@ -165,11 +184,11 @@
               "ondemand",
               "mixed"
             ],
-            "description": "§4b Axis 6. Defaults per kind; `realtime` defaults to ondemand because a reclaim drops every connection."
+            "description": "\u00a74b Axis 6. Defaults per kind; `realtime` defaults to ondemand because a reclaim drops every connection."
           },
           "singleton": {
             "type": "boolean",
-            "description": "Never two replicas, INCLUDING during a RollingUpdate. For a scheduler that holds no lock and cannot take one — Celery beat. NOT for workers that run scheduled work safely via SKIP LOCKED or a cross-pod lock (§4b Axis 7)."
+            "description": "Never two replicas, INCLUDING during a RollingUpdate. For a scheduler that holds no lock and cannot take one \u2014 Celery beat. NOT for workers that run scheduled work safely via SKIP LOCKED or a cross-pod lock (\u00a74b Axis 7)."
           },
           "pdb": {
             "type": "boolean"
@@ -182,7 +201,7 @@
           },
           "startupPath": {
             "type": "string",
-            "description": "Set for slow boots. qnsc-kb loads a ~1.5 GB ONNX session; without this the liveness probe kills the pod mid-load, forever (§9j)."
+            "description": "Set for slow boots. qnsc-kb loads a ~1.5 GB ONNX session; without this the liveness probe kills the pod mid-load, forever (\u00a79j)."
           },
           "needsApiAccess": {
             "type": "boolean"
@@ -215,7 +234,7 @@
                 "not": {
                   "const": "latest"
                 },
-                "description": "sha-<commit> in dev, v<version> in prod. NEVER latest — that is how a develop build reached a production task definition (§11)."
+                "description": "sha-<commit> in dev, v<version> in prod. NEVER latest \u2014 that is how a develop build reached a production task definition (\u00a711)."
               }
             }
           },
@@ -237,7 +256,7 @@
                 "minimum": 1
               }
             },
-            "description": "Requests. The chart renders NO cpu limit and sets memory limit == request (§15d)."
+            "description": "Requests. The chart renders NO cpu limit and sets memory limit == request (\u00a715d)."
           },
           "scaling": {
             "type": [
@@ -272,7 +291,7 @@
               },
               "queue": {
                 "type": "string",
-                "description": "The queue PURPOSE (email-bounce), not a URL. The chart derives the URL from account, region, env and product so infra and gitops cannot drift (§7c)."
+                "description": "The queue PURPOSE (email-bounce), not a URL. The chart derives the URL from account, region, env and product so infra and gitops cannot drift (\u00a77c)."
               },
               "timezone": {
                 "type": "string"
@@ -311,7 +330,7 @@
                 }
               }
             },
-            "description": "Renders recording rules and burn-rate alerts. An SLO nobody will get out of bed for is not an SLO (§17)."
+            "description": "Renders recording rules and burn-rate alerts. An SLO nobody will get out of bed for is not an SLO (\u00a717)."
           },
           "drain": {
             "type": "object",
@@ -328,7 +347,7 @@
                 }
               }
             },
-            "description": "§4e — a realtime pod must stop accepting, send close frames, then exit."
+            "description": "\u00a74e \u2014 a realtime pod must stop accepting, send close frames, then exit."
           },
           "env": {
             "type": "array",
@@ -356,7 +375,7 @@
           },
           "sidecars": {
             "type": "array",
-            "description": "A sidecar works on Kubernetes exactly as it did on ECS, so a migration can be like-for-like. §4c argues a large read-only artefact belongs behind a Service instead — that is an optimisation, taken after the move, not during it.",
+            "description": "A sidecar works on Kubernetes exactly as it did on ECS, so a migration can be like-for-like. \u00a74c argues a large read-only artefact belongs behind a Service instead \u2014 that is an optimisation, taken after the move, not during it.",
             "items": {
               "type": "object",
               "additionalProperties": false,

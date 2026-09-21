@@ -140,29 +140,6 @@ metadata:
 automountServiceAccountToken: false
 
 ---
-# Source: qnsc-service/templates/pgbouncer.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: pgbouncer
-  labels:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: dev
-    qnsc.vn/tenant: product
-spec:
-  type: ClusterIP
-  trafficDistribution: PreferClose
-  selector:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: rova
-  ports:
-    - { name: pgbouncer, port: 6432, targetPort: 6432 }
-
----
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -261,9 +238,15 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
-              value: pgbouncer
+              value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
-              value: "6432"
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
+            - name: DATABASE_AUTH
+              value: "iam"
           envFrom:
             - secretRef:
                 name: rova-app
@@ -337,9 +320,15 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
             - name: DATABASE_HOST
-              value: pgbouncer
+              value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
-              value: "6432"
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
+            - name: DATABASE_AUTH
+              value: "iam"
           envFrom:
             - secretRef:
                 name: rova-app
@@ -349,67 +338,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-
----
-# Source: qnsc-service/templates/pgbouncer.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: pgbouncer
-  labels:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: dev
-    qnsc.vn/tenant: product
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: pgbouncer
-      app.kubernetes.io/instance: rova
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: pgbouncer
-        app.kubernetes.io/instance: rova
-        app.kubernetes.io/part-of: rova
-        app.kubernetes.io/managed-by: Helm
-        qnsc.vn/product: rova
-        qnsc.vn/env: dev
-        qnsc.vn/tenant: product
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
-      nodeSelector:
-        kubernetes.io/arch: arm64
-      containers:
-        - name: pgbouncer
-          image: bitnami/pgbouncer:1.24.1
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          ports:
-            - { name: pgbouncer, containerPort: 6432 }
-          env:
-            - { name: PGBOUNCER_POOL_MODE, value: transaction }
-            - { name: PGBOUNCER_MAX_CLIENT_CONN, value: "1000" }
-            - { name: PGBOUNCER_DEFAULT_POOL_SIZE, value: "20" }
-            - { name: PGBOUNCER_PORT, value: "6432" }
-          envFrom:
-            - secretRef:
-                name: rova-app
-          resources:
-            requests: { cpu: 100m, memory: 128Mi }
-            limits:   { memory: 128Mi }
-          livenessProbe:
-            tcpSocket: { port: 6432 }
-            periodSeconds: 10
 
 ---
 # Source: qnsc-service/templates/job.yaml
