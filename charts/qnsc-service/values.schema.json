@@ -439,12 +439,20 @@
                 }
               }
             }
+          },
+          "host": {
+            "type": "string",
+            "description": "Override the derived public hostname. The default is <product>-<service>[-dev].qnsc.vn. Used during the migration so the new estate can be proven on its own name while the canonical one still serves ECS."
           }
         }
       }
     },
     "images": {
       "type": "object"
+    },
+    "secretsReaderServiceAccount": {
+      "type": "string",
+      "description": "ServiceAccount the namespace's SecretStore authenticates as. Defaults to `api`; must be an account this chart creates and whose IRSA role reads the product's secret prefix."
     }
   }
 }

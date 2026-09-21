@@ -166,12 +166,30 @@ A service may override with `host:` when a product exposes more than one.
 {{- define "qnsc.host" -}}
 {{- $root := index . 0 -}}
 {{- $svc := index . 1 -}}
+{{- /* ── THE ESTATE'S ACTUAL HOSTNAME CONVENTION ──────────────────────────────
+       Read off the live zone, because the previous two attempts here were both
+       wrong in ways nothing would have caught until traffic moved:
+
+         rova-dev.qnsc.vn      -> rova-develop-web.pages.dev    the FRONTEND
+         rova-api-dev.qnsc.vn  -> <tunnel>.cfargotunnel.com     the API
+         rova-api.qnsc.vn      -> <tunnel>.cfargotunnel.com     prod API
+
+       This chart serves the API. It first emitted `<product>.dev.qnsc.vn`, which
+       no certificate covers (Universal SSL stops at one wildcard level, so the
+       TLS handshake fails at the edge with SSL alert 40). The fix for that then
+       emitted `<product>-dev.qnsc.vn` — which RESOLVES, and belongs to the
+       Cloudflare Pages frontend. Taking it would have replaced the web app with
+       an API.
+
+       So the name carries the SERVICE, which is what makes it an API hostname
+       and not a product hostname. One level deep, so Cloudflare issues the
+       certificate automatically and for free. */}}
 {{- if $svc.host -}}
 {{- $svc.host -}}
 {{- else if eq (include "qnsc.env" $root) "prod" -}}
-{{- printf "%s.qnsc.vn" (include "qnsc.product" $root) -}}
+{{- printf "%s-%s.qnsc.vn" (include "qnsc.product" $root) (index . 2 | default "api") -}}
 {{- else -}}
-{{- printf "%s.dev.qnsc.vn" (include "qnsc.product" $root) -}}
+{{- printf "%s-%s-dev.qnsc.vn" (include "qnsc.product" $root) (index . 2 | default "api") -}}
 {{- end -}}
 {{- end -}}
 

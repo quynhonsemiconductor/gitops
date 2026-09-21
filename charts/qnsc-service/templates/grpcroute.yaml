@@ -23,7 +23,7 @@ spec:
     - name: {{ $.Values.gateway.name }}
       namespace: {{ $.Values.gateway.namespace }}
   hostnames:
-    - {{ include "qnsc.host" (list $ $svc) | quote }}
+    - {{ include "qnsc.host" (list $ $svc $name) | quote }}
   rules:
     - backendRefs:
         - name: {{ $name }}

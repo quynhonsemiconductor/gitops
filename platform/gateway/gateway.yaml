@@ -18,6 +18,17 @@ metadata:
   name: qnsc
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  # ── WITHOUT THIS, THE PROXY GETS A PUBLIC LOAD BALANCER ────────────────────
+  # The EnvoyGateway config map's `envoyService.type: ClusterIP` is a CONTROLLER
+  # default and is not consulted for a Gateway's own infrastructure. With no
+  # parametersRef the proxy Service was created as LoadBalancer and EKS Auto Mode
+  # provisioned a real, billable, internet-facing ELB — the exact inbound surface
+  # §3 says must not exist. See envoyproxy.yaml.
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: qnsc
+    namespace: platform
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway

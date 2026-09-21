@@ -179,7 +179,6 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -202,7 +201,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: arm64
-        karpenter.sh/capacity-type: spot
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
@@ -218,10 +216,10 @@ spec:
               containerPort: 3000
           resources:
             requests:
-              cpu: 100m
-              memory: 512Mi
+              cpu: 250m
+              memory: 1Gi
             limits:
-              memory: 512Mi
+              memory: 1Gi
           livenessProbe:
             httpGet: { path: /livez, port: 3000 }
             periodSeconds: 10
@@ -272,7 +270,6 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: worker
@@ -308,10 +305,10 @@ spec:
               drop: ["ALL"]
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 250m
+              memory: 512Mi
             limits:
-              memory: 256Mi
+              memory: 512Mi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-gateway.platform.svc.cluster.local:4317
@@ -412,6 +409,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/rova/app/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -429,6 +434,39 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/rova/migrator/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keda-grafana
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: rova
+    kind: SecretStore
+  target:
+    name: keda-grafana
+  dataFrom:
+    - find:
+        path: qnsc/dev/rova/keda/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/httproute.yaml
@@ -449,7 +487,7 @@ spec:
     - name: qnsc
       namespace: platform
   hostnames:
-    - "rova.dev.qnsc.vn"
+    - "rova-api-eks-dev.qnsc.vn"
   rules:
     - matches:
         - path:
@@ -566,6 +604,66 @@ spec:
             summary: "rova-api has reported no metrics for 10 minutes"
 
 ---
+# Source: qnsc-service/templates/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: rova
+    app.kubernetes.io/part-of: rova
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: rova
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  scaleTargetRef:
+    name: api
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      authenticationRef:
+        name: keda-grafana
+      metadata:
+        serverAddress: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
+        query: sum(rate(http_server_request_duration_seconds_count{service_name="rova-api"}[2m]))
+        threshold: "200"
+
+---
+# Source: qnsc-service/templates/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/instance: rova
+    app.kubernetes.io/part-of: rova
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: rova
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-irsa
+      metadata:
+        queueURL: https://sqs.ap-southeast-1.amazonaws.com/608983206583/qnsc-dev-rova-email-bounce
+        queueLength: "20"
+        awsRegion: ap-southeast-1
+
+---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
 kind: SecretStore
@@ -579,4 +677,19 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets
+            name: api
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-grafana
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: keda-grafana
+      key: username
+    - parameter: password
+      name: keda-grafana
+      key: password

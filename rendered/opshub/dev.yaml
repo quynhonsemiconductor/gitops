@@ -484,6 +484,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/opshub/app/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -501,6 +509,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/dev/opshub/migrator/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/httproute.yaml
@@ -523,7 +539,7 @@ spec:
     - name: qnsc
       namespace: platform
   hostnames:
-    - "opshub.dev.qnsc.vn"
+    - "opshub-api-dev.qnsc.vn"
   rules:
     - matches:
         - path:
@@ -653,4 +669,4 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets
+            name: api

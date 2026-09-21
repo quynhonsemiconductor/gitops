@@ -451,6 +451,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/rova/app/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -468,6 +476,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/rova/migrator/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -485,6 +501,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/rova/keda/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/httproute.yaml
@@ -505,7 +529,7 @@ spec:
     - name: qnsc
       namespace: platform
   hostnames:
-    - "rova.qnsc.vn"
+    - "rova-api.qnsc.vn"
   rules:
     - matches:
         - path:
@@ -695,7 +719,7 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets
+            name: api
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

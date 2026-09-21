@@ -18,3 +18,18 @@ services:
 data:
   postgres:
     host: qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com
+
+# ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ────────────────────
+#
+# The canonical API hostname is `rova-api-dev.qnsc.vn`, and it is POINTED AT THE ECS
+# TUNNEL right now, serving the dev environment people are using. Claiming it here
+# would cut dev over silently, as a side effect of a deploy, with no rehearsal — the
+# opposite of the parallel-estate strategy this whole migration is built on.
+#
+# So the new estate proves itself on its own name. Cutover is then one DNS record
+# repointed at the new tunnel, reversible by repointing it back, and DELETING THESE
+# THREE LINES — after which the helper's default (`rova-api-dev.qnsc.vn`) applies.
+services:
+  api:
+    host: rova-api-eks-dev.qnsc.vn
+

@@ -6,7 +6,7 @@ description: One chart for every QNSC service. See kubernetes-platform-design.md
 # product can quietly hand-write a manifest. An application chart plus one values
 # file per (product, environment) has neither.
 type: application
-version: 0.1.0
+version: 0.4.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.33.0-0"   # trafficDistribution: PreferClose is GA from 1.33 (§9j)
 maintainers:
