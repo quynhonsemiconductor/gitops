@@ -134,7 +134,7 @@ Two placeholders must be replaced, and they are placeholders because §7c cannot
 derive them — Identity Center and the cluster name mangle role ARNs:
 
 ```
-compute/nodeclass.yaml   qnsc-ENV-node  and  qnsc-runtime-ENV  and
+compute/nodeclass.yaml   qnsc-ENV-node  and  qnsc-platform-ENV  and
                          kubernetes.io/cluster/qnsc-ENV
 compute/nodepools.yaml   (no placeholders, but the LIMITS differ per environment)
 eso/values.yaml          qnsc-ENV-external-secrets
