@@ -64,6 +64,13 @@ spec:
 
   # ── The /20 tier, task 0.6 ────────────────────────────────────────────────
   #
+  # `qnsc-platform-ENV`, NOT `qnsc-runtime-ENV`. This said runtime until 2026-09-21
+  # and would have matched NOTHING: the clusters moved onto their own VPCs
+  # (`live/platform-{dev,prod}`, so `name = "qnsc-platform-dev"`) and the old
+  # runtime VPCs no longer carry a cluster tier at all. A NodeClass whose selector
+  # matches nothing fails at RUNTIME, silently — no node ever launches and the only
+  # symptom is pods that stay Pending.
+  #
   # Tagged by `tf-modules/modules/network`'s `aws_subnet.cluster`. Selector terms
   # match exact values with no wildcards, which is why `Name` cannot address three
   # per-AZ subnets and these two tags exist instead. `Network` is what stops a dev
@@ -77,7 +84,7 @@ spec:
   subnetSelectorTerms:
     - tags:
         Tier: cluster
-        Network: qnsc-runtime-ENV
+        Network: qnsc-platform-ENV
 
   securityGroupSelectorTerms:
     - tags:
