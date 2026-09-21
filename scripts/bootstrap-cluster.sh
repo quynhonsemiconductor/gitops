@@ -89,7 +89,7 @@ ok "account $ACCOUNT"
 # literal, agreed nothing had survived. The NodeClass then applied cleanly and
 # reported `SubnetsNotFound: SubnetSelector did not match any Subnets`: a runtime
 # failure two steps from its cause. Found 2026-09-21.
-APPLY_DIRS=(compute namespaces policy)
+APPLY_DIRS=(compute namespaces policy eso keda)
 
 cp -R "$ROOT/platform" "$WORK/platform"
 for d in "${APPLY_DIRS[@]}"; do
@@ -194,13 +194,51 @@ kubectl --context "$CTX" apply -f "$WORK/platform/policy/admission.yaml"
 kubectl --context "$CTX" apply -f "$WORK/platform/policy/bindings.yaml"
 ok "applied — a policy with no binding enforces nothing, hence the order"
 
-say "Done — steps 0-4 of platform/README.md"
+# ── 5. operators with no external credential ───────────────────────────────
+# ESO and KEDA go in here because their only prerequisite is an IRSA role that
+# `infra/live/cluster-<env>` already created. alloy/, gateway/ and cloudflared/ are
+# deliberately NOT here: each needs a credential value that lives outside this
+# repository (a Grafana Cloud push token, a Cloudflare tunnel token), and a script
+# that half-installs them leaves a chart in a failed state nobody asked for.
+say "5. External Secrets Operator and KEDA"
+
+ver() { python3 -c "import yaml,sys; print(yaml.safe_load(open('$ROOT/versions.yaml'))['platform']['$1']['$2'])"; }
+
+for comp in external-secrets keda; do
+  case "$comp" in
+    external-secrets) ns=external-secrets; vals="$WORK/platform/eso/values.yaml" ;;
+    keda)             ns=platform;         vals="$WORK/platform/keda/values.yaml" ;;
+  esac
+  repo="$(ver "$comp" repo)"; chart="$(ver "$comp" chart)"; version="$(ver "$comp" version)"
+  echo "   $comp $version from $repo"
+  helm repo add "$comp" "$repo" >/dev/null 2>&1 || true
+  helm repo update "$comp" >/dev/null 2>&1 || true
+  helm --kube-context "$CTX" upgrade --install "$comp" "$comp/$chart" \
+    --version "$version" --namespace "$ns" --create-namespace \
+    -f "$vals" --wait --timeout 8m >/dev/null \
+    || die "$comp failed to install. helm --kube-context $CTX -n $ns status $comp"
+  ok "$comp installed in $ns"
+done
+
+# An operator whose pods are Running but whose IRSA role is unusable looks healthy
+# and silently never syncs a secret, so check the annotation resolved to a real role
+# rather than to the literal placeholder.
+for sa_ns in external-secrets:external-secrets platform:keda-operator; do
+  ns="${sa_ns%%:*}"; sa="${sa_ns##*:}"
+  arn=$(kubectl --context "$CTX" get sa "$sa" -n "$ns" \
+        -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null || true)
+  case "$arn" in
+    *ENV*) die "$ns/$sa still carries an ENV placeholder in its IRSA annotation: $arn" ;;
+    arn:aws:iam::*) ok "$ns/$sa -> $arn" ;;
+    *)     printf '   \033[33mwarn\033[0m %s/%s has no IRSA annotation (%s)\n' "$ns" "$sa" "${arn:-none}" ;;
+  esac
+done
+
+say "Done — steps 0-5 of platform/README.md"
 cat <<EOF
   This cluster can now schedule what the estate renders, which it could not before.
 
   Still to do, and each needs something this script deliberately does not assume:
-    eso/ keda/      helm, and the IRSA roles qnsc-${ENV}-external-secrets /
-                    qnsc-${ENV}-keda, which infra/live/cluster-${ENV} creates
     alloy/          the Grafana Cloud push credential
     gateway/ cloudflared/   the Cloudflare tunnel token
     argocd/         PROD ONLY, and prod has no standing admin — assume

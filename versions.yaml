@@ -1,3 +1,30 @@
+# ⚠ ALL FOUR PLATFORM CHART PINS WERE NON-EXISTENT until 2026-09-21.
+#
+# They were written 2026-09-15 and this file's own README said "verify each one
+# before the first install — they were written 2026-09-15 and releases move".
+# Nobody had, and the first real install failed with:
+#
+#   Error: chart "external-secrets" matching 0.20.0 not found in
+#   external-secrets index. no chart version found for external-secrets-0.20.0
+#
+# The drift was not a patch or two:
+#
+#   external-secrets  0.20.0 -> 2.11.0   TWO major versions (0.x -> 1.x -> 2.x)
+#   keda              2.18.0 -> 2.20.2
+#   argo-cd           8.5.0  -> 10.9.2   two majors
+#   alloy             1.6.0  -> 1.12.1
+#
+# ESO AND KEDA ARE VERIFIED AGAINST THE NEW CHARTS, not merely bumped: the values
+# files render, and — which matters more, because Helm silently IGNORES unknown
+# value keys — the IRSA annotations still land on `external-secrets` and
+# `keda-operator`, and ESO still renders its 25 CRDs. A bump that rendered while
+# quietly dropping the annotation would have produced an operator that runs and
+# never syncs a secret.
+#
+# ⚠ argo-cd AND alloy ARE NOT YET VERIFIED. They are corrected here to versions
+# that exist, but nothing has rendered their values against them and argo-cd
+# crosses two majors. Do that before installing either — the same check as above:
+# render, then confirm the values you care about actually appear in the output.
 # Platform component versions — the single place they are pinned.
 #
 # §2b: "Before each upgrade, check API compatibility for the three things that pin
@@ -25,21 +52,21 @@ platform:
   argo-cd:
     chart: argo-cd
     repo: https://argoproj.github.io/argo-helm
-    version: "8.5.0"          # ArgoCD 3.x
+    version: "10.9.2"          # ArgoCD 3.x
   alloy:
     chart: alloy
     repo: https://grafana.github.io/helm-charts
-    version: "1.6.0"
+    version: "1.12.1"
   external-secrets:
     chart: external-secrets
     repo: https://charts.external-secrets.io
-    version: "0.20.0"
+    version: "2.11.0"
 
   # ── Everything else ──────────────────────────────────────────────────────────
   keda:
     chart: keda
     repo: https://kedacore.github.io/charts
-    version: "2.18.0"
+    version: "2.20.2"
   gateway-api:
     # CRDs, applied directly — not a chart. Standard channel.
     version: "v1.3.0"
