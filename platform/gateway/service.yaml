@@ -1,0 +1,71 @@
+# ── The stable address the tunnel dials — §3 ─────────────────────────────────
+#
+# THE MISSING LINK BETWEEN THE TUNNEL AND THE GATEWAY.
+#
+# `gateway.yaml` creates the Gateway and Envoy Gateway provisions a Service for it,
+# but that Service is named by the CONTROLLER, not by us:
+#
+#     envoy-platform-qnsc-<hash>
+#
+# The hash is derived from the Gateway's namespace and name, so it is stable in
+# practice — and it is still the wrong thing to write into Terraform. The tunnel's
+# ingress rule lives in `infra/live/cluster-<env>`, so referencing the generated name
+# would make an OpenTofu stack depend on a string a Kubernetes controller invented.
+# Rename the Gateway, upgrade the controller, or change how it derives that suffix,
+# and the tunnel 502s with nothing in either repository having visibly changed.
+#
+# This Service is the indirection that removes the coupling. Terraform points at a
+# name THIS FILE owns; Envoy Gateway keeps naming its own Service whatever it likes.
+#
+# ── WHY A SELECTOR AND NOT AN ExternalName ──────────────────────────────────
+#
+# An ExternalName alias to the generated Service would reintroduce the same string
+# it is meant to hide. Selecting the pods directly means the only names involved are
+# Envoy Gateway's documented ownership labels, which are part of its API rather than
+# an implementation detail:
+#
+#     kubectl get deploy -n <ns> --selector=\
+#       gateway.envoyproxy.io/owning-gateway-namespace=<ns>,\
+#       gateway.envoyproxy.io/owning-gateway-name=<name>
+#
+# — from Envoy Gateway's own troubleshooting documentation.
+#
+# ── THIS REQUIRES THE PROXIES TO RUN IN `platform` ──────────────────────────
+#
+# A Service selects pods in its OWN namespace only. Envoy Gateway deploys proxies
+# into the namespace where the controller runs, so `gateway-helm` MUST be installed
+# with `--namespace platform` (as KEDA is). Installed into the chart's default
+# `envoy-gateway-system`, the proxy pods land there, this selector matches nothing,
+# and the result is a Service with no endpoints — which presents as a 502 from
+# Cloudflare with three healthy cloudflared replicas and a healthy Gateway. That is
+# a genuinely confusing failure, hence this paragraph.
+#
+# `platform/README.md` records the namespace in the apply order.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: qnsc-platform
+  annotations:
+    qnsc.vn/purpose: >-
+      Stable in-cluster address for the Cloudflare Tunnel connector. The tunnel's
+      ingress rule in infra/live/cluster-<env> targets this name; do not rename it
+      without changing that rule in the same change.
+spec:
+  type: ClusterIP
+  selector:
+    gateway.envoyproxy.io/owning-gateway-name: qnsc
+    gateway.envoyproxy.io/owning-gateway-namespace: platform
+  ports:
+    # 8080 because the Gateway's listener is 8080 (gateway.yaml). Envoy Gateway
+    # remaps privileged ports (<1024) internally to avoid needing extra
+    # capabilities; 8080 is unprivileged, so what the listener declares is what the
+    # pod actually listens on and no translation applies.
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
