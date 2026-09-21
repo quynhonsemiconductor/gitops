@@ -32,23 +32,46 @@ argocd/        ArgoCD's Helm values (§5b), the two cluster-registration Secrets
 3  eso/ keda/           operators
 4  alloy/               gateway first, then agent — the agent resolves the
                         gateway's DNS at startup
-5  clamd/               a plain workload, so it needs only its namespace (step 1)
+5  gateway/             THE CLUSTER'S INGRESS, and it was missing from this list
+                        entirely — the two components that let the cluster serve
+                        traffic had no place in the order that installs everything
+                        else.
+   5a  gateway-api CRDs   kubectl apply the v1.6.2 standard-install manifest. The
+                        Gateway and GatewayClass are CRs; without the CRDs
+                        `kubectl apply` fails with "no matches for kind".
+   5b  helm install envoy-gateway --namespace platform -f gateway/values-envoy.yaml
+                        NOT the chart's default `envoy-gateway-system`. Envoy
+                        Gateway runs its proxies in the controller's namespace, and
+                        gateway/service.yaml selects those pods — a Service selects
+                        only its OWN namespace, so proxies elsewhere give a Service
+                        with no endpoints and a 502 nobody can place.
+   5c  gateway/gateway.yaml + gateway/service.yaml
+                        the Gateway, then the stable address the tunnel dials.
+
+6  cloudflared/         needs `qnsc/<env>/platform/cloudflared-token`, which
+                        `infra/live/cluster-<env>` now creates and fills from the
+                        tunnel it owns. AFTER gateway/, because the connector's
+                        ingress rule resolves gateway.platform.svc.cluster.local at
+                        connect time and a connector that starts first reports ready
+                        while 502-ing every request.
+
+7  clamd/               a plain workload, so it needs only its namespace (step 1)
                         and a schedulable node (step 0). Placed AFTER alloy so the
                         freshness exporter has a collector to be scraped by, and
                         BEFORE ArgoCD's takeover because it is bootstrap plumbing,
                         not a reconciled product. Idle until task 3.1 — see clamd/
-6  argocd/              ArgoCD's OWN install and the credentials it needs to work:
-   6a  helm install argo-cd -f argocd/values.yaml   (creates the argocd namespace)
-   6b  argocd/ecr-credential.yaml   the repository Secret + refresher CronJob. Can
+8  argocd/              ArgoCD's OWN install and the credentials it needs to work:
+   8a  helm install argo-cd -f argocd/values.yaml   (creates the argocd namespace)
+   8b  argocd/ecr-credential.yaml   the repository Secret + refresher CronJob. Can
                         go on immediately — the Secret is seeded empty and the
                         CronJob fills it within 6h; nothing syncs before 6c anyway
-   6c  argocd/clusters.yaml   the dev + prod cluster Secrets. AFTER 6a, because a
+   8c  argocd/clusters.yaml   the dev + prod cluster Secrets. AFTER 8a, because a
                         cluster Secret lives in the argocd namespace and ArgoCD must
-                        exist to read it, and BEFORE 7, because products.yaml's
+                        exist to read it, and BEFORE 9, because products.yaml's
                         destination.name dev/prod resolves against these — install
                         root.yaml first and every Application reports
                         "Cluster not found" until these land
-7  gitops/apps/root.yaml   ArgoCD takes over
+9  gitops/apps/root.yaml   ArgoCD takes over
 ```
 
 ## Step 0 is not a preference
