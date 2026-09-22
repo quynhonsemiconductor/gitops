@@ -2,34 +2,69 @@
 # merges base.yaml with this file before Helm sees anything.
 env: dev
 size: s                      # 1 replica, no PDB, no topology spread
+
+# ── ONE `services:` KEY, AND THAT IS NOT A STYLE POINT ───────────────────────
+# This file briefly had three. YAML keeps only the LAST mapping for a duplicate key,
+# so the earlier blocks — capacity, resources, scaling — vanish silently. Nothing
+# warns: helm renders, lint passes, and the workload quietly runs on-demand with the
+# chart's default resources. Everything for a service belongs in this one block.
 services:
   api:
     capacity: spot           # dev has no revenue to protect
     resources: { cpu: 100m, memory: 512Mi }
     scaling: null            # autoscaling OFF in dev — fixed 1 replica
+
+    # ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ───────────────
+    #
+    # The canonical API hostname is `rova-api-dev.qnsc.vn`, and it POINTS AT THE ECS
+    # TUNNEL right now, serving the dev environment people are using. Claiming it
+    # here would cut dev over silently, as a side effect of a deploy, with no
+    # rehearsal — the opposite of the parallel-estate strategy this migration is
+    # built on.
+    #
+    # So the new estate proves itself on its own name. Cutover is then one DNS record
+    # repointed at the new tunnel, reversible by repointing it back, and deleting
+    # this line — after which the helper's default (`rova-api-dev.qnsc.vn`) applies.
+    host: rova-api-eks-dev.qnsc.vn
+
+    # ── Entra configuration — NOT secrets, so they live in git ──────────────
+    #
+    # The estate's rule, quoted from rova/infra/live/develop/variables.tf: "These are
+    # NOT secrets: an Entra tenant/client id appears in the browser's auth redirect…
+    # The corresponding SECRETS live in Secrets Manager (entra-client-secret,
+    # github-app-private-key) and the Cloudflare API token stays a GitHub secret."
+    #
+    # They are deliberately NOT GitHub Actions variables. That was tried and
+    # reverted: ENTRA_CLIENT_ID is environment-scoped, `infra-plan` has no
+    # `environment:` context, so it resolved to "" and every plan reported three task
+    # definitions "must be replaced". "Reviewers who see phantom replacements on
+    # every PR stop reading plans — which is exactly when a real one slips through."
+    # In git the value is identical at plan and apply time, and reviewable in a diff.
+    #
+    # Copied from rova/infra/live/develop, so both estates authenticate against ONE
+    # app registration rather than drifting into two.
+    #
+    # ⚠ THE REDIRECT URI POINTS AT THE FRONTEND, NOT AT THIS API, and that is
+    # correct: the browser is redirected to the app domain and the BFF route is served
+    # beneath it. It is also why signing in end to end against the new estate needs a
+    # human step in Entra — adding this cluster's hostname as a permitted redirect
+    # URI. Until then the API starts and serves, and the auth round trip lands on ECS.
+    env:
+      - name: ENTRA_TENANT_ID
+        value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      - name: ENTRA_CLIENT_ID
+        value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
+      - name: ENTRA_REDIRECT_URI
+        value: https://rova-dev.qnsc.vn/v1/bff/callback
+
   worker:
     resources: { cpu: 100m, memory: 256Mi }
     scaling: null
 
-# The data tier's endpoint. An endpoint is NOT a credential, which is the whole
-# reason `auth: iam` needs no secret: there is nothing here worth protecting, and
-# the token that is worth protecting never exists at rest.
+# The data tier's endpoint. An endpoint is NOT a credential, which is the whole reason
+# `auth: iam` needs no secret: there is nothing here worth protecting, and the token
+# that is worth protecting never exists at rest.
 # Source: `tofu output -raw postgres_endpoint` in infra/live/data-dev.
 data:
   postgres:
     host: qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com
-
-# ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ────────────────────
-#
-# The canonical API hostname is `rova-api-dev.qnsc.vn`, and it is POINTED AT THE ECS
-# TUNNEL right now, serving the dev environment people are using. Claiming it here
-# would cut dev over silently, as a side effect of a deploy, with no rehearsal — the
-# opposite of the parallel-estate strategy this whole migration is built on.
-#
-# So the new estate proves itself on its own name. Cutover is then one DNS record
-# repointed at the new tunnel, reversible by repointing it back, and DELETING THESE
-# THREE LINES — after which the helper's default (`rova-api-dev.qnsc.vn`) applies.
-services:
-  api:
-    host: rova-api-eks-dev.qnsc.vn
-
