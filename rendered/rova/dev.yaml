@@ -197,6 +197,9 @@ spec:
       serviceAccountName: api
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -204,7 +207,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-0000000
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-3140a85c864ac3a34128d0b82ab9955396efe354
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -234,7 +237,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-3140a85c864ac3a34128d0b82ab9955396efe354
             - name: DATABASE_HOST
               value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
@@ -288,6 +291,9 @@ spec:
       serviceAccountName: worker
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -296,7 +302,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-0000000
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-3140a85c864ac3a34128d0b82ab9955396efe354
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -315,7 +321,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0000000
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-3140a85c864ac3a34128d0b82ab9955396efe354
             - name: DATABASE_HOST
               value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
@@ -341,7 +347,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-0000000
+  name: migrator-sha-3140a85c864ac3a3
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -371,13 +377,16 @@ spec:
       serviceAccountName: migrator
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: arm64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-0000000
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-3140a85c864ac3a34128d0b82ab9955396efe354
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

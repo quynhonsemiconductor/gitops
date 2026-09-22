@@ -21,17 +21,44 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["deployments", "statefulsets", "daemonsets", "pods"]
+  # ── WITHOUT THIS, THE POLICY DENIED EVERY POD IN THE CLUSTER ────────────────
+  #
+  # `pods` is in the list above on purpose: a bare Pod would otherwise bypass the
+  # rule entirely. But the expressions below read `object.spec.template.spec
+  # .containers`, which exists on a Deployment and NOT on a Pod. Evaluating a Pod
+  # therefore produced a CEL error, not `false`:
+  #
+  #     expression '!object.spec.template.spec.containers.exists(...)' resulted in
+  #     error: no such key: template
+  #
+  # and with `failurePolicy: Fail` an erroring expression DENIES. So the policy that
+  # exists to forbid `:latest` was silently forbidding everything. rova's api and
+  # worker ReplicaSets retried for hours against
+  #
+  #     is forbidden: ValidatingAdmissionPolicy 'qnsc-image-tags' ... denied request
+  #
+  # which names the policy but reads like a rejected image tag — so the obvious thing
+  # to go and check is the tag, and the tag was fine.
+  #
+  # Resolving the container list once, for both shapes, is what makes covering Pods
+  # and workloads in one policy actually work.
+  variables:
+    - name: containers
+      expression: >-
+        has(object.spec.template)
+          ? object.spec.template.spec.containers
+          : object.spec.containers
   validations:
     # §11 — `:latest` is how a develop build reached a production task definition
     # (qnsc-kb-backend/infra/live/prod/main.tf:104). This stops a pod NAMING it;
     # ECR tag immutability stops the tag MOVING. Both halves are needed.
     - expression: >-
-        !object.spec.template.spec.containers.exists(c, c.image.endsWith(':latest'))
+        !variables.containers.exists(c, c.image.endsWith(':latest'))
       message: ":latest is forbidden. Use sha-<commit> in dev or v<version> in prod (§11)."
       reason: Forbidden
     # An untagged image is `:latest` wearing a disguise.
     - expression: >-
-        object.spec.template.spec.containers.all(c, c.image.contains(':') || c.image.contains('@'))
+        variables.containers.all(c, c.image.contains(':') || c.image.contains('@'))
       message: "images must carry an explicit tag or digest (§11)."
       reason: Forbidden
 ---

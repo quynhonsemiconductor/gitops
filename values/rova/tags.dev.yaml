@@ -1,3 +1,9 @@
+# Image tags. CI rewrites these on every build; `sha-0000000` was the placeholder
+# and it is not a valid tag — the format is `sha-<FULL 40-character sha>`, which is
+# what ECR actually holds. A short sha pulls nothing and the pods sit in
+# ImagePullBackOff.
+# This one is the merge commit of rova#636, so the image contains the IAM database
+# auth this deployment depends on.
 # GENERATED — DO NOT EDIT BY HAND.
 #
 # CI writes this file on every deploy, and it is separate from dev.yaml for one
@@ -12,10 +18,10 @@
 services:
   api:
     image:
-      tag: sha-0000000
+      tag: sha-3140a85c864ac3a34128d0b82ab9955396efe354
   migrator:
     image:
-      tag: sha-0000000
+      tag: sha-3140a85c864ac3a34128d0b82ab9955396efe354
   worker:
     image:
-      tag: sha-0000000
+      tag: sha-3140a85c864ac3a34128d0b82ab9955396efe354

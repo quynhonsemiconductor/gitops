@@ -36,6 +36,25 @@ spec:
       serviceAccountName: {{ $name }}
       securityContext:
         runAsNonRoot: true
+        {{- /* ── A NUMERIC UID, WITHOUT WHICH runAsNonRoot REFUSES TO START ────
+               `runAsNonRoot: true` alone is not enough when the image's USER is a
+               NAME. The kubelet cannot resolve a name to a uid without running the
+               image, so it declines rather than assume:
+
+                 Error: container has runAsNonRoot and image has non-numeric user
+                 (nestjs), cannot verify user is non-root
+
+               Every pod pulled its image successfully and then never started. The
+               message is precise but easy to read as an image problem.
+
+               1001 is what the images actually use — rova's Dockerfile builds every
+               stage with `adduser --system --uid 1001`. Declaring it here rather
+               than inheriting it makes the chart's guarantee independent of a
+               Dockerfile it does not own: if an image ever ships a different user,
+               this fails loudly instead of silently running as whoever that is. */}}
+        runAsUser: {{ $svc.runAsUser | default $.Values.defaults.runAsUser | default 1001 }}
+        runAsGroup: {{ $svc.runAsGroup | default $.Values.defaults.runAsGroup | default 1001 }}
+        fsGroup: {{ $svc.runAsGroup | default $.Values.defaults.runAsGroup | default 1001 }}
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
