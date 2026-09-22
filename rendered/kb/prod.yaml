@@ -624,6 +624,8 @@ spec:
           envFrom:
             - secretRef:
                 name: kb-migrator
+                optional: true
+          env:
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

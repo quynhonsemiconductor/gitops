@@ -443,6 +443,14 @@ spec:
           envFrom:
             - secretRef:
                 name: rova-migrator
+                optional: true
+          env:
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova_migrator"
+            - name: DATABASE_AUTH
+              value: "iam"
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

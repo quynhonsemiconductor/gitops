@@ -476,6 +476,8 @@ spec:
           envFrom:
             - secretRef:
                 name: opshub-migrator
+                optional: true
+          env:
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

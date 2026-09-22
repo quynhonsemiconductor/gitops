@@ -264,6 +264,22 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            {{- /* ── PRODUCT-WIDE env, MERGED BEFORE the per-service block ──────
+                   Some configuration belongs to the PRODUCT, not to one service.
+                   Entra is the case that forced this: `api` and `worker` share the
+                   same env validator, so supplying the tenant/client id to `api`
+                   alone left the worker crash-looping on
+
+                     ENTRA_TENANT_ID: expected string, received undefined
+
+                   with the api healthy beside it — which reads like a worker bug
+                   rather than a values-file shape. Duplicating the block per service
+                   is the obvious fix and the one that drifts: two copies of an
+                   identity that must agree.
+                   Per-service `env` comes second, so a service can still override. */}}
+            {{- with $.Values.defaults.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -341,6 +341,12 @@ spec:
               value: "rova"
             - name: DATABASE_AUTH
               value: "iam"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
+            - name: ENTRA_REDIRECT_URI
+              value: https://rova-dev.qnsc.vn/v1/bff/callback
           envFrom:
             - secretRef:
                 name: rova-app
@@ -410,6 +416,24 @@ spec:
           envFrom:
             - secretRef:
                 name: rova-migrator
+                optional: true
+          env:
+            - name: DATABASE_HOST
+              value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova_migrator"
+            - name: DATABASE_AUTH
+              value: "iam"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
+            - name: ENTRA_REDIRECT_URI
+              value: https://rova-dev.qnsc.vn/v1/bff/callback
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
