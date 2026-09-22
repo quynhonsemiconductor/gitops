@@ -64,9 +64,48 @@ jobs:
       - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@v1
         id: aws
         with:
-          role-arn: ${{ secrets.CHART_PUBLISH_ROLE_ARN }}
+          # ── DERIVED, NOT CONFIGURED, AND NOT A SECRET ──────────────────────────
+          # This read `secrets.CHART_PUBLISH_ROLE_ARN`, and that secret was never
+          # created — so the workflow would have failed at this step, and six chart
+          # versions got published by hand from a laptop instead. A gate nobody can
+          # pass is a gate everybody routes around, so the fix is to leave nothing to
+          # set up.
+          #
+          # A ROLE ARN IS NOT A SECRET. The estate says so itself, in
+          # rova/infra/live/develop/variables.tf: "These are NOT secrets… a Cloudflare
+          # account id identifies the account without authorising anything." Naming a
+          # role authorises nothing; assuming it still requires a matching OIDC
+          # subject, and `infra/live/bootstrap` scopes that to
+          # `refs/tags/chart-v*` — so a branch push cannot publish a chart.
+          #
+          # The role NAME is fixed and the account id is already an org variable, so
+          # the ARN is derived and there is no third thing to keep in step.
+          role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/qnsc-chart-publish
           region: ${{ env.AWS_REGION }}
           ecr-login: true
+
+      # ── REFUSE A VERSION THE REGISTRY ALREADY HAS ────────────────────────────
+      # `charts/qnsc-service` is IMMUTABLE, so a duplicate push fails — but it fails
+      # inside `helm push` with a registry error that reads like a transport problem,
+      # and the obvious response is to retry it. Checking first turns that into one
+      # sentence naming the actual cause.
+      #
+      # It happens for a real reason: versions 0.2.0 to 0.7.0 were published by hand
+      # while this workflow could not authenticate, so those numbers are taken and CI
+      # can never mint them. Immutability is why that is permanent, and also why it is
+      # safe — a published chart cannot be quietly changed underneath a pinned
+      # Application.
+      - name: Version must not already be published
+        run: |
+          set -euo pipefail
+          version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
+          if aws ecr describe-images --repository-name charts/qnsc-service \
+               --image-ids imageTag="${version}" >/dev/null 2>&1; then
+            echo "::error::charts/qnsc-service:${version} is already published and this repository is IMMUTABLE."
+            echo "Bump the version in Chart.yaml and tag again — a published chart cannot be replaced (§11c)."
+            exit 1
+          fi
+          echo "::notice::${version} is free to publish"
 
       - name: Package and push
         run: |
