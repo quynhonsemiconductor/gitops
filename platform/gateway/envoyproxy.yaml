@@ -1,0 +1,65 @@
+# ── EnvoyProxy — the ONLY reliable way to keep the proxy off a load balancer ──
+#
+# §3 is unambiguous: "Not needed: ALB/NLB (~$16/month each)… No inbound surface is
+# the strongest property of the current architecture." cloudflared dials OUT; nothing
+# should be able to dial in.
+#
+# ── WHY values-envoy.yaml WAS NOT ENOUGH, WHICH COST A REAL LOAD BALANCER ────
+#
+# `values-envoy.yaml` sets `config.envoyGateway.provider.kubernetes.envoyService.type:
+# ClusterIP`, and that value DOES land correctly — `kubectl get cm envoy-gateway-config`
+# shows it. The proxy Service was still created as `LoadBalancer`, and EKS Auto Mode
+# duly provisioned
+#
+#     k8s-platform-envoypla-1c334ce0f6-…elb.ap-southeast-1.amazonaws.com
+#
+# a public, billable inbound surface — precisely the thing §3 exists to avoid.
+#
+# The reason is that the EnvoyGateway config map is read by the CONTROLLER at startup
+# and describes its defaults, while the per-Gateway proxy infrastructure is resolved
+# through the GatewayClass's `parametersRef`. With no parametersRef there is nothing
+# gateway-scoped to consult, and a config map edit does not restart the controller
+# either — so the setting can be correct in three places and still not take effect.
+#
+# Envoy Gateway's own documentation names this resource as the supported mechanism:
+# "Envoy Gateway provides an EnvoyProxy CRD that can be linked to the ParametersRef in
+# a Gateway and GatewayClass, allowing cluster admins to customize the managed
+# EnvoyProxy Deployment and Service."
+#
+# So the settings live HERE and the GatewayClass points at them. The values file keeps
+# its copy as the controller default, which is harmless and useful if a second
+# GatewayClass is ever added without its own parametersRef.
+#
+# THIS FILE IS LOAD-BEARING FOR COST AND FOR SECURITY. If the proxy Service ever shows
+# `TYPE: LoadBalancer` again, this resource or the parametersRef binding it is missing.
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: qnsc
+  namespace: platform
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        # THE WHOLE POINT OF THIS FILE.
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 2
+        pod:
+          nodeSelector:
+            # §2 — the estate runs arm64 spot. The built-in `general-purpose` pool
+            # cannot satisfy this, which is why `compute/` is step 0.
+            kubernetes.io/arch: arm64
+            karpenter.sh/capacity-type: spot
+        container:
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            # NO CPU LIMIT — §15d forbids it and the admission policy enforces it
+            # ("CPU limits are forbidden (§15d)"). Throttling a proxy is how a
+            # latency cliff appears under exactly the load it should absorb.
+            limits:
+              memory: 512Mi

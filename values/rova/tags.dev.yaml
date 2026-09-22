@@ -1,3 +1,13 @@
+# Image tags. CI rewrites these on every build; `sha-0000000` was the placeholder
+# and it is not a valid tag — the format is `sha-<FULL 40-character sha>`, which is
+# what ECR actually holds. A short sha pulls nothing and the pods sit in
+# ImagePullBackOff.
+# This one is the merge commit of rova#639, so the image contains BOTH the IAM database
+# auth and the migrator's own IAM path — without the second, the migrator Job fails on
+# a DATABASE_PASSWORD an rds_iam role does not have.
+#
+# NOTE THE LENGTH: the Kubernetes pipeline tags `sha-<12>` while the ECS pipeline tags
+# `sha-<40>`. Same commit, two different tags, in the same repositories.
 # GENERATED — DO NOT EDIT BY HAND.
 #
 # CI writes this file on every deploy, and it is separate from dev.yaml for one
@@ -12,10 +22,10 @@
 services:
   api:
     image:
-      tag: sha-0000000
+      tag: sha-1a5c16cbda2e
   migrator:
     image:
-      tag: sha-0000000
+      tag: sha-1a5c16cbda2e
   worker:
     image:
-      tag: sha-0000000
+      tag: sha-1a5c16cbda2e

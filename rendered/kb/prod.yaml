@@ -275,6 +275,9 @@ spec:
       serviceAccountName: api
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -414,6 +417,9 @@ spec:
       serviceAccountName: worker
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -594,6 +600,9 @@ spec:
       serviceAccountName: migrator
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -615,6 +624,8 @@ spec:
           envFrom:
             - secretRef:
                 name: kb-migrator
+                optional: true
+          env:
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -632,6 +643,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/kb/app/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -649,6 +668,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/kb/migrator/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -666,6 +693,14 @@ spec:
   dataFrom:
     - find:
         path: qnsc/prod/kb/keda/
+        name:
+          regexp: ".*"
+      rewrite:
+        - regexp:
+            source: ".*/([^/]+)$"
+            target: "$1"
+        - transform:
+            template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
 # Source: qnsc-service/templates/httproute.yaml
@@ -686,7 +721,7 @@ spec:
     - name: qnsc
       namespace: platform
   hostnames:
-    - "kb.qnsc.vn"
+    - "kb-api.qnsc.vn"
   rules:
     - matches:
         - path:
@@ -846,7 +881,7 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets
+            name: api
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

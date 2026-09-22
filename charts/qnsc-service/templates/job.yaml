@@ -36,6 +36,25 @@ spec:
       serviceAccountName: {{ $name }}
       securityContext:
         runAsNonRoot: true
+        {{- /* ── A NUMERIC UID, WITHOUT WHICH runAsNonRoot REFUSES TO START ────
+               `runAsNonRoot: true` alone is not enough when the image's USER is a
+               NAME. The kubelet cannot resolve a name to a uid without running the
+               image, so it declines rather than assume:
+
+                 Error: container has runAsNonRoot and image has non-numeric user
+                 (nestjs), cannot verify user is non-root
+
+               Every pod pulled its image successfully and then never started. The
+               message is precise but easy to read as an image problem.
+
+               1001 is what the images actually use — rova's Dockerfile builds every
+               stage with `adduser --system --uid 1001`. Declaring it here rather
+               than inheriting it makes the chart's guarantee independent of a
+               Dockerfile it does not own: if an image ever ships a different user,
+               this fails loudly instead of silently running as whoever that is. */}}
+        runAsUser: {{ $svc.runAsUser | default $.Values.defaults.runAsUser | default 1001 }}
+        runAsGroup: {{ $svc.runAsGroup | default $.Values.defaults.runAsGroup | default 1001 }}
+        fsGroup: {{ $svc.runAsGroup | default $.Values.defaults.runAsGroup | default 1001 }}
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
@@ -64,9 +83,54 @@ spec:
                    role. */}}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-migrator
-          {{- with $svc.env }}
+                {{- /* ── OPTIONAL, BECAUSE UNDER IAM AUTH IT IS LEGITIMATELY EMPTY ──
+                       §7c gives the migrator its own secret PATH, and under
+                       `auth: iam` there is nothing to put in it: the role is a member
+                       of `rds_iam` and has no password. ESO finds zero secrets, so it
+                       reports SecretSynced and creates NO Secret at all — and a
+                       required secretRef then fails with
+
+                         Error: secret "rova-migrator" not found
+
+                       while the ExternalSecret beside it reports Ready=True. Marking
+                       it optional is what lets "no credential" be a valid state
+                       rather than a broken one. */}}
+                optional: true
           env:
+            {{- /* ── THE MIGRATOR HAD NO WAY TO FIND THE DATABASE ────────────────
+                   This Job emitted no DATABASE_* at all, so the only route to a host
+                   was the secret above — which is empty under IAM auth. It therefore
+                   could not connect by any means.
+                   DATABASE_USER is the MIGRATOR role, never the application's: §5d
+                   gives the app statement_timeout = 30s, which would kill the 600s
+                   migration this Job exists to run, and DDL rights have no business
+                   on a runtime role. */}}
+            {{- if and $.Values.data $.Values.data.postgres }}
+            {{- $pg := $.Values.data.postgres }}
+            {{- with $pg.host }}
+            - name: DATABASE_HOST
+              value: {{ . | quote }}
+            - name: DATABASE_PORT
+              value: "5432"
+            {{- end }}
+            {{- with $pg.name }}
+            - name: DATABASE_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $pg.user }}
+            - name: DATABASE_USER
+              value: {{ printf "%s_migrator" . | quote }}
+            {{- end }}
+            {{- with $pg.auth }}
+            - name: DATABASE_AUTH
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with $.Values.defaults.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
+            {{- with $svc.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 {{- end }}
 {{- end }}

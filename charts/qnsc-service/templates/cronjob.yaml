@@ -34,6 +34,10 @@ spec:
           serviceAccountName: {{ $name }}
           securityContext:
             runAsNonRoot: true
+            # A NUMERIC uid: runAsNonRoot cannot verify a named user (rova's images say
+            # `nestjs`), and the kubelet refuses to start the container rather than guess.
+            runAsUser: {{ $svc.runAsUser | default $.Values.defaults.runAsUser | default 1001 }}
+            runAsGroup: {{ $svc.runAsGroup | default $.Values.defaults.runAsGroup | default 1001 }}
             seccompProfile:
               type: RuntimeDefault
           nodeSelector:
