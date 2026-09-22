@@ -1,0 +1,32 @@
+# Gitleaks configuration for `gitops`.
+#
+# Extends the upstream default rather than replacing it — a hand-written rule set
+# would silently stop detecting everything it forgot to include.
+[extend]
+useDefault = true
+
+# ── IMAGE TAGS ARE NOT SECRETS ────────────────────────────────────────────────
+#
+# `rendered/` contains every image this estate deploys, and the Kubernetes pipeline
+# tags them `sha-<12 hex>`:
+#
+#     608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-1a5c16cbda2e
+#
+# Twelve hex characters carry enough entropy for the default `generic-api-key` rule,
+# so every deploy of every product would fail the secret scan on the one file whose
+# entire purpose is to record what is deployed.
+#
+# Worth noting WHY this appeared only now: the ECS pipeline tags `sha-<40 hex>`, which
+# the rule does not flag, and the previous placeholder was `sha-0000000`. The two
+# pipelines producing different tag lengths for the same commit is what surfaced it.
+#
+# THE PATTERN IS DELIBERATELY NARROW. It anchors on the ECR registry host and an
+# explicit `sha-` prefix, so it cannot excuse a credential that merely happens to sit
+# nearby. A bare hex string anywhere else in this repository is still a finding.
+[[rules]]
+id = "generic-api-key"
+  [rules.allowlist]
+  regexTarget = "line"
+  regexes = [
+    '''\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9._/-]+:sha-[0-9a-f]{7,40}''',
+  ]
