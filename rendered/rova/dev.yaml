@@ -209,7 +209,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-1a5c16cbda2e
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-4f404e2394e9
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -239,7 +239,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-1a5c16cbda2e
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-4f404e2394e9
             - name: DATABASE_HOST
               value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
@@ -311,7 +311,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-1a5c16cbda2e
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-4f404e2394e9
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -330,7 +330,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-1a5c16cbda2e
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-4f404e2394e9
             - name: DATABASE_HOST
               value: "qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com"
             - name: DATABASE_PORT
@@ -362,7 +362,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-1a5c16cbda2e
+  name: migrator-sha-4f404e2394e9
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -401,7 +401,7 @@ spec:
         kubernetes.io/arch: arm64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-1a5c16cbda2e
+          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-4f404e2394e9
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

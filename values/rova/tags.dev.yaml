@@ -22,10 +22,10 @@
 services:
   api:
     image:
-      tag: sha-1a5c16cbda2e
+      tag: sha-4f404e2394e9
   migrator:
     image:
-      tag: sha-1a5c16cbda2e
+      tag: sha-4f404e2394e9
   worker:
     image:
-      tag: sha-1a5c16cbda2e
+      tag: sha-4f404e2394e9
