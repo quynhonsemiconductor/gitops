@@ -24,6 +24,11 @@ env:
   # The Kubernetes version manifests are validated against. Bump it in
   # versions.yaml first — §2b keeps component versions in one place.
   KUBE_VERSION: "1.33.0"
+  # The CRD schema catalogue, PINNED to a commit instead of `main`. On 2026-10-08 the catalogue replaced
+  # external-secrets.io/secretstore_v1.json (#988) with a file kubeconform cannot load ("could not find schema for
+  # SecretStore"), which turned this job red on main's own render and on every PR from then on. This is the last commit before that
+  # change. Bump it deliberately, running kubeconform locally first.
+  CRD_CATALOG_SHA: "f3e4382095909ac60000da025f323ba44d4c738a"
 
 jobs:
   chart:
@@ -92,7 +97,7 @@ jobs:
             -strict \
             -summary \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRD_CATALOG_SHA}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
             rendered/
 
       # ── cross-repository contracts ───────────────────────────────────────────
