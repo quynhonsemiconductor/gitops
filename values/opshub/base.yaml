@@ -24,7 +24,7 @@ services:
     capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api }
     resources: { cpu: 1, memory: 2Gi }
-    scaling: { type: rps, min: 2, max: 6, target: 200 }
+    replicas: 2   # fixed. It was a KEDA range 2..6; KEDA was dropped 2026-10-13 and the floor is kept
     slo:
       availability: 99.0        # §17 — P2. Nobody gets up at night for opshub
       latency: { p99: 1s }
@@ -40,8 +40,7 @@ services:
     # and ExclusiveJob crons, but AbstractOutboxRelay uses
     # SELECT … FOR UPDATE SKIP LOCKED and ExclusiveJob holds a CROSS-POD lock, so
     # replicas divide the work rather than duplicating it. Contrast kb's beat.
-    scaling: { type: queue, queue: jobs, min: 1, max: 4 }
-
+    replicas: 1   # fixed. It was a KEDA range 1..4; KEDA was dropped 2026-10-13 and the floor is kept
   migrator:
     kind: job
     expose: none

@@ -32,7 +32,7 @@ services:
     capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api }
     resources: { cpu: 250m, memory: 1Gi }
-    scaling: { type: rps, min: 2, max: 10, target: 200 }
+    replicas: 2   # fixed. It was a KEDA range 2..10; KEDA was dropped 2026-10-13 and the floor is kept
     slo:
       availability: 99.5
       latency: { p99: 500ms }
@@ -45,8 +45,7 @@ services:
     capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker }
     resources: { cpu: 250m, memory: 512Mi }
-    scaling: { type: queue, queue: email-bounce, min: 1, max: 6 }
-
+    replicas: 1   # fixed. It was a KEDA range 1..6; KEDA was dropped 2026-10-13 and the floor is kept
   migrator:
     kind: job
     expose: none

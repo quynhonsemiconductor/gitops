@@ -5,14 +5,13 @@ size: s                      # 1 replica, no PDB, no topology spread
 
 # ── ONE `services:` KEY, AND THAT IS NOT A STYLE POINT ───────────────────────
 # This file briefly had three. YAML keeps only the LAST mapping for a duplicate key,
-# so the earlier blocks — capacity, resources, scaling — vanish silently. Nothing
+# so the earlier blocks — capacity, resources — vanish silently. Nothing
 # warns: helm renders, lint passes, and the workload quietly runs on-demand with the
 # chart's default resources. Everything for a service belongs in this one block.
 services:
   api:
     capacity: spot           # dev has no revenue to protect
     resources: { cpu: 100m, memory: 512Mi }
-    scaling: null            # autoscaling OFF in dev — fixed 1 replica
 
     # ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ───────────────
     #
@@ -29,7 +28,6 @@ services:
 
   worker:
     resources: { cpu: 100m, memory: 256Mi }
-    scaling: null
 
 # The data tier's endpoint. An endpoint is NOT a credential, which is the whole reason
 # `auth: iam` needs no secret: there is nothing here worth protecting, and the token

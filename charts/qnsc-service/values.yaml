@@ -30,7 +30,7 @@ size: s              # default preset; a service may override it
 #     capacity: mixed            # spot · ondemand · mixed. Defaults per kind (_kinds.tpl)
 #     image: { repo: "...", tag: "sha-abc123" }
 #     resources: { cpu: 500m, memory: 1Gi }
-#     scaling: { type: rps, min: 2, max: 6, target: 200 }
+#     replicas: 2                # fixed; there is no autoscaler (KEDA dropped 2026-10-13). Default: the size preset
 #     slo: { availability: 99.5, latency: { p99: 500ms } }
 
 # ── Size presets — CRITICALITY tiers, not resource sizes ─────────────────────
@@ -97,12 +97,6 @@ otel:
   endpoint: http://alloy-gateway.platform.svc.cluster.local:4317
 accountId: "608983206583"
 region: ap-southeast-1
-prometheus:
-  # §9i — Grafana Cloud, not an in-cluster Prometheus. There is no in-cluster
-  # metrics store by design: "Do not self-host LGTM." KEDA queries the hosted
-  # endpoint with the credentials in the keda-grafana TriggerAuthentication.
-  address: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
-
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.
 images:

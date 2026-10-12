@@ -7,7 +7,6 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -24,7 +23,6 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -38,7 +36,6 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: platform }
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -53,7 +50,6 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -84,7 +80,6 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: 3000 }
-
 ---
 # Source: qnsc-service/templates/pdb.yaml
 apiVersion: policy/v1
@@ -105,7 +100,6 @@ spec:
     matchLabels:
       app.kubernetes.io/name: api
       app.kubernetes.io/instance: rova
-
 ---
 # Source: qnsc-service/templates/pdb.yaml
 apiVersion: policy/v1
@@ -126,7 +120,6 @@ spec:
     matchLabels:
       app.kubernetes.io/name: worker
       app.kubernetes.io/instance: rova
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -144,7 +137,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-api
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -162,7 +154,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-migrator
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -180,7 +171,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-worker
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
@@ -205,7 +195,6 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
-
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -221,6 +210,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
 spec:
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -299,7 +289,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -315,6 +304,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: worker
@@ -383,7 +373,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
@@ -451,7 +440,6 @@ spec:
               value: "rova_migrator"
             - name: DATABASE_AUTH
               value: "iam"
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -476,7 +464,6 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -501,32 +488,6 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: keda-grafana
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: rova
-    kind: SecretStore
-  target:
-    name: keda-grafana
-  dataFrom:
-    - find:
-        path: qnsc/prod/rova/keda/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
-
 ---
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -555,7 +516,6 @@ spec:
       backendRefs:
         - name: api
           port: 3000
-
 ---
 # Source: qnsc-service/templates/slo.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -661,67 +621,6 @@ spec:
             env: prod
           annotations:
             summary: "rova-api has reported no metrics for 10 minutes"
-
----
-# Source: qnsc-service/templates/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  scaleTargetRef:
-    name: api
-  minReplicaCount: 2
-  maxReplicaCount: 10
-  pollingInterval: 30
-  cooldownPeriod: 300
-  triggers:
-    - type: prometheus
-      authenticationRef:
-        name: keda-grafana
-      metadata:
-        serverAddress: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
-        query: sum(rate(http_server_request_duration_seconds_count{service_name="rova-api"}[2m]))
-        threshold: "200"
-
----
-# Source: qnsc-service/templates/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: worker
-  labels:
-    app.kubernetes.io/name: worker
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  scaleTargetRef:
-    name: worker
-  minReplicaCount: 1
-  maxReplicaCount: 6
-  pollingInterval: 30
-  cooldownPeriod: 300
-  triggers:
-    - type: aws-sqs-queue
-      authenticationRef:
-        name: keda-irsa
-      metadata:
-        queueURL: https://sqs.ap-southeast-1.amazonaws.com/608983206583/qnsc-prod-rova-email-bounce
-        queueLength: "20"
-        awsRegion: ap-southeast-1
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -737,18 +636,3 @@ spec:
         jwt:
           serviceAccountRef:
             name: api
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: keda.sh/v1alpha1
-kind: TriggerAuthentication
-metadata:
-  name: keda-grafana
-spec:
-  secretTargetRef:
-    - parameter: username
-      name: keda-grafana
-      key: username
-    - parameter: password
-      name: keda-grafana
-      key: password

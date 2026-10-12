@@ -7,7 +7,6 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -24,7 +23,6 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -38,7 +36,6 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: platform }
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -53,7 +50,6 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
-
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -84,7 +80,6 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: 3000 }
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -102,7 +97,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-api
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -120,7 +114,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-migrator
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
@@ -138,7 +131,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-worker
 automountServiceAccountToken: false
-
 ---
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
@@ -163,7 +155,6 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
-
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -179,7 +170,7 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -265,7 +256,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-
 ---
 # Source: qnsc-service/templates/deployment.yaml
 apiVersion: apps/v1
@@ -356,7 +346,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
@@ -434,7 +423,6 @@ spec:
               value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
             - name: ENTRA_REDIRECT_URI
               value: https://rova-dev.qnsc.vn/v1/bff/callback
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -459,7 +447,6 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -484,7 +471,6 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
-
 ---
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -513,7 +499,6 @@ spec:
       backendRefs:
         - name: api
           port: 3000
-
 ---
 # Source: qnsc-service/templates/slo.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -619,7 +604,6 @@ spec:
             env: dev
           annotations:
             summary: "rova-api has reported no metrics for 10 minutes"
-
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1

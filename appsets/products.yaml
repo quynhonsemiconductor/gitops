@@ -119,6 +119,7 @@ spec:
       ignoreDifferences:
         - group: apps
           kind: Deployment
-          # replicas is owned by the KEDA ScaledObject wherever scaling is set.
-          # Without this ArgoCD reports OutOfSync forever on every scaled service.
+          # replicas is changed from outside the chart wherever kube-downscaler runs (the dev
+          # night shutdown, which scales Deployments to zero). Without this ArgoCD reverts it
+          # on every reconcile and the two fight.
           jqPathExpressions: [".spec.replicas"]

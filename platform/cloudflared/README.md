@@ -23,20 +23,6 @@ routing here, and records why that was wrong:
 So routing lives in HTTPRoutes, in product namespaces, in git. The tunnel just
 carries bytes to the Gateway.
 
-## Why this also makes preview environments possible
-
-§11's preview environments need a hostname per pull request. With routing here,
-that would be a Cloudflare config edit per PR. With the catch-all plus a wildcard
-DNS record:
-
-```
-*.preview.qnsc.vn  →  the tunnel  →  the Gateway  →  an HTTPRoute in the
-                                                      preview namespace
-```
-
-**No per-PR tunnel edit.** §3 calls this "the second problem Gateway API solves,
-and it arrives for previews rather than for canary."
-
 ## What is deliberately absent
 
 ```

@@ -34,7 +34,7 @@
 #
 # A Service selects pods in its OWN namespace only. Envoy Gateway deploys proxies
 # into the namespace where the controller runs, so `gateway-helm` MUST be installed
-# with `--namespace platform` (as KEDA is). Installed into the chart's default
+# with `--namespace platform`. Installed into the chart's default
 # `envoy-gateway-system`, the proxy pods land there, this selector matches nothing,
 # and the result is a Service with no endpoints — which presents as a 502 from
 # Cloudflare with three healthy cloudflared replicas and a healthy Gateway. That is

@@ -19,7 +19,6 @@ Columns
                                                CONNECTION, so one client pins to
                                                one pod forever (design §4d)
   route      none | HTTPRoute | GRPCRoute      only rendered when exposed
-  scalable   true | false                      whether a KEDA ScaledObject renders
   pdb        never | bySize | always           `always` means every size, XS
                                                included — long-lived connections
                                                die on an unguarded drain (§4e)
@@ -31,42 +30,36 @@ http:
   workload: Deployment
   service: ClusterIP
   route: HTTPRoute
-  scalable: true
   pdb: bySize
   capacity: mixed
 grpc:
   workload: Deployment
   service: Headless
   route: GRPCRoute
-  scalable: true
   pdb: bySize
   capacity: mixed
 realtime:
   workload: Deployment
   service: ClusterIP
   route: HTTPRoute
-  scalable: true
   pdb: always
   capacity: ondemand
 worker:
   workload: Deployment
   service: none
   route: none
-  scalable: true
   pdb: bySize
   capacity: spot
 job:
   workload: Job
   service: none
   route: none
-  scalable: false
   pdb: never
   capacity: spot
 cron:
   workload: CronJob
   service: none
   route: none
-  scalable: false
   pdb: never
   capacity: spot
 {{- end -}}

@@ -79,14 +79,13 @@ tests:
           path: spec.trafficDistribution
           value: PreferClose
 
-  # ── §4b Axis 7 ──────────────────────────────────────────────────────────────
-  - it: omits replicas when a ScaledObject owns them
-    # A ScaledObject and a Deployment otherwise fight over the field on every
-    # reconcile.
+  # ── §4b Axis 7 (KEDA dropped 2026-10-13) ─────────────────────────────────────
+  - it: always renders a fixed replica count
+    # There is no autoscaler any more, so nothing else owns the field.
     template: templates/deployment.yaml
     documentIndex: 0
     asserts:
-      - isNull:
+      - isNotNull:
           path: spec.replicas
 
   # ── Found in review, 2026-09-16 ──────────────────────────────────────────────

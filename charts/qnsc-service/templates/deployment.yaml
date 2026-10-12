@@ -21,11 +21,10 @@ metadata:
   labels:
     {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
 spec:
-  {{- /* Replicas are omitted when a ScaledObject owns them, or HPA and the
-         Deployment fight over the same field on every reconcile. */ -}}
-  {{- if not (and $caps.scalable $svc.scaling) }}
+  {{- /* A fixed replica count, from the size preset or the service's own `replicas`. There is no autoscaler
+         (KEDA was dropped 2026-10-13, decision D2): dev scales to zero by schedule with kube-downscaler,
+         and a service that needs more replicas says so in its values. */}}
   replicas: {{ $svc.replicas }}
-  {{- end }}
   {{- /* A RollingUpdate briefly runs the OLD and NEW pod at once, which for a
          singleton scheduler means every job fires twice during every deploy.
          Recreate takes the old one down first — a few seconds of no scheduler,

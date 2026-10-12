@@ -13,7 +13,7 @@ Task breakdown: `infra/docs/implementation-plan.md`.
 charts/qnsc-service/     the chart. ONE chart for all ~15 services (§4b)
 values/<product>/        base.yaml + dev.yaml + prod.yaml
 apps/                    ArgoCD Applications, one per (product, env)
-appsets/                 ApplicationSet with the PR generator — preview envs (§11)
+appsets/                 ApplicationSet: one Application per (product, env)
 rendered/                committed `helm template` output. The review artefact (§11c)
 versions.yaml            every component version, pinned in one place (§2b)
 ```
@@ -94,7 +94,6 @@ apps/root.yaml          the ONE thing installed by hand (§13's bootstrap answer
   → apps/project.yaml   what a product Application may create — an allow-list,
                         not "*", so an unexpected kind fails at sync
   → appsets/products.yaml   one Application per (product, env), chart PINNED per row
-  → appsets/preview.yaml    one full environment per labelled pull request
 ```
 
 Three kinds of change, three blast radii — worth knowing which one you are making:
@@ -138,8 +137,7 @@ diff — which is what the change does to production.
 The invariants under `charts/qnsc-service/tests/` each guard a decision that was
 expensive to reach and would be cheap to undo by accident: no CPU limits, memory
 limit equal to request, liveness pointing at nothing with a dependency, PSS
-`restricted`, `trafficDistribution` on every Service, and no `replicas` when a
-ScaledObject owns it.
+`restricted`, `trafficDistribution` on every Service, and a fixed `replicas` on every Deployment.
 
 ## Things that look wrong and are not
 
@@ -167,8 +165,8 @@ realtime ignores the preset   PDB at every size including XS. An unguarded drain
                               drops every connected client, and Karpenter drains
                               eagerly (§4e)
 
-no replicas when scaling set  a ScaledObject and a Deployment fight over the field
-                              on every reconcile
+replicas always rendered      there is no autoscaler (KEDA was dropped 2026-10-13),
+                              so nothing else owns the field
 ```
 
 ## What checks what
@@ -190,7 +188,7 @@ reference and its definition in different files, each individually valid.**
 api and worker had NO envFrom       they would have crashed on the first
                                     DATABASE_URL read, with the ExternalSecret
                                     beside them looking healthy
-KEDA queried a Prometheus           that nothing installs and nothing will
+the old KEDA queried a Prometheus   that nothing installed (KEDA is gone)
 platform/ referenced three secrets  nothing created
 five stacks read kms_key_arn        from the wrong remote state
 and private_route_table_ids         which no stack exports

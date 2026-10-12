@@ -80,7 +80,7 @@ jobs:
 
       # ── kubeconform ──────────────────────────────────────────────────────────
       # Validates the rendered output against real Kubernetes schemas, including
-      # the CRDs the platform depends on — Gateway API, KEDA, External Secrets and
+      # the CRDs the platform depends on — Gateway API, External Secrets and
       # Prometheus Operator. Without the CRD catalogue those resources are skipped
       # silently, which is worse than not running it.
       - name: Install kubeconform

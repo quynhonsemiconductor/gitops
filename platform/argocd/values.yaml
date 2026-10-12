@@ -91,15 +91,14 @@ repoServer:
   # ServiceAccount is `argocd-repo-server`, so the token exchange would have
   # failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity" — the
   # same ServiceAccount-name-versus-trust-condition mismatch already recorded for
-  # eso and keda on 2026-09-16, found again here on 2026-09-19.
+  # eso on 2026-09-16, found again here on 2026-09-19.
   #
   # Removed rather than fixed by widening the trust, deliberately: that role is
   # what cluster-dev grants an EKS access entry to, so adding this subject would
   # hand dev cluster-admin to the component that renders untrusted Helm charts.
   #
-  # The repo-server needs no AWS identity. It pulls the chart with the repository
-  # Secret in `ecr-credential.yaml`, which a CronJob keeps current because an ECR
-  # token lasts 12 hours.
+  # The repo-server needs no cloud identity: the chart is pulled from GHCR with the
+  # repository credential (the ECR token refresher this used to need is gone).
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 512Mi }
