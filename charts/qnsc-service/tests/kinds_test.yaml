@@ -31,9 +31,8 @@ tests:
           path: spec.template.spec.containers[1].resources.limits.memory
           value: 2Gi
 
-  - it: pins qnsc-kb to amd64 while clamav is in the pod
-    # clamav/clamav publishes no arm64 tag. This flips to arm64 the day the split
-    # lands — one line, and the largest single cost item in the estate.
+  - it: schedules qnsc-kb on the default architecture (amd64)
+    # No per-service pin any more: the chart default is the on-prem host's architecture.
     template: templates/deployment.yaml
     documentIndex: 0
     asserts:

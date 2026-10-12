@@ -68,9 +68,9 @@ argocd/        ArgoCD's Helm values (§5b) and the cluster-registration Secrets 
 ## Scheduling
 
 There is no node-class concept any more: the `karpenter.sh/capacity-type` selectors (Spot / on-demand) and the chart's `capacity` setting were removed
-with EKS, because no k3s node carries that label and a pod that selects it stays `Pending`. Pods still select `kubernetes.io/arch`. **That is a
-decision for the k3s adaptation:** the chart default is `arm64` (`defaults.arch`), and the cloudflared and Envoy pods pin it, so on an amd64 server
-they stay `Pending` until the architecture is chosen and the images are built for it.
+with EKS, because no k3s node carries that label and a pod that selects it stays `Pending`. The architecture is amd64 (the on-prem host,
+Ryzen 9 9950X): the chart default is `defaults.arch: amd64`, no platform pod pins arm64 any more, and product images must be built `linux/amd64`
+(multi-arch with arm64 while ECS still runs on Graviton).
 
 ## The thing §9b named but did not specify
 

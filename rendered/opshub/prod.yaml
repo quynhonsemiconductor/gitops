@@ -282,7 +282,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -379,7 +379,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -461,7 +461,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       containers:
         - name: pgbouncer
           image: bitnami/pgbouncer:1.24.1
@@ -527,7 +527,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       containers:
         - name: migrator
           image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-migrator:sha-0000000
