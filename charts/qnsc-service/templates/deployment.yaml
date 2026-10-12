@@ -70,9 +70,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: {{ $svc.arch | default $d.arch }}
-        {{- with include "qnsc.capacitySelector" ($svc.capacity | default "mixed") }}
-        {{- . | nindent 8 }}
-        {{- end }}
       {{- if $svc.topologySpread }}
       topologySpreadConstraints:
         - maxSkew: 1

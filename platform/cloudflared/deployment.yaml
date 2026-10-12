@@ -44,7 +44,6 @@ spec:
               app.kubernetes.io/name: cloudflared
       nodeSelector:
         kubernetes.io/arch: arm64
-        karpenter.sh/capacity-type: spot
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.8.1   # versions.yaml

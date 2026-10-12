@@ -42,9 +42,6 @@ spec:
               type: RuntimeDefault
           nodeSelector:
             kubernetes.io/arch: {{ $svc.arch | default $d.arch }}
-            {{- with include "qnsc.capacitySelector" ($svc.capacity | default "spot") }}
-            {{- . | nindent 12 }}
-            {{- end }}
           containers:
             - name: {{ $name }}
               image: {{ include "qnsc.image" (list $ $svc $name) }}

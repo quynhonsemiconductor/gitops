@@ -49,10 +49,7 @@ spec:
         replicas: 2
         pod:
           nodeSelector:
-            # §2 — the estate runs arm64 spot. The built-in `general-purpose` pool
-            # cannot satisfy this, which is why `compute/` is step 0.
             kubernetes.io/arch: arm64
-            karpenter.sh/capacity-type: spot
         container:
           resources:
             requests:

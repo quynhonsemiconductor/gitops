@@ -27,7 +27,6 @@ size: s              # default preset; a service may override it
 #     expose: public             # public · protected · cluster · internal · none
 #     port: 3000
 #     arch: arm64                # arm64 default; amd64 only when no build exists
-#     capacity: mixed            # spot · ondemand · mixed. Defaults per kind (_kinds.tpl)
 #     image: { repo: "...", tag: "sha-abc123" }
 #     resources: { cpu: 500m, memory: 1Gi }
 #     replicas: 2                # fixed; there is no autoscaler (KEDA dropped 2026-10-13). Default: the size preset

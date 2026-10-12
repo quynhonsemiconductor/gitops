@@ -228,7 +228,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: arm64
-        karpenter.sh/capacity-type: spot
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
@@ -318,7 +317,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: arm64
-        karpenter.sh/capacity-type: spot
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker

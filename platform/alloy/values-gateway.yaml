@@ -50,10 +50,7 @@ alloy:
     readOnlyRootFilesystem: true
     capabilities: { drop: ["ALL"] }
 
-# The gateway is a reconciler for telemetry, not a stateful service: a Spot
-# reclaim costs at most `decision_wait` of in-flight traces. Two replicas with a
-# PDB is enough; on-demand would be paying for the wrong thing.
-nodeSelector:
-  karpenter.sh/capacity-type: spot
+# The gateway is a reconciler for telemetry, not a stateful service: losing a pod
+# costs at most `decision_wait` of in-flight traces. Two replicas with a PDB is enough.
 
 tolerations: []

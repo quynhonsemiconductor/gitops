@@ -1,6 +1,6 @@
 env: dev
 size: s
 services:
-  api:      { capacity: spot, resources: { cpu: 500m, memory: 1Gi }, }
+  api:      { resources: { cpu: 500m, memory: 1Gi }, }
   worker:   { resources: { cpu: 250m, memory: 512Mi }, }
   migrator: { }

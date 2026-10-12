@@ -5,12 +5,11 @@ size: s                      # 1 replica, no PDB, no topology spread
 
 # ── ONE `services:` KEY, AND THAT IS NOT A STYLE POINT ───────────────────────
 # This file briefly had three. YAML keeps only the LAST mapping for a duplicate key,
-# so the earlier blocks — capacity, resources — vanish silently. Nothing
+# so the earlier blocks — resources — vanish silently. Nothing
 # warns: helm renders, lint passes, and the workload quietly runs on-demand with the
 # chart's default resources. Everything for a service belongs in this one block.
 services:
   api:
-    capacity: spot           # dev has no revenue to protect
     resources: { cpu: 100m, memory: 512Mi }
 
     # ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ───────────────

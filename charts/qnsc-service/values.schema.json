@@ -178,14 +178,6 @@
             ],
             "description": "arm64 by default. amd64 only where no arm64 build exists \u2014 today that is clamav alone (\u00a74b Axis 5)."
           },
-          "capacity": {
-            "enum": [
-              "spot",
-              "ondemand",
-              "mixed"
-            ],
-            "description": "\u00a74b Axis 6. Defaults per kind; `realtime` defaults to ondemand because a reclaim drops every connection."
-          },
           "singleton": {
             "type": "boolean",
             "description": "Never two replicas, INCLUDING during a RollingUpdate. For a scheduler that holds no lock and cannot take one \u2014 Celery beat. NOT for workers that run scheduled work safely via SKIP LOCKED or a cross-pod lock (\u00a74b Axis 7)."

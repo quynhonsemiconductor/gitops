@@ -22,7 +22,6 @@ Columns
   pdb        never | bySize | always           `always` means every size, XS
                                                included — long-lived connections
                                                die on an unguarded drain (§4e)
-  capacity   default node capacity for the kind, overridable per service
 ────────────────────────────────────────────────────────────────────────────────
 */}}
 {{- define "qnsc.kinds" -}}
@@ -31,37 +30,31 @@ http:
   service: ClusterIP
   route: HTTPRoute
   pdb: bySize
-  capacity: mixed
 grpc:
   workload: Deployment
   service: Headless
   route: GRPCRoute
   pdb: bySize
-  capacity: mixed
 realtime:
   workload: Deployment
   service: ClusterIP
   route: HTTPRoute
   pdb: always
-  capacity: ondemand
 worker:
   workload: Deployment
   service: none
   route: none
   pdb: bySize
-  capacity: spot
 job:
   workload: Job
   service: none
   route: none
   pdb: never
-  capacity: spot
 cron:
   workload: CronJob
   service: none
   route: none
   pdb: never
-  capacity: spot
 {{- end -}}
 
 

@@ -380,7 +380,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: arm64
-        karpenter.sh/capacity-type: spot
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone

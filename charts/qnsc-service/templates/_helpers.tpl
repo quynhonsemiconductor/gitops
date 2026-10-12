@@ -126,7 +126,7 @@ Helm already did.
        is nil rather than a nil-pointer panic. Templates then use
        `| default $d.x` for the actual value. Guarding at the resolver means no
        template needs `(($svc.drain)).x` noise. */ -}}
-{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "sidecars" list -}}
+{{- $base := dict "drain" dict "resources" dict "image" dict "sidecars" list -}}
 {{- $out := mergeOverwrite $base (deepCopy $preset) (deepCopy $svc) -}}
 {{- /* ── singleton ────────────────────────────────────────────────────────────
        Some workloads must never have two replicas — not even for the few seconds
@@ -209,16 +209,3 @@ connected client on an unguarded node drain, and Karpenter drains eagerly.
 {{- end -}}
 
 
-{{/*
-Node scheduling for a capacity class (§4b Axis 6).
-
-`mixed` renders no constraint: the on-demand floor is a node-pool concern, not a
-pod concern, so a `mixed` pod is schedulable anywhere and Karpenter decides.
-*/}}
-{{- define "qnsc.capacitySelector" -}}
-{{- if eq . "spot" -}}
-karpenter.sh/capacity-type: spot
-{{- else if eq . "ondemand" -}}
-karpenter.sh/capacity-type: on-demand
-{{- end -}}
-{{- end -}}
