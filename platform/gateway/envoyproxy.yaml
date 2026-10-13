@@ -47,8 +47,6 @@ spec:
         type: ClusterIP
       envoyDeployment:
         replicas: 2
-        pod:
-          nodeSelector:
         container:
           resources:
             requests:
