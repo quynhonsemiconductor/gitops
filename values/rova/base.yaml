@@ -29,7 +29,6 @@ services:
     # On Kubernetes a PDB plus drain plus multiple replicas makes a reclaim a
     # rescheduling event, so `mixed` keeps one on-demand replica rather than a
     # whole on-demand pool (§15).
-    capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api }
     resources: { cpu: 250m, memory: 1Gi }
     replicas: 2   # fixed. It was a KEDA range 2..10; KEDA was dropped 2026-10-13 and the floor is kept
@@ -42,7 +41,6 @@ services:
     expose: none
     # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
     # so an interruption costs time rather than work." — same file.
-    capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker }
     resources: { cpu: 250m, memory: 512Mi }
     replicas: 1   # fixed. It was a KEDA range 1..6; KEDA was dropped 2026-10-13 and the floor is kept

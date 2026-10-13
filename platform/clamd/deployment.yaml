@@ -32,19 +32,13 @@
 #                     is not reachable from the internet and must never be.
 #   arch: amd64       nodeSelector kubernetes.io/arch: amd64. §3.2 / §4b Axis 5:
 #                     ClamAV ships NO arm64 tag, and this one sidecar is the SOLE
-#                     reason qnsc-kb (8 vCPU / 24 GiB) is pinned to x86. Isolating
-#                     clamd here as the estate's one amd64 workload is what lets
-#                     everything else move to Graviton. Building an arm64 ClamAV
-#                     was rejected in §4c: it would mean owning CVE patching for a
-#                     security-critical image with a team of three.
-#   capacity: ondemand  nodeSelector karpenter.sh/capacity-type: on-demand.
-#                     §4c: a scan in flight during a Spot reclaim is a failed scan,
-#                     and §4c's client (task 3.1) is FAIL CLOSED — a failed scan
-#                     blocks the upload. On-demand trades cost for not turning Spot
-#                     churn into user-visible upload failures.
-#
-# (The two selector keys below were satisfiable by the Karpenter `ondemand` NodePool, which is gone with EKS;
-# the capacity-type pin is a REQUIRED change for k3s, where no node carries that label. See the k3s adaptation.)
+#                     reason qnsc-kb needed x86 on ARM64 ECS. On-prem everything is amd64,
+#                     so the pin below is now redundant but harmless; it keeps clamd correct
+#                     if the chart default ever changes back (building an arm64 ClamAV was
+#                     rejected in §4c: CVE patching for a security-critical image).
+#   (capacity)          it was once pinned on-demand (§4c: a scan in flight during a Spot
+#                     reclaim is a failed scan, and the client is FAIL CLOSED). There is no
+#                     Spot on-prem, so the pin is gone with Karpenter.
 #
 # ── WHERE THE CLIENT TIMEOUT/RETRY BELONGS (task 3.1, NOT here) ──────────────
 # §4c: upload scanning is FAIL CLOSED with a 5 s connect / 30 s scan timeout and
@@ -114,9 +108,6 @@ spec:
       nodeSelector:
         # arch: amd64 (§3.2 — ClamAV has no arm64 image).
         kubernetes.io/arch: amd64
-        # capacity: ondemand (§4c — a Spot reclaim mid-scan is a failed scan, and
-        # the client fails closed). REMOVE for k3s: no node carries this Karpenter label.
-        karpenter.sh/capacity-type: on-demand
       containers:
         - name: clamd
           # Pinned in versions.yaml under images.clamav. NOT :latest — the

@@ -15,10 +15,6 @@
 #
 # §2b — one of the THREE components whose API pins the Kubernetes version.
 
-global:
-  nodeSelector:
-    karpenter.sh/capacity-type: spot
-
 configs:
   cm:
     # SSO through Entra, which rova and opshub already authenticate against (§4b).

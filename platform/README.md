@@ -65,17 +65,12 @@ argocd/        ArgoCD's Helm values (§5b) and the cluster-registration Secrets 
 9  gitops/apps/root.yaml   ArgoCD takes over
 ```
 
-## Scheduling: the `karpenter.sh/capacity-type` pins are stale
+## Scheduling
 
-The pods below still select `karpenter.sh/capacity-type: spot` (clamd: `on-demand`), a label only Karpenter-managed EKS nodes carried. The
-node pools that satisfied it (`platform/compute`) were removed with EKS on 2026-10-13. **On k3s no node has that label, so these pods stay
-`Pending` until the selector is removed**: it is a required change of the k3s adaptation, listed here so it is not rediscovered.
-
-```
-argocd/values.yaml          eso/values.yaml          alloy/values-gateway.yaml
-gateway/values-envoy.yaml   gateway/envoyproxy.yaml  cloudflared/deployment.yaml (+ arch: arm64)
-clamd/deployment.yaml (on-demand)     charts/qnsc-service/templates/_helpers.tpl (every product workload)
-```
+There is no node-class concept any more: the `karpenter.sh/capacity-type` selectors (Spot / on-demand) and the chart's `capacity` setting were removed
+with EKS, because no k3s node carries that label and a pod that selects it stays `Pending`. The architecture is amd64 (the on-prem host,
+Ryzen 9 9950X): the chart default is `defaults.arch: amd64`, no platform pod pins arm64 any more, and product images must be built `linux/amd64`
+(multi-arch with arm64 while ECS still runs on Graviton).
 
 ## The thing §9b named but did not specify
 

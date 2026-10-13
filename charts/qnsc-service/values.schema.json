@@ -176,15 +176,7 @@
               "arm64",
               "amd64"
             ],
-            "description": "arm64 by default. amd64 only where no arm64 build exists \u2014 today that is clamav alone (\u00a74b Axis 5)."
-          },
-          "capacity": {
-            "enum": [
-              "spot",
-              "ondemand",
-              "mixed"
-            ],
-            "description": "\u00a74b Axis 6. Defaults per kind; `realtime` defaults to ondemand because a reclaim drops every connection."
+            "description": "Defaults to amd64 (the on-prem host). Set only to override per service; arm64 images are still built while ECS runs on Graviton, but nothing on-prem schedules them."
           },
           "singleton": {
             "type": "boolean",

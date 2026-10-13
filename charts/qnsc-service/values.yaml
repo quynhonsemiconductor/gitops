@@ -26,8 +26,7 @@ size: s              # default preset; a service may override it
 #     kind: http                 # http · grpc · realtime · worker · job · cron
 #     expose: public             # public · protected · cluster · internal · none
 #     port: 3000
-#     arch: arm64                # arm64 default; amd64 only when no build exists
-#     capacity: mixed            # spot · ondemand · mixed. Defaults per kind (_kinds.tpl)
+#     arch: amd64                # default amd64 (the on-prem host); set only to override
 #     image: { repo: "...", tag: "sha-abc123" }
 #     resources: { cpu: 500m, memory: 1Gi }
 #     replicas: 2                # fixed; there is no autoscaler (KEDA dropped 2026-10-13). Default: the size preset
@@ -63,7 +62,7 @@ presets:
 
 # ── Cross-cutting defaults ───────────────────────────────────────────────────
 defaults:
-  arch: arm64                    # §4b Axis 5. amd64 is the exception, per service
+  arch: amd64                    # §4b Axis 5. The on-prem host is amd64 (Ryzen 9 9950X); a service overrides it only if it ever must differ
   terminationGracePeriodSeconds: 30
 
   # §9j — the cascading-failure trap. Liveness answers "is the process alive" and

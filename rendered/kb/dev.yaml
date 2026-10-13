@@ -228,7 +228,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-        karpenter.sh/capacity-type: spot
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
@@ -363,7 +362,6 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-        karpenter.sh/capacity-type: spot
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
@@ -471,7 +469,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       containers:
         - name: pgbouncer
           image: bitnami/pgbouncer:1.24.1

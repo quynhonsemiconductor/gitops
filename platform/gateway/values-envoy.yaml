@@ -11,9 +11,6 @@
 
 deployment:
   replicas: 2
-  pod:
-    nodeSelector:
-      karpenter.sh/capacity-type: spot
   container:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
@@ -27,12 +24,9 @@ config:
         envoyDeployment:
           replicas: 2
           pod:
-            # The data plane, so it carries every request. Two replicas plus a PDB
-            # rather than an on-demand floor: a Spot reclaim drains one and
-            # cloudflared retries through the other, which is a rescheduling event
-            # rather than a dropped request (§15).
-            nodeSelector:
-              karpenter.sh/capacity-type: spot
+            # The data plane, so it carries every request. Two replicas plus a PDB: a drain
+            # takes one and cloudflared retries through the other, which is a rescheduling
+            # event rather than a dropped request (§15).
           container:
             resources:
               requests: { cpu: 200m, memory: 512Mi }

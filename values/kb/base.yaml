@@ -23,13 +23,8 @@ services:
     kind: http
     expose: public
     port: 8000
-    # amd64 TODAY, because clamav/clamav publishes no arm64 tag and the sidecar
-    # is still in this pod. This flips to arm64 the day §4c's split lands — one
-    # line, and it is the largest single cost item in the estate (§15b).
-    arch: amd64
     # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
     #  request and a broken response mid-answer." — infra/live/prod/main.tf
-    capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api }
     # 1024 / 6144 exactly as allocated on ECS. The 6144 carries clamd's 2048 plus
     # the e5-large-instruct ONNX session at ~1.5 GB resident.
@@ -99,10 +94,8 @@ services:
   worker:
     kind: worker
     expose: none
-    arch: amd64
     # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
     #  so an interruption costs time rather than work." — same file.
-    capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
     # 2048 / 6144 as allocated: the same model, plus clamav at 1024, plus beat,
     # plus PaddleOCR per scanned file.
@@ -152,7 +145,6 @@ services:
   migrator:
     kind: job
     expose: none
-    arch: amd64
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator }
     resources: { cpu: 500m, memory: 1Gi }
 

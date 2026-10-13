@@ -44,7 +44,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: {{ $d.arch }}
       containers:
         - name: pgbouncer
           image: bitnami/pgbouncer:{{ .Values.images.pgbouncer }}

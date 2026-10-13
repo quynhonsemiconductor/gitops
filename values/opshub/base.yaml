@@ -20,8 +20,6 @@ services:
     # because both share app-platform's health controller. See rova/base.yaml for
     # the full note — including the liveness half, which values cannot fix.
     readinessPath: /v1/readyz
-    arch: arm64
-    capacity: mixed
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api }
     resources: { cpu: 1, memory: 2Gi }
     replicas: 2   # fixed. It was a KEDA range 2..6; KEDA was dropped 2026-10-13 and the floor is kept
@@ -32,8 +30,6 @@ services:
   worker:
     kind: worker
     expose: none
-    arch: arm64
-    capacity: spot
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-worker }
     resources: { cpu: 500m, memory: 1Gi }
     # NOT a singleton, and the distinction matters. This worker runs @Cron relays
@@ -44,7 +40,6 @@ services:
   migrator:
     kind: job
     expose: none
-    arch: arm64
     image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-migrator }
     resources: { cpu: 500m, memory: 512Mi }
 
