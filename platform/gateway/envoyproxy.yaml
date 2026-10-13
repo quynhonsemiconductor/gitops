@@ -47,9 +47,6 @@ spec:
         type: ClusterIP
       envoyDeployment:
         replicas: 2
-        pod:
-          nodeSelector:
-            kubernetes.io/arch: arm64
         container:
           resources:
             requests:

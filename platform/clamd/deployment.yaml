@@ -32,11 +32,10 @@
 #                     is not reachable from the internet and must never be.
 #   arch: amd64       nodeSelector kubernetes.io/arch: amd64. §3.2 / §4b Axis 5:
 #                     ClamAV ships NO arm64 tag, and this one sidecar is the SOLE
-#                     reason qnsc-kb (8 vCPU / 24 GiB) is pinned to x86. Isolating
-#                     clamd here as the estate's one amd64 workload is what lets
-#                     everything else move to Graviton. Building an arm64 ClamAV
-#                     was rejected in §4c: it would mean owning CVE patching for a
-#                     security-critical image with a team of three.
+#                     reason qnsc-kb needed x86 on ARM64 ECS. On-prem everything is amd64,
+#                     so the pin below is now redundant but harmless; it keeps clamd correct
+#                     if the chart default ever changes back (building an arm64 ClamAV was
+#                     rejected in §4c: CVE patching for a security-critical image).
 #   (capacity)          it was once pinned on-demand (§4c: a scan in flight during a Spot
 #                     reclaim is a failed scan, and the client is FAIL CLOSED). There is no
 #                     Spot on-prem, so the pin is gone with Karpenter.

@@ -204,7 +204,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
@@ -305,7 +305,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
@@ -396,7 +396,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       nodeSelector:
-        kubernetes.io/arch: arm64
+        kubernetes.io/arch: amd64
       containers:
         - name: migrator
           image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-4f404e2394e9

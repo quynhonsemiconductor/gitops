@@ -42,8 +42,6 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: cloudflared
-      nodeSelector:
-        kubernetes.io/arch: arm64
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.8.1   # versions.yaml
