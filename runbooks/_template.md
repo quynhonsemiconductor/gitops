@@ -44,9 +44,9 @@ kubectl exec into a production pod    §10b — you cannot, and that is delibera
                                       writable, none of it reaches git. Debugging
                                       production is logs, traces and profiles,
                                       which is what §9 built six signals for
-scale it up to make it go away        if it is a capacity problem, KEDA already
-                                      scaled it. If KEDA did not, the trigger is
-                                      wrong and that is the bug
+scale it up to make it go away        replicas are fixed (no autoscaler): if it is a capacity
+                                      problem, raise `replicas` in the values file, in git,
+                                      and find out why the load grew
 ```
 
 ## Known failure modes

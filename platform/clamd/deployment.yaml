@@ -43,10 +43,8 @@
 #                     blocks the upload. On-demand trades cost for not turning Spot
 #                     churn into user-visible upload failures.
 #
-# Both selector keys are satisfiable by the `ondemand` NodePool in
-# platform/compute/nodepools.yaml, which allows kubernetes.io/arch in
-# [arm64, amd64] and karpenter.sh/capacity-type in [on-demand]. The `schedulable`
-# conformance contract walks this file and fails if that ever stops being true.
+# (The two selector keys below were satisfiable by the Karpenter `ondemand` NodePool, which is gone with EKS;
+# the capacity-type pin is a REQUIRED change for k3s, where no node carries that label. See the k3s adaptation.)
 #
 # ── WHERE THE CLIENT TIMEOUT/RETRY BELONGS (task 3.1, NOT here) ──────────────
 # §4c: upload scanning is FAIL CLOSED with a 5 s connect / 30 s scan timeout and
@@ -67,8 +65,7 @@ metadata:
 spec:
   # 2 replicas in prod (task 2.7). ENV placeholder — set 2 for prod, 1 for dev.
   # Dev gets 1 on purpose: dev has no revenue and no PDB pressure, and clamd's
-  # ~1 GB database resident per replica is real cost on the on-demand floor pool
-  # (nodepools.yaml caps that pool at 16 vCPU / 64 GiB). Two replicas in prod is
+  # ~1 GB database resident per replica is real cost on a small node. Two replicas in prod is
   # the availability floor §4c names — enough that a rolling restart or a single
   # node loss never leaves the scanner with zero answers while the FAIL-CLOSED
   # client is blocking uploads. One replica in dev accepts a brief scan outage on
@@ -115,11 +112,10 @@ spec:
             matchLabels:
               app.kubernetes.io/name: clamd
       nodeSelector:
-        # arch: amd64 (§3.2 — ClamAV has no arm64 image). satisfiable by the
-        # `ondemand` NodePool, which allows [arm64, amd64].
+        # arch: amd64 (§3.2 — ClamAV has no arm64 image).
         kubernetes.io/arch: amd64
         # capacity: ondemand (§4c — a Spot reclaim mid-scan is a failed scan, and
-        # the client fails closed). satisfiable by the `ondemand` NodePool.
+        # the client fails closed). REMOVE for k3s: no node carries this Karpenter label.
         karpenter.sh/capacity-type: on-demand
       containers:
         - name: clamd

@@ -18,9 +18,6 @@ kubectl apply -f ../policy/bindings.yaml       # a policy with no binding enforc
 
 helm upgrade --install external-secrets external-secrets/external-secrets \
   -n platform -f ../eso/values.yaml --version "$ESO_VERSION"
-helm upgrade --install keda kedacore/keda \
-  -n platform -f ../keda/values.yaml --version "$KEDA_VERSION"
-kubectl apply -f ../keda/trigger-auth.yaml -n rova -n opshub -n kb
 
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_API/standard-install.yaml
 helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \

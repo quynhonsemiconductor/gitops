@@ -10,14 +10,13 @@
 # The drift was not a patch or two:
 #
 #   external-secrets  0.20.0 -> 2.11.0   TWO major versions (0.x -> 1.x -> 2.x)
-#   keda              2.18.0 -> 2.20.2
 #   argo-cd           8.5.0  -> 10.9.2   two majors
 #   alloy             1.6.0  -> 1.12.1
 #
-# ESO AND KEDA ARE VERIFIED AGAINST THE NEW CHARTS, not merely bumped: the values
+# ESO WAS VERIFIED AGAINST THE NEW CHART, not merely bumped: the values
 # files render, and — which matters more, because Helm silently IGNORES unknown
-# value keys — the IRSA annotations still land on `external-secrets` and
-# `keda-operator`, and ESO still renders its 25 CRDs. A bump that rendered while
+# value keys — the IRSA annotation still lands on `external-secrets`, and ESO still
+# renders its 25 CRDs. (KEDA was in this table until 2026-10-13 and is gone.) A bump that rendered while
 # quietly dropping the annotation would have produced an operator that runs and
 # never syncs a secret.
 #
@@ -42,10 +41,10 @@
 #   - dev first, soak, then prod (§2b)
 
 kubernetes:
-  # Target the newest version EKS supports at install time, then hold N or N-1 and
-  # never reach N-3 (§2b). `trafficDistribution: PreferClose` (§9j) needs 1.31+;
-  # it is GA from 1.33, which is the floor this chart declares.
-  eks: "1.33"
+  # The floor the chart declares (`kubeVersion`): `trafficDistribution: PreferClose`
+  # (§9j) needs 1.31+ and is GA from 1.33. The k3s version to run is chosen and pinned
+  # here in the on-prem adaptation (EKS, which this key used to name, is gone).
+  minimum: "1.33"
 
 platform:
   # ── The three that pin the Kubernetes version (§2b) ──────────────────────────
@@ -63,10 +62,6 @@ platform:
     version: "2.11.0"
 
   # ── Everything else ──────────────────────────────────────────────────────────
-  keda:
-    chart: keda
-    repo: https://kedacore.github.io/charts
-    version: "2.20.2"
   gateway-api:
     # CRDs, applied directly — not a chart. Standard channel.
     version: "v1.6.2"

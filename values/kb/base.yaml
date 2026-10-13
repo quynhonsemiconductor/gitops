@@ -53,7 +53,7 @@ services:
     volumes:
       - name: clamav-db
         emptyDir: {}
-    scaling: { type: rps, min: 1, max: 6, target: 100 }
+    replicas: 1   # fixed. It was a KEDA range 1..6; KEDA was dropped 2026-10-13 and the floor is kept
     slo:
       availability: 99.0
       latency: { p99: 2s }     # RAG answers are not 500 ms operations
@@ -129,7 +129,7 @@ services:
     #    the prerequisite for scaling the worker horizontally."
     # So the worker stays at one replica, exactly as today. When beat is split out
     # it becomes its own service with `singleton: true`, and only then does
-    # `scaling` belong here.
+    # a higher `replicas` belongs here.
     replicas: 1
     sidecars:
       - name: clamav

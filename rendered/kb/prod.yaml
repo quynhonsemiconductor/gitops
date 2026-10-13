@@ -257,6 +257,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -678,31 +679,6 @@ spec:
             template: '{{ .value | upper | replace "-" "_" }}'
 
 ---
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: keda-grafana
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: kb
-    kind: SecretStore
-  target:
-    name: keda-grafana
-  dataFrom:
-    - find:
-        path: qnsc/prod/kb/keda/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
-
----
 # Source: qnsc-service/templates/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -838,36 +814,6 @@ spec:
             summary: "kb-api has reported no metrics for 10 minutes"
 
 ---
-# Source: qnsc-service/templates/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: kb
-    app.kubernetes.io/part-of: kb
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: kb
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  scaleTargetRef:
-    name: api
-  minReplicaCount: 1
-  maxReplicaCount: 6
-  pollingInterval: 30
-  cooldownPeriod: 300
-  triggers:
-    - type: prometheus
-      authenticationRef:
-        name: keda-grafana
-      metadata:
-        serverAddress: https://prometheus-prod-ap-southeast-0.grafana.net/api/prom
-        query: sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[2m]))
-        threshold: "100"
-
----
 # Source: qnsc-service/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
 kind: SecretStore
@@ -882,18 +828,3 @@ spec:
         jwt:
           serviceAccountRef:
             name: api
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: keda.sh/v1alpha1
-kind: TriggerAuthentication
-metadata:
-  name: keda-grafana
-spec:
-  secretTargetRef:
-    - parameter: username
-      name: keda-grafana
-      key: username
-    - parameter: password
-      name: keda-grafana
-      key: password

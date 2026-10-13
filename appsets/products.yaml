@@ -48,6 +48,13 @@ spec:
             syncPolicy:
               automated:
                 prune: true
+            # DEV ONLY. kube-downscaler (the dev night shutdown, added with the on-prem bootstrap) scales Deployments to zero outside
+            # working hours, so ArgoCD must not revert `.spec.replicas` there or the two fight on every reconcile. Prod has no
+            # downscaler and keeps full replica drift detection: a prod Deployment whose replicas were changed by hand is drift.
+            ignoreDifferences:
+              - group: apps
+                kind: Deployment
+                jqPathExpressions: [".spec.replicas"]
 
     # ── prod ─────────────────────────────────────────────────────────────────
     - list:
@@ -111,14 +118,3 @@ spec:
         retry:
           limit: 3
           backoff: { duration: 30s, factor: 2, maxDuration: 5m }
-
-      # §4 — migrations run as a PreSync hook, so a failed migration BLOCKS the
-      # sync rather than leaving Helm and ArgoCD disagreeing about the outcome.
-      # The Job's name carries the image tag, so ArgoCD sees a new Job each
-      # release rather than an immutable-field conflict.
-      ignoreDifferences:
-        - group: apps
-          kind: Deployment
-          # replicas is owned by the KEDA ScaledObject wherever scaling is set.
-          # Without this ArgoCD reports OutOfSync forever on every scaled service.
-          jqPathExpressions: [".spec.replicas"]

@@ -126,7 +126,7 @@ Helm already did.
        is nil rather than a nil-pointer panic. Templates then use
        `| default $d.x` for the actual value. Guarding at the resolver means no
        template needs `(($svc.drain)).x` noise. */ -}}
-{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "scaling" dict "sidecars" list -}}
+{{- $base := dict "capacity" $caps.capacity "drain" dict "resources" dict "image" dict "sidecars" list -}}
 {{- $out := mergeOverwrite $base (deepCopy $preset) (deepCopy $svc) -}}
 {{- /* ── singleton ────────────────────────────────────────────────────────────
        Some workloads must never have two replicas — not even for the few seconds
@@ -143,11 +143,10 @@ Helm already did.
        wrong is every scheduled job running twice — which looks like a data bug,
        not a deployment bug. */ -}}
 {{- if $out.singleton -}}
-{{- if and $out.scaling $out.scaling.max (gt (int $out.scaling.max) 1) -}}
-{{- fail (printf "service %q: singleton and scaling.max=%v are contradictory. A singleton must never have two replicas — see qnsc-kb's beat" $name $out.scaling.max) -}}
+{{- if and $out.replicas (gt (int $out.replicas) 1) -}}
+{{- fail (printf "service %q: singleton and replicas=%v are contradictory. A singleton must never have two replicas — see qnsc-kb's beat" $name $out.replicas) -}}
 {{- end -}}
 {{- $_ := set $out "replicas" 1 -}}
-{{- $_ := unset $out "scaling" -}}
 {{- end -}}
 {{- toYaml $out -}}
 {{- end -}}
@@ -191,25 +190,6 @@ A service may override with `host:` when a product exposes more than one.
 {{- else -}}
 {{- printf "%s-%s-dev.qnsc.vn" (include "qnsc.product" $root) (index . 2 | default "api") -}}
 {{- end -}}
-{{- end -}}
-
-
-{{/*
-SQS queue URL — derived, never passed (§7c).
-
-A values file names the queue's PURPOSE (`email-bounce`); the account id, region
-and `qnsc-<env>-<product>-` prefix are computed. `infra` builds the same string
-from the same three variables, so the URL never crosses the repository boundary
-and the two cannot drift.
-
-Pasting a full URL into values would be the exact mistake §7c exists to prevent.
-*/}}
-{{- define "qnsc.queueUrl" -}}
-{{- $root := index . 0 -}}
-{{- $queue := index . 1 -}}
-{{- printf "https://sqs.%s.amazonaws.com/%s/qnsc-%s-%s-%s"
-     $root.Values.region $root.Values.accountId
-     (include "qnsc.env" $root) (include "qnsc.product" $root) $queue -}}
 {{- end -}}
 
 

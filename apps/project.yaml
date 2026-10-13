@@ -40,7 +40,6 @@ spec:
     - { group: networking.k8s.io,             kind: NetworkPolicy }
     - { group: gateway.networking.k8s.io,     kind: HTTPRoute }
     - { group: gateway.networking.k8s.io,     kind: GRPCRoute }
-    - { group: keda.sh,                       kind: ScaledObject }
     - { group: external-secrets.io,           kind: ExternalSecret }
     - { group: external-secrets.io,           kind: SecretStore }
     - { group: monitoring.coreos.com,         kind: PrometheusRule }
