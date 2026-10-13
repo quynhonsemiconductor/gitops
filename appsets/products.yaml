@@ -48,6 +48,15 @@ spec:
             syncPolicy:
               automated:
                 prune: true
+              # RespectIgnoreDifferences makes a sync honour ignoreDifferences below: without it, ignoreDifferences only hides the
+              # OutOfSync status, and the next sync (selfHeal) still resets `.spec.replicas` to the chart's value, undoing kube-downscaler.
+              # This is the WHOLE list, not an addition: a list at generator level REPLACES the base template's (CreateNamespace,
+              # ServerSideApply, PruneLast), it does not merge with it, so the three base options are repeated here on purpose.
+              syncOptions:
+                - CreateNamespace=true
+                - ServerSideApply=true
+                - PruneLast=true
+                - RespectIgnoreDifferences=true
             # DEV ONLY. kube-downscaler (the dev night shutdown, added with the on-prem bootstrap) scales Deployments to zero outside
             # working hours, so ArgoCD must not revert `.spec.replicas` there or the two fight on every reconcile. Prod has no
             # downscaler and keeps full replica drift detection: a prod Deployment whose replicas were changed by hand is drift.
