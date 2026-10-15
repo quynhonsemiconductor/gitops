@@ -67,7 +67,7 @@ loki.process "app" {
   stage.cri {}
 
   // Parse level out of structured JSON so it can be a label and a drop filter,
-  // without indexing anything else from the body.
+  // without indexing anything else from the body. Values are the level WORDS (see the debug drop below).
   stage.json {
     expressions = { level = "level" }
   }
@@ -82,6 +82,10 @@ loki.process "app" {
   }
 
   // Debug in production is noise someone will pay for.
+  //
+  // `level` is a LABEL ("debug", "info", "warn", "error") in every line our products write since observability 0.5.0 (platform-runtime's
+  // createHttpApp / createWorkerApp). Before that the Node services wrote pino's number (20, 30, 50): this filter never matched them, so debug
+  // lines were NOT dropped, and the `level` label held numbers. Python (structlog) services must write the same word for this to apply to them.
   stage.drop {
     source = "level"
     value  = "debug"
