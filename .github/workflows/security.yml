@@ -40,6 +40,7 @@ jobs:
     uses: quynhonsemiconductor/ci/.github/workflows/actions-security.yml@v1
     with:
       blocking: true
+      combine: true # actionlint + zizmor as ONE job; the required check is `actions-security / Workflow security (actionlint, zizmor)`
 
   security:
     permissions:
@@ -49,6 +50,9 @@ jobs:
     uses: quynhonsemiconductor/ci/.github/workflows/security.yml@v1
     with:
       product: gitops
+      # Gitleaks + osv-scanner + Semgrep as ONE job; the required check is
+      # `security / Security scans (Gitleaks, osv-scanner, Semgrep)`.
+      combine: true
       # No Dockerfile here — the chart deploys images, it does not build them.
       scan_container: false
       # Semgrep's TypeScript and Node rulesets have nothing to read: this repo is
