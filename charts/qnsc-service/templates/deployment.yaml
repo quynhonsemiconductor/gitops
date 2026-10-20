@@ -20,6 +20,18 @@ metadata:
   name: {{ $name }}
   labels:
     {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
+  {{- /* §6.3 — CNPG reissues the CA ~every 83 days (90-day duration, renewed
+         7 days early, same key — cluster_pki.go renewCASecret). Apps load
+         DATABASE_SSL_CA once at start, so the pod must be RESTARTED when
+         <product>-db-ca changes; Reloader (platform/reloader) rolls this
+         Deployment when the ExternalSecret below refreshes that Secret.
+         cnpg mode only: a plain `host` has no CA file to go stale. Migrator
+         Jobs are excluded — created fresh per run, they read the current
+         Secret at start. */}}
+  {{- if and $.Values.data $.Values.data.postgres.caFile }}
+  annotations:
+    secret.reloader.stakater.com/reload: {{ include "qnsc.product" $ }}-db-ca
+  {{- end }}
 spec:
   {{- /* A fixed replica count, from the size preset or the service's own `replicas`. There is no autoscaler
          (KEDA was dropped 2026-10-13, decision D2): dev scales to zero by schedule with kube-downscaler,

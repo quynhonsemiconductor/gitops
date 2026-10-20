@@ -26,6 +26,13 @@
 # Values are never in Git and never in state — OpenTofu (infra/live/identity)
 # owns the vaults and the RBAC, never the secrets (§7).
 #
+# PUBLIC-REPO NOTE (2026-10-21 review): the vault NAMES and URLs below are
+# literal. These files are kubectl-applied bootstrap manifests — no values
+# channel exists to inject them, and templating bootstrap files would add a
+# moving part for a name that carries no credential. ACCEPTED: a vault name
+# is not a secret; access is Azure RBAC (the ESO SPs are scoped per vault),
+# purge protection and the private-repo boundary for everything else.
+#
 # Schema note (2026-10-20, checked against the ESO v1 CRD at main): the
 # namespace constraint on a ClusterSecretStore is `spec.conditions[]`
 # (namespaceSelector or namespaceRegexes), NOT the flat
