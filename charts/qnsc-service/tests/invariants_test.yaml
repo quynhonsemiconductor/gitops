@@ -51,10 +51,9 @@ tests:
       - isNull:
           path: metadata.annotations
 
-  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) lives
-  # in the chart-onprem-profile branch's suite: this branch predates the cnpg
-  # values schema, so the `set:` block cannot render here. It arrives with the
-  # rebase onto #25; the mutation check below covers the gate meanwhile.
+  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) is
+  # asserted in tests/onprem_test.yaml, which renders the cnpg values this
+  # EKS-era suite does not use.
 
   # ── §9j ─────────────────────────────────────────────────────────────────────
   - it: points liveness at a dependency-free endpoint
@@ -94,10 +93,9 @@ tests:
       - isNull:
           path: metadata.annotations
 
-  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) lives
-  # in the chart-onprem-profile branch's suite: this branch predates the cnpg
-  # values schema, so the `set:` block cannot render here. It arrives with the
-  # rebase onto #25; the mutation check below covers the gate meanwhile.
+  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) is
+  # asserted in tests/onprem_test.yaml, which renders the cnpg values this
+  # EKS-era suite does not use.
 
   # ── §9j ─────────────────────────────────────────────────────────────────────
   - it: sets trafficDistribution on every Service

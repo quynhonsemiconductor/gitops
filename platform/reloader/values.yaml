@@ -39,11 +39,14 @@ reloader:
   # here mounts one as a credential.
   ignoreConfigMaps: true
 
-  # `annotations`, NOT the default: the default strategy patches the pod
-  # TEMPLATE (checksum env vars), which fights ArgoCD selfHeal on every
-  # rotation — Argo would revert Reloader's edit and Reloader would re-apply
-  # it, forever. The annotations strategy marks the PODS, leaving the
-  # Argo-managed Deployment spec alone.
+  # `annotations`, NOT the default: the default strategy (env-vars) injects
+  # checksum env vars into the pod template's SPEC, which fights ArgoCD
+  # selfHeal on every rotation — Argo would revert Reloader's edit and
+  # Reloader would re-apply it, forever. The annotations strategy (v1.4.22
+  # updatePodAnnotations) patches the Deployment's
+  # spec.template.metadata.annotations — a key ABSENT from our desired
+  # manifests, so ArgoCD selfHeal does not fight it (nothing to revert; no
+  # ignoreDifferences needed).
   reloadStrategy: annotations
 
   # Least privilege on the WATCH side: only namespaces that hold tenant
