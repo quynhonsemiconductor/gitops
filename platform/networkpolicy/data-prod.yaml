@@ -51,3 +51,15 @@ spec:
     # data-prod and talk to the instances over the instance Service.
     - from:
         - podSelector: {}
+    # The observability plane: platform (the one Alloy) on the METRICS ports
+    # only — CNPG's built-in exporter (9187) and the valkey exporter (9121).
+    # §12: metrics leave the box; this is the ONLY platform traffic into
+    # data-prod. (The valkey exporter sidecar lands with the k8s-monitoring
+    # work; the port rule is ready for it.)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform
+      ports:
+        - { protocol: TCP, port: 9187 }
+        - { protocol: TCP, port: 9121 }

@@ -1,0 +1,176 @@
+# ── ca-sync: ESO mirrors the CNPG CA CERTIFICATE inside data-<env> ──────────
+#
+# The security rule (§6.3, decided 2026-10-21): CNPG's `pg-*-ca` Secret holds
+# ca.crt AND ca.key. The key signs server certificates — outside data-<env>
+# it is a DB-MITM capability, so it never leaves the namespace. The mirror is
+# ESO itself, not a CronJob:
+#
+#   pg-rova-ca (CNPG: ca.crt + ca.key)
+#        └─ ExternalSecret ca-sync (data-prod) ──► pg-rova-ca-pub (ca.crt ONLY)
+#   pg-dev-ca (CNPG: ca.crt + ca.key)
+#        └─ ExternalSecret ca-sync (data-dev)  ──► pg-dev-ca-pub  (ca.crt ONLY)
+#
+# The namespaced SecretStore here reads `property: ca.crt` server-side, so the
+# key is never even pulled into the sync; its ServiceAccount holds exactly one
+# verb on exactly one Secret (resourceNames). The cnpg-ca ClusterSecretStores
+# (stores-onprem.yaml) then distribute pg-*-ca-pub to the product namespaces
+# as <product>-db-ca — RBAC on -pub only.
+#
+# Rotation facts (verified against CNPG 1.30 behaviour, 2026-10-21): the CA is
+# generated ONCE per cluster and is NOT rotated by the operator — the operator
+# renews the LEAF certificates (90-day server certs, reissued 7 days before
+# expiry) under the same CA. So ca.crt is stable for the cluster's lifetime,
+# which is what makes the consumers' subPath mounts acceptable (a subPath
+# mount does NOT pick up Secret changes — fine for a value that does not
+# change). ONE exception, §14 step 4: a REBUILT cluster (new serverName
+# generation) generates a NEW CA. After a rebuild: `kubectl annotate
+# externalsecret -n data-<env> ca-sync force-sync=$(date +%s) --overwrite`,
+# then `kubectl rollout restart` the product Deployments that mount db-ca.
+---
+# ── data-prod ────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-ca-sync
+  namespace: data-prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-ca-sync
+  namespace: data-prod
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-rova-ca]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-ca-sync
+  namespace: data-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-ca-sync
+subjects:
+  - kind: ServiceAccount
+    name: eso-ca-sync
+    namespace: data-prod
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: ca-sync
+  namespace: data-prod
+spec:
+  provider:
+    kubernetes:
+      # this SecretStore lives IN data-prod; the remote read targets the same
+      # namespace (the provider default is "default", so set it explicitly)
+      remoteNamespace: data-prod
+      server:
+        url: kubernetes.default
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: eso-ca-sync
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ca-sync
+  namespace: data-prod
+  labels:
+    qnsc.vn/tenant: platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: ca-sync
+    kind: SecretStore
+  target:
+    name: pg-rova-ca-pub
+    creationPolicy: Owner
+  data:
+    # `property` is the point: ESO extracts ONLY ca.crt server-side. Even this
+    # namespace-scoped identity never syncs ca.key anywhere.
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-rova-ca
+        property: ca.crt
+---
+# ── data-dev: identical shape for pg-dev ─────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-ca-sync
+  namespace: data-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-ca-sync
+  namespace: data-dev
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-dev-ca]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-ca-sync
+  namespace: data-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-ca-sync
+subjects:
+  - kind: ServiceAccount
+    name: eso-ca-sync
+    namespace: data-dev
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: ca-sync
+  namespace: data-dev
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: data-dev
+      server:
+        url: kubernetes.default
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: eso-ca-sync
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ca-sync
+  namespace: data-dev
+  labels:
+    qnsc.vn/tenant: platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: ca-sync
+    kind: SecretStore
+  target:
+    name: pg-dev-ca-pub
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-dev-ca
+        property: ca.crt

@@ -112,7 +112,7 @@ spec:
 # `pg-*-ca-pub` of data-<env> and copies it into `<product>-db-ca` (the chart
 # mounts it for DATABASE_SSL_CA, §6.3). The stores turn Ready only once the
 # clusters exist — on bootstrap (§14 step 4) they stay NotReady until the
-# mirror CronJob (../cnpg/ca-mirror.yaml) has run, expected.
+# ca-sync ExternalSecret (../eso/ca-sync.yaml) has synced, expected.
 #
 # WHY A MIRROR AND NOT pg-*-ca DIRECTLY (security decision, 2026-10-21): the
 # CNPG-managed `pg-*-ca` Secret holds BOTH the CA certificate AND `ca.key`.
@@ -122,8 +122,8 @@ spec:
 # key NEVER crosses the namespace boundary:
 #
 #   pg-rova-ca         CNPG's Secret (ca.crt + ca.key), data-prod only
-#   pg-rova-ca-pub     the mirror: ca.crt ONLY, written by the ca-mirror
-#                      CronJob (../cnpg/ca-mirror.yaml) in data-prod
+#   pg-rova-ca-pub     the mirror: ca.crt ONLY, created and refreshed by the
+#                      ca-sync ExternalSecret (../eso/ca-sync.yaml) in data-prod
 #
 # and the RBAC below admits ONLY `pg-*-ca-pub`. The store-adjacent identity
 # cannot read pg-*-ca at all — the vector is closed by resourceNames, not by

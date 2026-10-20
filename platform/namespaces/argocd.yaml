@@ -11,4 +11,4 @@ metadata:
   labels:
     qnsc.vn/env: platform
     qnsc.vn/tenant: platform
-    pod-security.kubernetes.io/enforce: privileged   # ArgoCD's repo-server/rexray need more than restricted today; revisit on the onprem bootstrap
+    pod-security.kubernetes.io/enforce: privileged   # ArgoCD's repo-server/receive-pack hooks need more than restricted today; revisit on the onprem bootstrap

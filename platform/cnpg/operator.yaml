@@ -32,9 +32,12 @@ operator:
     requests: { cpu: 100m, memory: 384Mi }
     limits: { memory: 384Mi }
   monitoring:
-    # §12 — the one Alloy scrapes CNPG through a PodMonitor on 9187; the
-    # data-prod NetworkPolicy admits `platform` on that port only.
-    podMonitorEnabled: true
+    # §12 — the one Alloy scrapes CNPG through a PodMonitor on 9187 (the
+    # data-prod NetworkPolicy admits `platform` on that port). OFF until the
+    # k8s-monitoring release exists: PodMonitor is a monitoring.coreos.com CRD
+    # the k8s-monitoring chart brings, and a PodMonitor without its CRD fails
+    # the sync. Flip this on IN THE SAME PR that installs k8s-monitoring.
+    podMonitorEnabled: false
     grafanaDashboard:
       create: false
   config:
