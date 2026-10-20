@@ -407,7 +407,9 @@ spec:
             secretName: {{ include "qnsc.product" $ }}-db-ca
             items: [{ key: ca.crt, path: ca.crt }]
         {{- end }}
-        {{- if $.Values.secrets.workerOnly.graphCert }}
+        {{- /* Worker-only like the mount below: the api must not even carry the
+               volume, or a future api-side code path reads the PEM silently. */}}
+        {{- if and $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
         - name: graph-cert
           secret:
             secretName: {{ $.Values.secrets.workerOnly.graphCert }}

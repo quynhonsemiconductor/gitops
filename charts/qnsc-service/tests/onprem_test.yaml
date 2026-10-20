@@ -1,12 +1,13 @@
 suite: onprem profile
-# The on-prem toggles (ONPREM-PLAN §5.6) gate whole template files, so the cheap
-# failure is "the toggle renamed" or "the gate dropped" and every product
-# suddenly renders a default-deny set or an HTTPRoute against a Gateway that
-# does not exist. These tests pin the gates and the two on-prem mounts.
+# The on-prem pieces (ONPREM-PLAN §5.6) are: the networkPolicy gate, the two
+# on-prem mounts (CNPG CA, worker-only Graph PEM) on Deployments AND the
+# migrator Job — a Job that cannot find the database or verify its TLS fails
+# the PreSync hook and stops the sync, which is the one failure that blocks a
+# release.
 templates:
   - templates/networkpolicy.yaml
-  - templates/httproute.yaml
   - templates/deployment.yaml
+  - templates/job.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/dev.yaml
@@ -28,20 +29,41 @@ tests:
       - hasDocuments:
           count: 0
 
-  # ── httpRoute.enabled ───────────────────────────────────────────────────────
-  - it: renders the HTTPRoute by default (EKS behaviour unchanged)
-    template: templates/httproute.yaml
-    asserts:
-      - hasDocuments:
-          count: 1        # rova api is kind http, expose public
-
-  - it: renders NO HTTPRoute when httpRoute.enabled is false
-    template: templates/httproute.yaml
+  # ── mode: cnpg on the migrator Job (§6.3) ───────────────────────────────────
+  - it: points the migrator at the cluster's -rw Service with the CA mounted
+    template: templates/job.yaml
+    documentIndex: 0
     set:
-      httpRoute.enabled: false
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova
     asserts:
-      - hasDocuments:
-          count: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_HOST
+            value: pg-rova-rw.data-prod.svc
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_SSL_CA
+            value: /etc/qnsc/db-ca/ca.crt
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          any: true
+          content:
+            name: db-ca
+            mountPath: /etc/qnsc/db-ca/ca.crt
+            subPath: ca.crt
+            readOnly: true
 
   # ── mode: cnpg (§6.3) ───────────────────────────────────────────────────────
   - it: points DATABASE_HOST at the cluster's -rw Service and exports DATABASE_SSL_CA

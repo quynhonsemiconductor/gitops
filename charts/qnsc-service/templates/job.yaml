@@ -96,6 +96,17 @@ spec:
                        it optional is what lets "no credential" be a valid state
                        rather than a broken one. */}}
                 optional: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- /* The CNPG server CA, same mount the Deployments get (§6.3) —
+                   verify-full is not optional for a migrator either. */}}
+            {{- if and $.Values.data $.Values.data.postgres.caFile }}
+            - name: db-ca
+              mountPath: {{ $.Values.data.postgres.caFile }}
+              subPath: ca.crt
+              readOnly: true
+            {{- end }}
           env:
             {{- /* ── THE MIGRATOR HAD NO WAY TO FIND THE DATABASE ────────────────
                    This Job emitted no DATABASE_* at all, so the only route to a host
@@ -107,9 +118,18 @@ spec:
                    on a runtime role. */}}
             {{- if and $.Values.data $.Values.data.postgres }}
             {{- $pg := $.Values.data.postgres }}
-            {{- with $pg.host }}
+            {{- /* Same endpoint rule as the Deployments (deployment.yaml): cnpg
+                   mode goes to the cluster's -rw Service, an explicit host wins
+                   otherwise. A migrator that cannot find the database fails the
+                   PreSync hook — the one failure mode that STOPS a sync. */}}
+            {{- if eq $pg.mode "cnpg" }}
             - name: DATABASE_HOST
-              value: {{ . | quote }}
+              value: {{ required "data.postgres.cluster is required when mode is cnpg" $pg.cluster }}-rw.{{ required "data.postgres.namespace is required when mode is cnpg" $pg.namespace }}.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            {{- else if $pg.host }}
+            - name: DATABASE_HOST
+              value: {{ $pg.host | quote }}
             - name: DATABASE_PORT
               value: "5432"
             {{- end }}
@@ -120,6 +140,10 @@ spec:
             {{- with $pg.user }}
             - name: DATABASE_USER
               value: {{ printf "%s_migrator" . | quote }}
+            {{- end }}
+            {{- with $pg.caFile }}
+            - name: DATABASE_SSL_CA
+              value: {{ . | quote }}
             {{- end }}
             {{- with $pg.auth }}
             - name: DATABASE_AUTH
@@ -132,5 +156,15 @@ spec:
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+        {{- /* Pod-level volumes — the tmp emptyDir and the CNPG CA. */}}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if and $.Values.data $.Values.data.postgres.caFile }}
+        - name: db-ca
+          secret:
+            secretName: {{ include "qnsc.product" $ }}-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- end }}
 {{- end }}
 {{- end }}

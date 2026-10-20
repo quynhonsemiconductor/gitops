@@ -52,7 +52,7 @@ spec:
   egress:
     - to:
         - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: {{ .Values.gateway.namespace }} }
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
 ---
 {{- /* AWS is reached over the NAT — RDS, Secrets Manager, SQS, ECR, and R2 at
        Cloudflare. Egress to the internet is allowed; INGRESS is not, and that is
@@ -90,7 +90,7 @@ spec:
     {{- if has ($svc.expose | default "none") (list "public" "protected") }}
     - from:
         - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: {{ $.Values.gateway.namespace }} }
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
       ports:
         - { protocol: TCP, port: {{ $svc.port }} }
     {{- end }}

@@ -44,9 +44,6 @@
     "defaults": {
       "type": "object"
     },
-    "gateway": {
-      "type": "object"
-    },
     "otel": {
       "type": "object"
     },
@@ -415,16 +412,6 @@
         "enabled": {
           "type": "boolean",
           "description": "Render the namespace-wide default-deny set. On-prem sets false: the one data-prod NetworkPolicy lives in gitops/platform (ONPREM-PLAN \u00a75.6/\u00a76.2)."
-        }
-      }
-    },
-    "httpRoute": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Render HTTPRoute/GRPCRoute against the Gateway. On-prem sets false: ingress is a Cloudflare Tunnel rule in infra/live/onprem (ONPREM-PLAN \u00a75.3)."
         }
       }
     },

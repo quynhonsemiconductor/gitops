@@ -86,9 +86,6 @@ defaults:
   # §9j — cheaper AND lower latency. Set on every Service.
   trafficDistribution: PreferClose
 
-gateway:
-  name: qnsc
-  namespace: platform
 
 # §9a — resource attributes for every signal. Without a pinned convention, seven
 # products name the same concept seven ways and no dashboard is portable.
@@ -99,20 +96,20 @@ region: ap-southeast-1
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.
 images: {}
-# ── On-prem toggles (ONPREM-PLAN §5.6) ───────────────────────────────────────
+# ── On-prem toggle (ONPREM-PLAN §5.6) ────────────────────────────────────────
 #
-# Both default to TRUE so the existing (EKS-era) values keep rendering exactly
-# what they rendered before these keys existed. An on-prem product sets them to
-# false in its values file:
+# Defaults to TRUE so the existing (EKS-era) values keep rendering exactly what
+# they rendered before this key existed. An on-prem product sets it false:
 #
-#   networkPolicy.enabled: false  — per-namespace default-deny is §9 work with its
+#   networkPolicy.enabled: false — per-namespace default-deny is §9 work with its
 #     own trigger; on one node, the ONE NetworkPolicy that matters is the
 #     `data-prod` one, which lives in gitops/platform, not in this chart.
-#   httpRoute.enabled: false      — there is no Gateway on-prem; ingress is a
-#     Cloudflare Tunnel rule in infra/live/onprem.
+#
+# There is no httpRoute toggle: the HTTPRoute/GRPCRoute templates are DELETED
+# (2026-10-21). The Gateway API is gone from the platform — no Gateway on-prem,
+# ingress is a Cloudflare Tunnel rule in infra/live/onprem; Envoy Gateway comes
+# back only via §9's trigger, and the templates would be dead code until then.
 networkPolicy:
-  enabled: true
-httpRoute:
   enabled: true
 # Worker-only mounted credentials (§7.1). Empty by default: with no graphCert
 # nothing is mounted and no AZURE_CLIENT_CERTIFICATE_PATH is exported.
