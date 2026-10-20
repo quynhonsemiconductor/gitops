@@ -1,0 +1,210 @@
+# ── ca-mirror: publish the CNPG CA CERTIFICATE, never its KEY ───────────────
+#
+# The security rule (§6.3, decision 2026-10-21): the CNPG-managed `pg-*-ca`
+# Secret holds ca.crt AND ca.key. The key signs server certificates — outside
+# data-<env> it is a DB-MITM capability, so it must never leave. Products get
+# the CERTIFICATE only:
+#
+#   pg-rova-ca  (CNPG, ca.crt + ca.key)  --ca-mirror-->  pg-rova-ca-pub (ca.crt)
+#   pg-dev-ca   (CNPG, ca.crt + ca.key)  --ca-mirror-->  pg-dev-ca-pub  (ca.crt)
+#
+# and the ESO cnpg-ca stores (../eso/stores-onprem.yaml) are RBAC-scoped to the
+# -pub Secrets only. One CronJob per data namespace, same shape, wave 1 (after
+# the clusters; the Chart's ExternalSecret then lands ca.crt in every product
+# namespace as <product>-db-ca).
+#
+# Frequency 12 h is fine because the CA essentially never rotates while the
+# cluster lives; after a cluster REBUILD (§14, new serverName generation) run
+# it once by hand before restarting the apps:
+#
+#   kubectl -n data-prod create job --from=cronjob/ca-mirror ca-mirror-manual
+#
+# Image: registry.k8s.io/kubectl:v1.36.5 by digest — matches the k3s stable
+# (v1.36) minor, verified 2026-10-21 against the registry's tag index.
+# Runs as nobody with a read-only root: it only talks to the API, which
+# authenticates with its own ServiceAccount.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ca-mirror
+  namespace: data-prod
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ca-mirror
+  namespace: data-dev
+---
+# data-prod: read CNPG's ca secret, own the pub mirror
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ca-mirror
+  namespace: data-prod
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-rova-ca]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-rova-ca-pub]
+    verbs: [get, create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ca-mirror
+  namespace: data-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ca-mirror
+subjects:
+  - kind: ServiceAccount
+    name: ca-mirror
+    namespace: data-prod
+---
+# data-dev: identical shape for pg-dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ca-mirror
+  namespace: data-dev
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-dev-ca]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-dev-ca-pub]
+    verbs: [get, create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ca-mirror
+  namespace: data-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ca-mirror
+subjects:
+  - kind: ServiceAccount
+    name: ca-mirror
+    namespace: data-dev
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ca-mirror
+  namespace: data-prod
+spec:
+  schedule: "17 */12 * * *"
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ca-mirror
+        spec:
+          restartPolicy: Never
+          serviceAccountName: ca-mirror
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: mirror
+              image: registry.k8s.io/kubectl:v1.36.5@sha256:0667e3f3e6ef435d7cd4c16684244703ebd67314c17511c2a9f87ea44f6cdf6b
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # The server is the CERTIFICATE. Its KEY stays in pg-rova-ca,
+                  # which nothing outside data-prod can read (see the Roles above
+                  # and the cnpg-ca stores).
+                  kubectl get secret pg-rova-ca \
+                    -o 'jsonpath={.data.ca\.crt}' | base64 -d > /tmp/ca.crt
+                  test -s /tmp/ca.crt || { echo "empty ca.crt"; exit 1; }
+                  kubectl create secret generic pg-rova-ca-pub \
+                      --from-file=ca.crt=/tmp/ca.crt \
+                      --dry-run=client -o yaml \
+                    | kubectl apply -f -
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { memory: 64Mi }
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ca-mirror
+  namespace: data-dev
+spec:
+  schedule: "23 */12 * * *"
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ca-mirror
+        spec:
+          restartPolicy: Never
+          serviceAccountName: ca-mirror
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: mirror
+              image: registry.k8s.io/kubectl:v1.36.5@sha256:0667e3f3e6ef435d7cd4c16684244703ebd67314c17511c2a9f87ea44f6cdf6b
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  kubectl get secret pg-dev-ca \
+                    -o 'jsonpath={.data.ca\.crt}' | base64 -d > /tmp/ca.crt
+                  test -s /tmp/ca.crt || { echo "empty ca.crt"; exit 1; }
+                  kubectl create secret generic pg-dev-ca-pub \
+                      --from-file=ca.crt=/tmp/ca.crt \
+                      --dry-run=client -o yaml \
+                    | kubectl apply -f -
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { memory: 64Mi }
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

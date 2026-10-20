@@ -38,14 +38,16 @@ spec:
       ports:
         - { protocol: TCP, port: 5432 }   # CNPG
         - { protocol: TCP, port: 6379 }   # valkey-rova
-    # The observability plane: platform (the one Alloy) on the METRICS ports
-    # only — CNPG's built-in exporter (9187) and the valkey exporter (9121)
-    # when it lands with the k8s-monitoring work. §12: metrics leave the box;
-    # they are the ONLY platform traffic into data-prod.
+    # The CNPG operator reaches its instances' bootstrap API on 8000 (status,
+    # restarts, switchover). Scoped to the operator namespace — cnpg-system —
+    # and NOT folded into the `platform` rule: this port is control-plane.
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: platform
+              kubernetes.io/metadata.name: cnpg-system
       ports:
-        - { protocol: TCP, port: 9187 }
-        - { protocol: TCP, port: 9121 }
+        - { protocol: TCP, port: 8000 }
+    # Same-namespace pods: the backup and dump CronJobs (§10) run IN
+    # data-prod and talk to the instances over the instance Service.
+    - from:
+        - podSelector: {}

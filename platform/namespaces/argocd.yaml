@@ -1,0 +1,14 @@
+# ArgoCD's namespace carries qnsc.vn/env: platform so the platform ClusterSecretStore
+# would reach it if it ever needed a synced secret (today it holds none — the
+# repo credential is hand-applied bootstrap, §14 step 2). The namespace is
+# otherwise created by ArgoCD's own Helm install; declaring it here first means
+# the LABEL survives, because Helm adopts the existing namespace and does not
+# manage its labels.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    qnsc.vn/env: platform
+    qnsc.vn/tenant: platform
+    pod-security.kubernetes.io/enforce: privileged   # ArgoCD's repo-server/rexray need more than restricted today; revisit on the onprem bootstrap
