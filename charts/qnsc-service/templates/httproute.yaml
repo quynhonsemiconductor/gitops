@@ -1,7 +1,7 @@
 {{- range $name, $_ := $.Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
-{{- if and (eq $caps.route "HTTPRoute") (has ($svc.expose | default "none") (list "public" "protected")) }}
+{{- if and $.Values.httpRoute.enabled (eq $caps.route "HTTPRoute") (has ($svc.expose | default "none") (list "public" "protected")) }}
 ---
 {{- /* §3 — Gateway API, never Ingress. Ingress is effectively frozen and Gateway
        is where the ecosystem went; it is also what makes per-PR preview hostnames

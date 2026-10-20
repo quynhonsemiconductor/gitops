@@ -153,5 +153,5 @@ data:
   # and a workload shape unlike anything else in the estate. Dev is shared.
   postgres:
     mode: dedicated
-    pooling: pgbouncer
+    pooling: none
     extensions: [vector, pgcrypto]

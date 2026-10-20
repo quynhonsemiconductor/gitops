@@ -1,0 +1,142 @@
+suite: onprem profile
+# The on-prem toggles (ONPREM-PLAN §5.6) gate whole template files, so the cheap
+# failure is "the toggle renamed" or "the gate dropped" and every product
+# suddenly renders a default-deny set or an HTTPRoute against a Gateway that
+# does not exist. These tests pin the gates and the two on-prem mounts.
+templates:
+  - templates/networkpolicy.yaml
+  - templates/httproute.yaml
+  - templates/deployment.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+
+tests:
+  # ── networkPolicy.enabled ───────────────────────────────────────────────────
+  - it: renders the default-deny set by default (EKS behaviour unchanged)
+    template: templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 5        # default-deny, allow-dns, allow-egress-platform, allow-egress-external, + the dev allow-ingress-api (rova dev exposes the api to the cluster)
+
+  - it: renders NO NetworkPolicy when networkPolicy.enabled is false
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ── httpRoute.enabled ───────────────────────────────────────────────────────
+  - it: renders the HTTPRoute by default (EKS behaviour unchanged)
+    template: templates/httproute.yaml
+    asserts:
+      - hasDocuments:
+          count: 1        # rova api is kind http, expose public
+
+  - it: renders NO HTTPRoute when httpRoute.enabled is false
+    template: templates/httproute.yaml
+    set:
+      httpRoute.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ── mode: cnpg (§6.3) ───────────────────────────────────────────────────────
+  - it: points DATABASE_HOST at the cluster's -rw Service and exports DATABASE_SSL_CA
+    template: templates/deployment.yaml
+    documentIndex: 0
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_HOST
+            value: pg-rova-rw.data-prod.svc
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_SSL_CA
+            value: /etc/qnsc/db-ca/ca.crt
+      - contains:
+          path: spec.template.spec.volumes
+          any: true
+          content:
+            name: db-ca
+            secret:
+              secretName: rova-db-ca
+              items:
+                - { key: ca.crt, path: ca.crt }
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          any: true
+          content:
+            name: db-ca
+            mountPath: /etc/qnsc/db-ca/ca.crt
+            subPath: ca.crt
+            readOnly: true
+
+  # ── secrets.workerOnly (§7.1/§7.3) ──────────────────────────────────────────
+  - it: mounts the Graph PEM into the worker and exports the path
+    template: templates/deployment.yaml
+    documentIndex: 1        # rova's second Deployment is the worker
+    set:
+      secrets.workerOnly:
+        graphCert: rova-dev-graph-cert
+        path: /etc/qnsc/graph/cert.pem
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: AZURE_CLIENT_CERTIFICATE_PATH
+            value: /etc/qnsc/graph/cert.pem
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          any: true
+          content:
+            name: graph-cert
+            mountPath: /etc/qnsc/graph/cert.pem
+            subPath: cert.pem
+            readOnly: true
+
+  - it: exports NO certificate path on the api
+    template: templates/deployment.yaml
+    documentIndex: 0
+    set:
+      secrets.workerOnly:
+        graphCert: rova-dev-graph-cert
+        path: /etc/qnsc/graph/cert.pem
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: AZURE_CLIENT_CERTIFICATE_PATH
+
+  - it: renders nothing when secrets.workerOnly.graphCert is unset
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: AZURE_CLIENT_CERTIFICATE_PATH
+      - notContains:
+          path: spec.template.spec.volumes
+          any: true
+          content:
+            name: graph-cert

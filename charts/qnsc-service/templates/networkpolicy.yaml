@@ -3,7 +3,14 @@
 
        Default-deny first, then allow explicitly. These policies are namespace-wide
        and render once, not per service — a per-service default-deny would be six
-       copies of the same rule with six chances to omit one. */}}
+       copies of the same rule with six chances to omit one.
+
+       ONPREM: `networkPolicy.enabled: false` renders none of this. One node means
+       the default-deny set buys little and costs an outage class (§5.6); the one
+       policy that matters on-prem — `data-prod` admits rova-prod, restore-test,
+       cnpg-system and `platform` on the metrics ports only — lives in
+       gitops/platform, not here. */}}
+{{- if .Values.networkPolicy.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -100,5 +107,6 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: {{ $svc.port }} }
+{{- end }}
 {{- end }}
 {{- end }}

@@ -98,20 +98,25 @@ accountId: "608983206583"
 region: ap-southeast-1
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.
-images:
-  # ⚠ THIS IMAGE DOES NOT EXIST, AND FIXING THAT WOULD NOT HELP.
-  #
-  # `bitnami/pgbouncer` was withdrawn upstream and now has ZERO tags; only
-  # `bitnamilegacy/pgbouncer` still carries 1.24.1. So any product rendering
-  # `pooling: pgbouncer` today lands in ImagePullBackOff.
-  #
-  # Repointing at the legacy repo is NOT the fix, because a pullable PgBouncer
-  # still cannot authenticate: every product role is a member of `rds_iam` and
-  # has no password, while PgBouncer holds static credentials and cannot mint a
-  # token. It would trade a clear pull failure for a confusing auth failure.
-  #
-  # The exit is `pooling: none` with `auth: iam` (see values/rova), or RDS Proxy
-  # for prod connection limits. rova has moved; opshub and kb still request
-  # pgbouncer and MUST migrate before they deploy — kb needs the equivalent of
-  # db/pg-iam.ts in Python first.
-  pgbouncer: "1.24.1"
+images: {}
+# ── On-prem toggles (ONPREM-PLAN §5.6) ───────────────────────────────────────
+#
+# Both default to TRUE so the existing (EKS-era) values keep rendering exactly
+# what they rendered before these keys existed. An on-prem product sets them to
+# false in its values file:
+#
+#   networkPolicy.enabled: false  — per-namespace default-deny is §9 work with its
+#     own trigger; on one node, the ONE NetworkPolicy that matters is the
+#     `data-prod` one, which lives in gitops/platform, not in this chart.
+#   httpRoute.enabled: false      — there is no Gateway on-prem; ingress is a
+#     Cloudflare Tunnel rule in infra/live/onprem.
+networkPolicy:
+  enabled: true
+httpRoute:
+  enabled: true
+# Worker-only mounted credentials (§7.1). Empty by default: with no graphCert
+# nothing is mounted and no AZURE_CLIENT_CERTIFICATE_PATH is exported.
+# The workerOnly key must EXIST (empty is fine) — the templates read through
+# it unconditionally, and a missing key would be a nil-pointer render error.
+secrets:
+  workerOnly: {}

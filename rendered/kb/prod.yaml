@@ -128,19 +128,6 @@ spec:
       app.kubernetes.io/instance: kb
 
 ---
-# Source: qnsc-service/templates/pgbouncer.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: pgbouncer
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: pgbouncer
-      app.kubernetes.io/instance: kb
-
----
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -193,29 +180,6 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-kb-worker
 automountServiceAccountToken: false
-
----
-# Source: qnsc-service/templates/pgbouncer.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: pgbouncer
-  labels:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: kb
-    app.kubernetes.io/part-of: kb
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: kb
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  type: ClusterIP
-  trafficDistribution: PreferClose
-  selector:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: kb
-  ports:
-    - { name: pgbouncer, port: 6432, targetPort: 6432 }
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -329,10 +293,6 @@ spec:
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=kb,deployment.environment=prod,service.version=sha-0000000
-            - name: DATABASE_HOST
-              value: pgbouncer
-            - name: DATABASE_PORT
-              value: "6432"
             - name: MALWARE_SCANNER_HOST
               value: 127.0.0.1
             - name: MALWARE_SCANNER_PORT
@@ -456,10 +416,6 @@ spec:
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=kb,deployment.environment=prod,service.version=sha-0000000
-            - name: DATABASE_HOST
-              value: pgbouncer
-            - name: DATABASE_PORT
-              value: "6432"
             - name: MALWARE_SCANNER_HOST
               value: 127.0.0.1
             - name: MALWARE_SCANNER_PORT
@@ -503,67 +459,6 @@ spec:
           emptyDir: {}
         - emptyDir: {}
           name: clamav-db
-
----
-# Source: qnsc-service/templates/pgbouncer.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: pgbouncer
-  labels:
-    app.kubernetes.io/name: pgbouncer
-    app.kubernetes.io/instance: kb
-    app.kubernetes.io/part-of: kb
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: kb
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: pgbouncer
-      app.kubernetes.io/instance: kb
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: pgbouncer
-        app.kubernetes.io/instance: kb
-        app.kubernetes.io/part-of: kb
-        app.kubernetes.io/managed-by: Helm
-        qnsc.vn/product: kb
-        qnsc.vn/env: prod
-        qnsc.vn/tenant: product
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
-      nodeSelector:
-        kubernetes.io/arch: amd64
-      containers:
-        - name: pgbouncer
-          image: bitnami/pgbouncer:1.24.1
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          ports:
-            - { name: pgbouncer, containerPort: 6432 }
-          env:
-            - { name: PGBOUNCER_POOL_MODE, value: transaction }
-            - { name: PGBOUNCER_MAX_CLIENT_CONN, value: "1000" }
-            - { name: PGBOUNCER_DEFAULT_POOL_SIZE, value: "20" }
-            - { name: PGBOUNCER_PORT, value: "6432" }
-          envFrom:
-            - secretRef:
-                name: kb-app
-          resources:
-            requests: { cpu: 100m, memory: 128Mi }
-            limits:   { memory: 128Mi }
-          livenessProbe:
-            tcpSocket: { port: 6432 }
-            periodSeconds: 10
 
 ---
 # Source: qnsc-service/templates/job.yaml

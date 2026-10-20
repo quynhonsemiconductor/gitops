@@ -289,6 +289,10 @@ spec:
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
             - name: DATABASE_AUTH
               value: "iam"
           envFrom:
@@ -373,6 +377,10 @@ spec:
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
             - name: DATABASE_AUTH
               value: "iam"
           envFrom:
