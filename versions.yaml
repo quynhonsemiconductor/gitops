@@ -61,6 +61,33 @@ platform:
     repo: https://charts.external-secrets.io
     version: "2.11.0"
 
+  # ── The on-prem day-1 operators (ONPREM-PLAN §11.4) ─────────────────────────
+  # Every line below was verified against the upstream chart index on
+  # 2026-10-20 (cloudnative-pg.github.io/charts, charts.jetstack.io,
+  # charts.external-secrets.io, the Docker Hub and GitHub Packages registry
+  # APIs). Renovate keeps them current; majors are reviewed monthly (§16.2).
+  cert-manager:
+    chart: cert-manager
+    repo: https://charts.jetstack.io
+    version: "v1.21.2"         # 1.21 line; 1.19 out of support
+  cloudnative-pg:
+    chart: cloudnative-pg
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.29.1"          # operator 1.30.1 (in-tree barman removed 1.31 -> plugin)
+  plugin-barman-cloud:
+    chart: plugin-barman-cloud
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
+  postgresql:
+    # ImageCatalog pin (§6.3) — `standard` = the flavour carrying pgvector
+    # (pg-dev's `kb` database needs it). Digest verified 2026-10-20 against
+    # the GitHub Packages API; Renovate's regex manager keeps it current.
+    image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+  valkey:
+    # §6.4 — 8.1.x by digest; NEVER 8.2 (ElastiCache 8.2 = OSS 8.1 + search).
+    # Digest verified 2026-10-20 against the Docker Hub registry API.
+    image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+
   # ── Everything else ──────────────────────────────────────────────────────────
   # REMOVED 2026-10-20 with platform/gateway (ONPREM-PLAN §13): gateway-api CRDs
   # and envoy-gateway — no Gateway on-prem, ingress is a Tunnel rule in

@@ -1,0 +1,101 @@
+# ── Valkey — the SHARED TEMPLATE, instantiated three times (§6.4) ───────────
+#
+#   valkey-rova     data-prod   cache   allkeys-lru, no persistence
+#   valkey-dev      data-dev    cache   allkeys-lru, no persistence (prod parity)
+#   valkey-kb-dev   data-dev    broker  noeviction + AOF (2 Gi PVC)
+#
+# §6.4 — why a broker is a SEPARATE instance from the caches, not a shared one:
+# `maxmemory-policy` is per instance and the workloads need opposite answers.
+# One `noeviction` instance turns a full rova/opshub cache into write errors;
+# one LRU instance silently drops Celery tasks; one `volatile-lru` instance
+# only works if every key in three codebases gets the TTL discipline right.
+# A second ~256 Mi pod from this template has none of those failure modes.
+#
+# Plain StatefulSet — no operator (§5.1). In-cluster only, no auth on purpose:
+# the ONLY ingress is the data-prod NetworkPolicy (../networkpolicy/) plus the
+# cluster boundary; rova/opshub/KB read REDIS_URL without a password today.
+#
+# Image pinned by digest (§11.4): valkey/valkey:8.1.10
+#   sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+# verified 2026-10-20 against the Docker Hub registry API. NEVER 8.2 —
+# ElastiCache "8.2" is OSS 8.1 plus the search module, and parity with the
+# cache we are moving FROM matters until the AWS wind-down (§6.4).
+---
+# valkey-rova — rova prod cache. data-prod, LRU, no persistence: a cache may
+# evict and loses nothing on restart that it did not already lose to eviction.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey-rova
+  namespace: data-prod
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-rova
+spec:
+  serviceName: valkey-rova
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/instance: valkey-rova
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/instance: valkey-rova
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # the image's `valkey` user
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+          args:
+            - valkey-server
+            - --maxmemory
+            - 96mb              # §5.7 — pod is 192Mi; half for the data, half for the process
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - ""                # no RDB snapshots — a cache repopulates
+            - --appendonly
+            - "no"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: valkey, containerPort: 6379 }
+          resources:
+            # §5.7 — 50m / 192Mi, requests = limits.
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 192Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}          # no persistence on a cache (§6.4)
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-rova
+  namespace: data-prod
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-rova
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-rova
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }

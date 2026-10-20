@@ -1,0 +1,211 @@
+# ── The on-prem secret stores (ONPREM-PLAN §7.1) ────────────────────────────
+#
+# FOUR ClusterSecretStore families, replacing the EKS-era per-namespace IRSA
+# SecretStore that the chart rendered (that one stays until the values move in
+# the dev cutover; this file is on-prem only, applied at bootstrap — §14 step 2
+# needs the hand-applied SP certificate Secrets BEFORE these can go Valid).
+#
+# One store per vault, each with its own SP certificate, and a `conditions`
+# namespaceSelector on `qnsc.vn/env` (../namespaces/onprem.yaml):
+#   - dev can never read prod
+#   - apps can never read platform credentials
+#   - kv-qnsc-admin has NO store on purpose — nobody automated reads it (§7.1)
+#
+# The SP certificates are NOT in Git (only their public halves go to
+# infra/live/identity). The private halves are hand-applied at bootstrap
+# (§14 step 2) into the external-secrets namespace — ONE COMBINED PEM per SP
+# (certificate + private key concatenated; that is what ESO's azure
+# `clientCertificate` authSecretRef reads — a single key, not a keypair):
+#
+#   kubectl -n external-secrets create secret generic qnsc-eso-dev-cert \
+#     --from-file=tls.pem=dev-combined.pem   # same shape for prod / platform
+#
+# Values are never in Git and never in state — OpenTofu (infra/live/identity)
+# owns the vaults and the RBAC, never the secrets (§7).
+#
+# Schema note (2026-10-20, checked against the ESO v1 CRD at main): the
+# namespace constraint on a ClusterSecretStore is `spec.conditions[]`
+# (namespaceSelector or namespaceRegexes), NOT the flat
+# `spec.namespaceSelector` of pre-v1 alpha; and the azure certificate auth is
+# a single secretKeySelector. The datreeio CRD catalog still carries the old
+# shape, so kubeconform with that catalog cannot validate this file.
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: kv-qnsc-dev
+spec:
+  conditions:
+    - namespaceSelector:
+        matchLabels:
+          qnsc.vn/env: dev
+  provider:
+    azurekv:
+      authType: ServicePrincipal
+      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      vaultUrl: https://kv-qnsc-dev.vault.azure.net
+      authSecretRef:
+        clientCertificate:
+          name: qnsc-eso-dev-cert
+          namespace: external-secrets
+          key: tls.pem
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: kv-qnsc-prod
+spec:
+  conditions:
+    - namespaceSelector:
+        matchLabels:
+          qnsc.vn/env: prod
+  provider:
+    azurekv:
+      authType: ServicePrincipal
+      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      vaultUrl: https://kv-qnsc-prod.vault.azure.net
+      authSecretRef:
+        clientCertificate:
+          name: qnsc-eso-prod-cert
+          namespace: external-secrets
+          key: tls.pem
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: kv-qnsc-platform
+spec:
+  conditions:
+    - namespaceSelector:
+        matchLabels:
+          qnsc.vn/env: platform
+  provider:
+    azurekv:
+      authType: ServicePrincipal
+      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      vaultUrl: https://kv-qnsc-platform.vault.azure.net
+      authSecretRef:
+        clientCertificate:
+          name: qnsc-eso-platform-cert
+          namespace: external-secrets
+          key: tls.pem
+---
+# ── cnpg-ca: the KUBERNETES-provider stores (§5.6) ──────────────────────────
+#
+# The CNPG server CA reaches the product namespaces through ESO, not by hand:
+# an ExternalSecret in `<product>-<env>` reads the `pg-*-ca` Secret of
+# data-<env> and copies ONLY `ca.crt` into `<product>-db-ca` (the chart mounts
+# it for DATABASE_SSL_CA, §6.3). The stores turn Ready only once the clusters
+# exist — on bootstrap (§14 step 4) they stay NotReady until wave 0, expected.
+#
+# §5.6 says "one ClusterSecretStore cnpg-ca"; the kubernetes provider takes its
+# REMOTE namespace at store level (`remoteNamespace`), and the CAs live in two
+# namespaces — so this is TWO stores, one per data namespace, each read-only on
+# exactly one Secret. Everything else in data-<env> is unreachable with this
+# identity. The deviation is recorded here and for the plan PR.
+#
+# Read-only on one key of one Secret shape; nothing else in data-<env> is
+# reachable with this identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-cnpg-ca-reader
+  namespace: external-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-cnpg-ca-reader
+  namespace: data-prod
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-rova-ca]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-cnpg-ca-reader
+  namespace: data-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-cnpg-ca-reader
+subjects:
+  - kind: ServiceAccount
+    name: eso-cnpg-ca-reader
+    namespace: external-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-cnpg-ca-reader
+  namespace: data-dev
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [pg-dev-ca]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-cnpg-ca-reader
+  namespace: data-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-cnpg-ca-reader
+subjects:
+  - kind: ServiceAccount
+    name: eso-cnpg-ca-reader
+    namespace: external-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: cnpg-ca-prod
+spec:
+  conditions:
+    - namespaceSelector:
+        matchLabels:
+          qnsc.vn/tenant: product
+          qnsc.vn/env: prod
+  provider:
+    kubernetes:
+      remoteNamespace: data-prod
+      server:
+        url: kubernetes.default
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: eso-cnpg-ca-reader
+          namespace: external-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: cnpg-ca-dev
+spec:
+  conditions:
+    - namespaceSelector:
+        matchLabels:
+          qnsc.vn/tenant: product
+          qnsc.vn/env: dev
+  provider:
+    kubernetes:
+      remoteNamespace: data-dev
+      server:
+        url: kubernetes.default
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: eso-cnpg-ca-reader
+          namespace: external-secrets

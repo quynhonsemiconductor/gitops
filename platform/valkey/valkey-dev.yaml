@@ -1,0 +1,81 @@
+# valkey-dev — the rova + opshub DEV cache (§6.4). Same policy as prod
+# (allkeys-lru, no persistence) on purpose: parity means a dev-only eviction
+# bug cannot be dismissed as "works on prod". Key prefixes separate the two
+# products sharing it — an app-level concern, set in the products' values.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey-dev
+  namespace: data-dev
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-dev
+spec:
+  serviceName: valkey-dev
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/instance: valkey-dev
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/instance: valkey-dev
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+          args:
+            - valkey-server
+            - --maxmemory
+            - 96mb
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - ""      # (empty string: disable RDB)
+            - --appendonly
+            - "no"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: valkey, containerPort: 6379 }
+          resources:
+            # §5.7 — 50m / 128Mi.
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-dev
+  namespace: data-dev
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-dev
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-dev
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }
