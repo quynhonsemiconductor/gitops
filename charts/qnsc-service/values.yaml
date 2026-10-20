@@ -93,7 +93,11 @@ gateway:
 # §9a — resource attributes for every signal. Without a pinned convention, seven
 # products name the same concept seven ways and no dashboard is portable.
 otel:
-  endpoint: http://alloy-gateway.platform.svc.cluster.local:4317
+  # ONPREM-PLAN §12 — one Alloy in `platform` (k8s-monitoring chart) receives
+  # OTLP on 4318 (HTTP). The EKS two-tier collector (alloy-gateway:4317) is gone.
+  # The k8s-monitoring release names the service; if it differs from this
+  # default, base values override it (M-2/M-3).
+  endpoint: http://alloy-receiver.platform.svc:4318
 accountId: "608983206583"
 region: ap-southeast-1
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component

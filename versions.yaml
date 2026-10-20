@@ -62,22 +62,15 @@ platform:
     version: "2.11.0"
 
   # ── Everything else ──────────────────────────────────────────────────────────
-  gateway-api:
-    # CRDs, applied directly — not a chart. Standard channel.
-    version: "v1.6.2"
-  envoy-gateway:
-    chart: gateway-helm
-    repo: oci://docker.io/envoyproxy
-    version: "1.9.0"
-  policy-controller:
-    # Sigstore — image signature verification only. Everything else is
-    # ValidatingAdmissionPolicy, which is in-tree and pins nothing (§10).
-    chart: policy-controller
-    repo: https://sigstore.github.io/helm-charts
-    version: "0.10.8"
+  # REMOVED 2026-10-20 with platform/gateway (ONPREM-PLAN §13): gateway-api CRDs
+  # and envoy-gateway — no Gateway on-prem, ingress is a Tunnel rule in
+  # infra/live/onprem; both return only via §9's Envoy-Gateway trigger.
+  # policy-controller (Sigstore/Cosign) is §9-postponed, not needed day 1.
 
 images:
-  cloudflared: "2026.9.1"
+  # §11.4 — monthly release, pinned by digest (amd64 index on Docker Hub).
+  # 2026.10.2 verified 2026-10-20: docker.io/cloudflare/cloudflared tag digest
+  cloudflared: "2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2"
   clamav: "1.5"               # amd64 only — the estate's one exception (§4c)
   # ⚠ THE IMAGE THIS POINTED AT NO LONGER EXISTS, AND NOR DOES ITS REGISTRY ENTRY.
   #

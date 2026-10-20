@@ -1,14 +1,13 @@
 # ── cloudflared — §3 ─────────────────────────────────────────────────────────
 #
-# The tunnel replaces the LOAD BALANCER, not the routing layer. It has exactly one
-# ingress rule — a catch-all to the Gateway — and it is "configured once, never
-# edited". Every per-product and per-pull-request route is an HTTPRoute in a
-# product namespace, reconciled by ArgoCD.
+# The tunnel IS the ingress. ONPREM-PLAN §5.3: there is no Gateway and no
+# in-cluster router — the connector only runs `tunnel run` with its token, and
+# every per-host+path ingress rule is REMOTELY MANAGED in the Tunnel config owned
+# by infra/live/onprem, with a final catch-all http_status:404.
 #
-# ONE Deployment per cluster, THREE replicas — not one per product. §3: "Per-product
-# tunnels would be 7 × 2 = 14 pods and roughly a gibibyte of RAM proxying, with no
-# benefit once Gateway does the routing. Cloudflare load-balances across
-# connectors, so three replicas is HA."
+# ONE Deployment per cluster, TWO replicas — not one per product. Cloudflare
+# load-balances across connectors, so two replicas are HA across restarts on the
+# single node (§5.3; the EKS-era count was three).
 #
 # What this buys, and it is the strongest property of the architecture (§3):
 # outbound only. No public IP, nothing to scan, no inbound surface at all.
@@ -21,7 +20,7 @@ metadata:
   labels:
     app.kubernetes.io/name: cloudflared
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudflared
@@ -34,17 +33,11 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         seccompProfile: { type: RuntimeDefault }
-      # Spread across zones: three replicas on one node is one node's worth of HA.
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: cloudflared
+      # No topology spread: one node (k3s-01, §5). Two replicas are HA across
+      # restarts, which is what §5.3 asks for; there is no second zone to spread into.
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:2026.8.1   # versions.yaml
+          image: cloudflare/cloudflared:2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2   # versions.yaml (§11.4: monthly, by digest)
           args:
             - tunnel
             - --no-autoupdate
@@ -83,7 +76,7 @@ metadata:
   name: cloudflared
   namespace: platform
 spec:
-  minAvailable: 2
+  minAvailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudflared

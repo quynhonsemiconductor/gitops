@@ -324,7 +324,7 @@ spec:
             failureThreshold: 60
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://alloy-gateway.platform.svc.cluster.local:4317
+              value: http://alloy-receiver.platform.svc:4318
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
@@ -451,7 +451,7 @@ spec:
               memory: 6Gi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://alloy-gateway.platform.svc.cluster.local:4317
+              value: http://alloy-receiver.platform.svc:4318
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
