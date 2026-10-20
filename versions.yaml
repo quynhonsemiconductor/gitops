@@ -79,39 +79,6 @@ platform:
 images:
   cloudflared: "2026.9.1"
   clamav: "1.5"               # amd64 only — the estate's one exception (§4c)
-  # ⚠ THE IMAGE THIS POINTED AT NO LONGER EXISTS, AND NOR DOES ITS REGISTRY ENTRY.
-  #
-  #   bitnami/pgbouncer        repository exists, 20M pulls, ZERO TAGS
-  #   bitnami/pgbouncer:1.24.1 NOT FOUND
-  #   bitnamilegacy/pgbouncer:1.24.1  exists, last pushed 2025-07-03
-  #
-  # Bitnami moved its older public images to `bitnamilegacy/` and emptied the main
-  # namespace. So every product with `pooling: pgbouncer` — rova, opshub and
-  # qnsc-kb, i.e. all of them — would have hit ImagePullBackOff on first deploy,
-  # and PgBouncer is in the data path, so nothing would serve.
-  #
-  # NOT FIXED BY A TAG CHANGE, which is why this is a comment and not a version.
-  # The chart's template is written against Bitnami's PGBOUNCER_* env-var
-  # interface, and the two live alternatives do not share it:
-  #
-  #   pgbouncer/pgbouncer   the OFFICIAL upstream image, pushed 2026-09-20,
-  #                         tags 1.25.2-20260920 / 1.25.1 / 1.25. Configured by
-  #                         pgbouncer.ini, so it needs a ConfigMap and a rewrite
-  #                         of templates/pgbouncer.yaml
-  #   edoburu/pgbouncer     third-party but maintained, v1.25.2-p0 (2026-06-10),
-  #                         env-var driven (DB_HOST, POOL_MODE, MAX_CLIENT_CONN,
-  #                         AUTH_TYPE) — the same SHAPE as today, different names
-  #
-  # `bitnami/pgbouncer:latest` is not an option even as a stopgap: the estate's own
-  # `qnsc-image-tags` admission policy denies `:latest`, and correctly.
-  #
-  # AND THERE IS A DEEPER QUESTION TO SETTLE FIRST. §8 says Postgres uses RDS IAM
-  # authentication, where "no password exists" — but an IAM token expires every 15
-  # minutes, and PgBouncer needs a credential to open its own server-side pool. The
-  # current template does `envFrom` the app secret, which implies a STATIC password.
-  # Those two designs are not compatible, and choosing an image before resolving it
-  # would be choosing the wrong thing carefully. See §5d and §8.
-  pgbouncer: "UNRESOLVED — see the note above. Was bitnami/pgbouncer:1.24.1, which no longer exists."
 
 # ── Toolchain, for CI and for humans ─────────────────────────────────────────
 tools:
