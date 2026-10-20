@@ -17,6 +17,8 @@ cnpg/          on-prem CloudNativePG operator values + the Postgres 18.6
                ImageCatalog, pinned by digest (§6.3)
 valkey/        the three on-prem StatefulSets — two caches, one broker (§6.4)
 networkpolicy/ THE one on-prem NetworkPolicy: data-prod's ingress boundary (§6.2)
+reloader/      chart values — rolls workloads when their Secrets change; the CA
+               rotation loop needs it (§6.3)
 namespaces/onprem.yaml   the on-prem namespace set with `qnsc.vn/env` labels (§6.2)
 reloader/      chart values — rolls workloads when their Secrets change; the CA
                rotation loop needs it (§6.3)
@@ -43,8 +45,10 @@ The order below is the EKS-era bootstrap. On the single k3s node the order is:
 4  cert-manager/           before the barman plugin (its mTLS)
 5  cnpg/                   operator + plugin, then imagecatalog.yaml
 6  valkey/ + networkpolicy/  the data plane, bounded from day one
-7  argocd/                 ArgoCD itself (§14 step 3)
-8  gitops/apps/root.yaml   ArgoCD takes over; waves per §11.2
+7  reloader/               before any product Deployment (it carries the
+                           reload annotation from the first onprem sync)
+8  argocd/                 ArgoCD itself (§14 step 3)
+9  gitops/apps/root.yaml   ArgoCD takes over; waves per §11.2
 ```
 
 ## EKS-era apply order (superseded on-prem)

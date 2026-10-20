@@ -16,16 +16,24 @@
 # (stores-onprem.yaml) then distribute pg-*-ca-pub to the product namespaces
 # as <product>-db-ca — RBAC on -pub only.
 #
-# Rotation facts (verified against CNPG 1.30 behaviour, 2026-10-21): the CA is
-# generated ONCE per cluster and is NOT rotated by the operator — the operator
-# renews the LEAF certificates (90-day server certs, reissued 7 days before
-# expiry) under the same CA. So ca.crt is stable for the cluster's lifetime,
-# which is what makes the consumers' subPath mounts acceptable (a subPath
-# mount does NOT pick up Secret changes — fine for a value that does not
-# change). ONE exception, §14 step 4: a REBUILT cluster (new serverName
-# generation) generates a NEW CA. After a rebuild: `kubectl annotate
-# externalsecret -n data-<env> ca-sync force-sync=$(date +%s) --overwrite`,
-# then `kubectl rollout restart` the product Deployments that mount db-ca.
+# Rotation facts (verified against the CNPG v1.30.1 source, 2026-10-21): the
+# CA IS renewed — internal/controller/cluster_pki.go renewCASecret reissues
+# ca.crt with the SAME key when IsExpiring(); defaults CertificateDuration=90
+# and ExpiringCheckThreshold=7 (internal/configuration/configuration.go:41-45),
+# i.e. a fresh ca.crt roughly every 83 days, leaf certs on the same cycle.
+# Consumers load the CA ONCE at start (node-postgres ssl.ca, asyncpg
+# SSLContext), so the chain must close itself:
+#
+#   CNPG renews pg-*-ca  ->  ca-sync (1 h refresh) rewrites pg-*-ca-pub and
+#   every <product>-db-ca  ->  Reloader (platform/reloader) rolls the pods
+#   annotated `secret.reloader.stakater.com/reload` in the chart.
+#
+# Nothing here is a restart-free path; the subPath mounts stay because
+# Reloader restarts the pods anyway. ONE case outside the loop, §14 step 4: a
+# REBUILT cluster generates a NEW CA. After a rebuild: force-sync this
+# ExternalSecret (`kubectl annotate externalsecret -n data-<env> ca-sync
+# force-sync=$(date +%s) --overwrite`), then restart the products that mount
+# db-ca (Reloader does it if the value changed; check it did).
 ---
 # ── data-prod ────────────────────────────────────────────────────────────────
 apiVersion: v1

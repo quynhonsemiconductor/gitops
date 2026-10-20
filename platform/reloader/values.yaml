@@ -1,0 +1,37 @@
+# ── Reloader (stakater) — restarts workloads when their Secrets change ──────
+#
+# helm repo add stakater https://stakater.github.io/stakater-charts
+# helm upgrade --install reloader stakater/reloader \
+#   -n platform -f reloader/values.yaml \
+#   --version <versions.yaml: platform.reloader.version>
+#
+# WHY IT EXISTS ON-PREM (§6.3, decided 2026-10-21): CNPG reissues the cluster
+# CA ~every 83 days — CertificateDuration=90, renewed 7 days before expiry,
+# SAME key (cluster_pki.go renewCASecret; defaults in
+# internal/configuration/configuration.go:41-45, verified 2026-10-21). Apps
+# load DATABASE_SSL_CA once at start (node-postgres ssl.ca, asyncpg
+# SSLContext), so a stale in-process CA would fail verify-full ~90 days in,
+# quietly. The chart annotates every Deployment that mounts db-ca with
+# `secret.reloader.stakater.com/reload`, and Reloader rolls those pods when
+# the ExternalSecret refreshed <product>-db-ca. This is the one controller we
+# add for it; the alternative — a longer CA lifetime via the operator's
+# CERTIFICATE_DURATION env — trades rotation hygiene for fewer moving parts
+# and was rejected.
+#
+# One cluster-wide watcher, one replica: it performs no data path and its
+# failure mode (no restarts on rotation) is a ~83-day fuse, alerted by the
+# CA-expiry metrics CNPG already exports (§12).
+#
+# Verified 2026-10-21 against stakater-charts: chart 2.2.18 = app v1.4.22
+# (the 3.x line is a beta); image digest verified against Docker Hub.
+reloader:
+  deployInItsOwnNs: false     # runs in `platform` (release namespace), watches all namespaces
+  watchGlobally: true
+  reloader:
+    watchGlobally: true
+    podMonitor:
+      enabled: false
+    autoReloadAll: false
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { memory: 64Mi }
