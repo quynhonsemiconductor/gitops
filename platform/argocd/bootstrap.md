@@ -19,10 +19,6 @@ kubectl apply -f ../policy/bindings.yaml       # a policy with no binding enforc
 helm upgrade --install external-secrets external-secrets/external-secrets \
   -n platform -f ../eso/values.yaml --version "$ESO_VERSION"
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_API/standard-install.yaml
-helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  -n platform -f ../gateway/values-envoy.yaml --version "$ENVOY_VERSION"
-kubectl apply -f ../gateway/gateway.yaml
 kubectl apply -f ../cloudflared/deployment.yaml
 
 # the platform's OWN credentials — Alloy CrashLoopBackOffs without them, and
@@ -30,10 +26,12 @@ kubectl apply -f ../cloudflared/deployment.yaml
 sed -i "s/ENV/${ENV}/g" ../secrets/*.yaml
 kubectl apply -f ../secrets/
 
-helm upgrade --install alloy-gateway grafana/alloy -n platform \
-  -f ../alloy/values-gateway.yaml --set-file alloy.configMap.content=../alloy/gateway.alloy
 helm upgrade --install alloy-agent grafana/alloy -n platform \
   -f ../alloy/values-agent.yaml --set-file alloy.configMap.content=../alloy/agent.alloy
+  # NOTE: the EKS-era alloy-gateway tier was removed 2026-10-20 (ONPREM-PLAN §13).
+  # On-prem this whole file is superseded by ONPREM-PLAN §14 (bootstrap) and the
+  # onprem platform PR (M-2), which replaces the two-tier collector with one
+  # Alloy from the k8s-monitoring chart.
 
 # 2. ArgoCD — the last thing installed by hand
 helm upgrade --install argocd argo/argo-cd \
@@ -75,6 +73,5 @@ namespaces before policy    the bindings select on qnsc.vn/tenant
 policy before workloads     a workload admitted before the policy exists is not
                             re-checked when it appears
 ESO before ArgoCD           ArgoCD's own OIDC secret is synced by ESO
-gateway before agent        the Alloy agent resolves the gateway's DNS at startup
 cluster-prod before dev     dev's access entry needs prod's argocd_role_arn
 ```
