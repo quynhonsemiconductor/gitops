@@ -1,0 +1,115 @@
+# valkey-kb-dev — KB's Celery BROKER (§6.4). The opposite of a cache:
+# `noeviction` — a full instance returns write errors loudly rather than
+# silently dropping tasks — and AOF persistence on a 2 Gi PVC, because a
+# broker that forgets queued work on restart loses user uploads mid-pipeline.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey-kb-dev
+  namespace: data-dev
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-dev
+spec:
+  serviceName: valkey-kb-dev
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/instance: valkey-kb-dev
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/instance: valkey-kb-dev
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+          args:
+            - valkey-server
+            - --maxmemory
+            - 192mb
+            - --maxmemory-policy
+            - noeviction        # a broker must never evict (§6.4)
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: valkey, containerPort: 6379 }
+          resources:
+            # §5.7 — 50m / 256Mi.
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 256Mi }
+          # §9j — liveness is the process: valkey-cli ping answers without
+          # touching persistence or replication.
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "--no-auth-warning", "ping"]
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "--no-auth-warning", "ping"]
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+        # §12 — the one Alloy scrapes valkey metrics here (9121); the NetworkPolicy
+        # story for data-dev is per-namespace default-deny (§9), so no port rule
+        # gates this today.
+        - name: exporter
+          image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820   # versions.yaml (verified 2026-10-21, Docker Hub; v1.94.0 is <14 days old)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: metrics, containerPort: 9121 }
+          env:
+            - { name: REDIS_ADDR, value: "redis://localhost:6379" }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 32Mi }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi        # §6.4 — AOF, 2 Gi PVC
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-kb-dev
+  namespace: data-dev
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-dev
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-dev
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }

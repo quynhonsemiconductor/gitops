@@ -61,6 +61,49 @@ platform:
     repo: https://charts.external-secrets.io
     version: "2.11.0"
 
+  # ── The on-prem day-1 operators (ONPREM-PLAN §11.4) ─────────────────────────
+  # Every line below was verified against the upstream chart index on
+  # 2026-10-20 (cloudnative-pg.github.io/charts, charts.jetstack.io,
+  # charts.external-secrets.io, the Docker Hub and GitHub Packages registry
+  # APIs). Renovate keeps them current; majors are reviewed monthly (§16.2).
+  cert-manager:
+    chart: cert-manager
+    repo: https://charts.jetstack.io
+    version: "v1.21.2"         # 1.21 line; 1.19 out of support
+  cloudnative-pg:
+    chart: cloudnative-pg
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.29.1"          # operator 1.30.1 (in-tree barman removed 1.31 -> plugin)
+  plugin-barman-cloud:
+    chart: plugin-barman-cloud
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
+  reloader:
+    # §6.3 — CA rotation restarts (platform/reloader/values.yaml explains why).
+    # Verified 2026-10-21 against stakater-charts + the Docker Hub registry API.
+    # Chart 2.2.18 published 2026-09-30; app image v1.4.22 built 2026-09-09
+    # (both past the 14-day floor; the 3.x line is a beta and is not pinned).
+    # The digest is the DOCKER HUB one — the values pin the repository to
+    # docker.io to match (the chart default registry is ghcr.io).
+    chart: reloader
+    repo: https://stakater.github.io/stakater-charts
+    version: "2.2.18"
+    image: docker.io/stakater/reloader:v1.4.22@sha256:96cc6bad219032f01a795803f23093ee0277b9308999ec4ce25a8382a22910df
+  postgresql:
+    # ImageCatalog pin (§6.3) — `standard` = the flavour carrying pgvector
+    # (pg-dev's `kb` database needs it). Digest verified 2026-10-20 against
+    # the GitHub Packages API; Renovate's regex manager keeps it current.
+    image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+  valkey:
+    # §6.4 — 8.1.x by digest; NEVER 8.2 (ElastiCache 8.2 = OSS 8.1 + search).
+    # Digest verified 2026-10-20 against the Docker Hub registry API.
+    image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+  redis-exporter:
+    # §12 — the valkey metrics sidecar (9121). v1.94.0 released 2026-10-15,
+    # under the 14-day floor — this is v1.93.0 (2026-10-01), verified against
+    # the Docker Hub registry API 2026-10-21. Renovate bumps when it ages in.
+    image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
+
   # ── Everything else ──────────────────────────────────────────────────────────
   # REMOVED 2026-10-20 with platform/gateway (ONPREM-PLAN §13): gateway-api CRDs
   # and envoy-gateway — no Gateway on-prem, ingress is a Tunnel rule in

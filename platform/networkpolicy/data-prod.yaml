@@ -1,0 +1,65 @@
+# ── THE one on-prem NetworkPolicy (ONPREM-PLAN §6.2) ────────────────────────
+#
+# k3s enforces NetworkPolicies (§5.1), and this single policy is the whole
+# on-prem tenant boundary: `data-prod` (pg-rova, valkey-rova) accepts traffic
+# only from rova-prod, restore-test and the CNPG operator — plus `platform` on
+# the METRICS ports only, so the one Alloy can scrape. No dev workload can
+# reach prod data, full stop.
+#
+# The chart's namespace-wide default-deny set is OFF on-prem
+# (chart `networkPolicy.enabled: false`, §5.6): per-namespace default-deny is
+# §9 work with its own trigger. This policy is deliberately ingress-only for
+# the same reason — egress stays open so pods can reach the internet (Graph,
+# R2, GHCR) without this file becoming a allowlist that only breaks on Fridays.
+#
+# kubectl apply -f networkpolicy/data-prod.yaml   (wave −3, after namespaces/)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-admit
+  namespace: data-prod
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    # The app plane: rova prod and the weekly restore test (§10.4), plus the
+    # CNPG operator's own connections to the instances it manages.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rova-prod
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: restore-test
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - { protocol: TCP, port: 5432 }   # CNPG
+        - { protocol: TCP, port: 6379 }   # valkey-rova
+    # The CNPG operator reaches its instances' bootstrap API on 8000 (status,
+    # restarts, switchover). Scoped to the operator namespace — cnpg-system —
+    # and NOT folded into the `platform` rule: this port is control-plane.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - { protocol: TCP, port: 8000 }
+    # Same-namespace pods: the backup and dump CronJobs (§10) run IN
+    # data-prod and talk to the instances over the instance Service.
+    - from:
+        - podSelector: {}
+    # The observability plane: platform (the one Alloy) on the METRICS ports
+    # only — CNPG's built-in exporter (9187) and the valkey exporter (9121).
+    # §12: metrics leave the box; this is the ONLY platform traffic into
+    # data-prod. (The valkey exporter sidecar lands with the k8s-monitoring
+    # work; the port rule is ready for it.)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform
+      ports:
+        - { protocol: TCP, port: 9187 }
+        - { protocol: TCP, port: 9121 }

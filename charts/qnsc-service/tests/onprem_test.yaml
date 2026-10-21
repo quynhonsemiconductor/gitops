@@ -8,6 +8,7 @@ templates:
   - templates/networkpolicy.yaml
   - templates/deployment.yaml
   - templates/job.yaml
+  - templates/externalsecret.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/dev.yaml
@@ -109,6 +110,60 @@ tests:
             mountPath: /etc/qnsc/db-ca/ca.crt
             subPath: ca.crt
             readOnly: true
+
+  # ── CA rotation: Reloader annotation + the db-ca hop (§6.3) ────────────────
+  - it: annotates the Deployment for Reloader when a CA file is mounted
+    template: templates/deployment.yaml
+    documentIndex: 0
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+    asserts:
+      - equal:
+          path: metadata.annotations["secret.reloader.stakater.com/reload"]
+          value: rova-db-ca
+
+  - it: renders the product db-ca ExternalSecret from the cnpg-ca store
+    # The rotation chain is renew -> ca-sync -> THIS Secret -> Reloader. If the
+    # hop disappears, the annotation points at a Secret nothing refreshes and
+    # the ~83-day fuse burns silently. Document 3: the AWS-era SecretStore and
+    # the two app/migrator ExternalSecrets render before it.
+    template: templates/externalsecret.yaml
+    documentIndex: 3
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+    asserts:
+      - equal:
+          path: spec.secretStoreRef.name
+          value: cnpg-ca-dev   # the suite renders rova DEV
+      - equal:
+          path: spec.target.name
+          value: rova-db-ca
+      - equal:
+          path: spec.data[0].remoteRef.key
+          value: pg-rova-ca-pub
+      - equal:
+          path: spec.data[0].remoteRef.property
+          value: ca.crt
+
+  - it: adds NO db-ca document without a CA file
+    # Without caFile the template renders the three AWS-era documents (store,
+    # app secret, migrator secret) and nothing else.
+    template: templates/externalsecret.yaml
+    asserts:
+      - hasDocuments:
+          count: 3
 
   # ── secrets.workerOnly (§7.1/§7.3) ──────────────────────────────────────────
   - it: mounts the Graph PEM into the worker and exports the path

@@ -1,0 +1,99 @@
+# ── On-prem namespaces (ONPREM-PLAN §6.2) ────────────────────────────────────
+#
+# ONE cluster: environments are namespaces, not clusters (the EKS-era model had
+# a dev and a prod cluster; rova.yaml/opshub.yaml/kb.yaml in this directory are
+# that model and are superseded on-prem — the isolation they bought now comes
+# from PriorityClasses, dev ResourceQuotas and the ONE NetworkPolicy on
+# data-prod, which isolates prod data from every dev workload).
+#
+# `qnsc.vn/env` selects:
+#   - the ESO ClusterSecretStore namespaceSelector (§7.1) — a dev namespace can
+#     never read kv-qnsc-prod, a product namespace never the platform vault
+#   - nothing else yet; per-namespace default-deny is §9 work with a trigger
+#
+# `qnsc.vn/tenant: product` stays on product namespaces only — the admission
+# VAPs in ../policy bind on it (§6.2).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-prod
+  labels:
+    qnsc.vn/env: prod
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-dev
+  labels:
+    qnsc.vn/env: dev
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: restore-test
+  labels:
+    qnsc.vn/env: prod
+    # §10.4 — the weekly restore test runs untrusted-adjacent work (a restored
+    # dump) with prod-shaped access; restricted PSS and its own namespace keep
+    # it from touching anything but its own scratch PVC.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rova-prod
+  labels:
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rova-dev
+  labels:
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opshub-dev
+  labels:
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kb-dev
+  labels:
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

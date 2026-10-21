@@ -40,6 +40,21 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 1Gi
 
+  # ── §6.3 — CA rotation: the Reloader annotation (only when db-ca mounts) ────
+  - it: carries NO Reloader annotation without a CA file
+    # rova's values on this branch have no data.postgres.caFile: a plain RDS
+    # host has no CA file to go stale, and the annotation would make Reloader
+    # restart pods for a Secret nobody rotates.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - isNull:
+          path: metadata.annotations
+
+  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) is
+  # asserted in tests/onprem_test.yaml, which renders the cnpg values this
+  # EKS-era suite does not use.
+
   # ── §9j ─────────────────────────────────────────────────────────────────────
   - it: points liveness at a dependency-free endpoint
     # If liveness checks the database and the database slows down, Kubernetes
@@ -66,6 +81,21 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.capabilities.drop[0]
           value: ALL
+
+  # ── §6.3 — CA rotation: the Reloader annotation (only when db-ca mounts) ────
+  - it: carries NO Reloader annotation without a CA file
+    # rova's values on this branch have no data.postgres.caFile: a plain RDS
+    # host has no CA file to go stale, and the annotation would make Reloader
+    # restart pods for a Secret nobody rotates.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - isNull:
+          path: metadata.annotations
+
+  # The PRESENT case (mode: cnpg + caFile set -> annotation rova-db-ca) is
+  # asserted in tests/onprem_test.yaml, which renders the cnpg values this
+  # EKS-era suite does not use.
 
   # ── §9j ─────────────────────────────────────────────────────────────────────
   - it: sets trafficDistribution on every Service

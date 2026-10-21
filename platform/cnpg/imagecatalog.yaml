@@ -1,0 +1,45 @@
+# ── Postgres 18.6 ImageCatalog (ONPREM-PLAN §6.3, §11.4) ────────────────────
+#
+# kubectl apply -f cnpg/imagecatalog.yaml   (after the operator, wave -1)
+#
+# Clusters reference this catalog as `imageName: postgresql/18` (catalog name
+# + major), so the IMAGE is pinned in exactly one place and both clusters
+# (pg-rova, pg-dev) move together.
+# Pinned BY DIGEST (§11.4): a floating tag re-resolves underneath a running
+# cluster and a restart then runs a different Postgres than its peers.
+#
+# `standard` flavour — that is the one carrying pgvector, which pg-dev's `kb`
+# database needs. KB pins pgvector 0.8.2; VERIFY the extension version inside
+# this image at Phase 1 before the first pg-dev build (the digest pins the
+# image, not the extension list — checked 2026-10-20 from the CNPG
+# postgres-containers release notes, not from inside the image).
+#
+# Digest verified 2026-10-20 against the GitHub Packages API:
+#   ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie
+#   sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+#   (build 202610190957 — a fresh point release; Renovate's regex manager
+#   keeps this current)
+#
+# NOTE: applying nothing yet — no cluster exists. This file is a preparation
+# PR; the catalog is cluster-scoped-CRD content that ArgoCD will own in wave
+# −1/0 (§11.2).
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgresql
+  namespace: data-prod
+spec:
+  images:
+    - major: 18
+      image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgresql
+  namespace: data-dev
+spec:
+  images:
+    - major: 18
+      image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9

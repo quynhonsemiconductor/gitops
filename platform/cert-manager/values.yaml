@@ -1,0 +1,26 @@
+# cert-manager (ONPREM-PLAN §5.1, §6.3)
+#
+# helm upgrade --install cert-manager cert-manager/cert-manager \
+#   -n cert-manager --create-namespace \
+#   -f cert-manager/values.yaml --version <versions.yaml: platform.cert-manager.version>
+#
+# Needed ONPREM for exactly one thing today: the barman plugin's mTLS (§5.1).
+# Nothing else uses it yet.
+#
+# Verified 2026-10-20 against charts.jetstack.io: v1.21.2 (1.21 line; 1.19 is
+# out of support — §11.4).
+crds:
+  # The chart's crds policy since v1.15: install the CRDs with the release so
+  # a `helm uninstall` leaves them behind deliberately (CRD lifecycle must not
+  # follow a chart rollback).
+  enabled: true
+  keep: true
+replicaCount: 1
+resources:
+  # §5.7 — all three pods together: 30m / 144Mi.
+  requests: { cpu: 10m, memory: 48Mi }
+  limits: { memory: 48Mi }
+webhook:
+  replicaCount: 1
+cainjector:
+  replicaCount: 1

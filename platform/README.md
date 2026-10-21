@@ -9,7 +9,19 @@ cluster creation and upgraded on §2b's quarterly cadence.
 ```
 policy/        ValidatingAdmissionPolicy + bindings — §10 without a policy engine
 namespaces/    labels that three separate mechanisms select on
-eso/           External Secrets Operator — the operator only (§8)
+eso/           External Secrets Operator — the operator only (§8);
+               stores-onprem.yaml adds the FOUR on-prem ClusterSecretStores
+               (§7.1): three Azure Key Vault vaults + the `cnpg-ca` stores
+cert-manager/  on-prem chart values — required by the barman plugin's mTLS (§5.1)
+cnpg/          on-prem CloudNativePG operator values + the Postgres 18.6
+               ImageCatalog, pinned by digest (§6.3)
+valkey/        the three on-prem StatefulSets — two caches, one broker (§6.4)
+networkpolicy/ THE one on-prem NetworkPolicy: data-prod's ingress boundary (§6.2)
+reloader/      chart values — rolls workloads when their Secrets change; the CA
+               rotation loop needs it (§6.3)
+namespaces/onprem.yaml   the on-prem namespace set with `qnsc.vn/env` labels (§6.2)
+reloader/      chart values — rolls workloads when their Secrets change; the CA
+               rotation loop needs it (§6.3)
 alloy/         the host-side collector config — ONPREM-PLAN §12 replaces the
                EKS two-tier collector with one Alloy from the k8s-monitoring
                chart (platform PR, M-2)
@@ -19,7 +31,27 @@ argocd/        ArgoCD's Helm values (§5b) and the cluster-registration Secrets 
                appsets/products.yaml's destination.name dev/prod resolves
 ```
 
-## Apply order
+## On-prem apply order (ONPREM-PLAN §14; supersedes the list below on-prem)
+
+The order below is the EKS-era bootstrap. On the single k3s node the order is:
+
+```
+1  namespaces/onprem.yaml  the qnsc.vn/env labels select the ClusterSecretStores
+2  policy/                 admission.yaml THEN bindings.yaml
+3  eso/                    operator, then stores-onprem.yaml — the three Azure
+                           stores go Valid only once the hand-applied SP
+                           certificate Secrets exist (§14 step 2); cnpg-ca stays
+                           NotReady until the clusters exist, which is expected
+4  cert-manager/           before the barman plugin (its mTLS)
+5  cnpg/                   operator + plugin, then imagecatalog.yaml
+6  valkey/ + networkpolicy/  the data plane, bounded from day one
+7  reloader/               before any product Deployment (it carries the
+                           reload annotation from the first onprem sync)
+8  argocd/                 ArgoCD itself (§14 step 3)
+9  gitops/apps/root.yaml   ArgoCD takes over; waves per §11.2
+```
+
+## EKS-era apply order (superseded on-prem)
 
 ```
 1  namespaces/          the labels must exist before anything selects on them
