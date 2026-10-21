@@ -219,17 +219,22 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ printf "service.namespace=%s,deployment.environment=%s,service.version=%s"
                         (include "qnsc.product" $) (include "qnsc.env" $) ($svc.image.tag) }}
-            {{- /* §5d — the chart wires the pooler so no product has to discover
-                   it. Applications connect to pgbouncer, never to RDS directly;
-                   PgBouncer holds the real endpoint from the same secret. */}}
+            {{- /* §5d / §6.3 — HOW THE DATABASE ENDPOINT IS CHOSEN.
+                   `mode: cnpg` (on-prem): straight to the CNPG cluster's -rw
+                   Service — a SAN on CNPG's server certificate, which is what
+                   makes TLS verify-full against the mounted CA work (§6.3). No
+                   pooler in front (`pooling: none` is the on-prem decision; the
+                   opshub worker needs a session-level LISTEN connection anyway).
+                   Otherwise an explicit `host` wins; the old pgbouncer branch is
+                   gone — the Bitnami image no longer exists upstream and static
+                   pooler credentials were incompatible with RDS IAM auth. */}}
             {{- if and $.Values.data $.Values.data.postgres }}
             {{- $pg := $.Values.data.postgres }}
-            {{- $pooling := $pg.pooling | default "none" }}
-            {{- if eq $pooling "pgbouncer" }}
+            {{- if eq $pg.mode "cnpg" }}
             - name: DATABASE_HOST
-              value: pgbouncer
+              value: {{ required "data.postgres.cluster is required when mode is cnpg" $pg.cluster }}-rw.{{ required "data.postgres.namespace is required when mode is cnpg" $pg.namespace }}.svc
             - name: DATABASE_PORT
-              value: "6432"
+              value: "5432"
             {{- else if $pg.host }}
             {{- /* ── WHY THIS BRANCH HAD TO EXIST ────────────────────────────
                    DATABASE_HOST used to be emitted ONLY for pgbouncer, so
@@ -242,6 +247,7 @@ spec:
               value: {{ $pg.host | quote }}
             - name: DATABASE_PORT
               value: "5432"
+            {{- end }}
             {{- with $pg.name }}
             - name: DATABASE_NAME
               value: {{ . | quote }}
@@ -250,14 +256,42 @@ spec:
             - name: DATABASE_USER
               value: {{ . | quote }}
             {{- end }}
+            {{- /* ── TLS VERIFY-FULL (§6.3) ──────────────────────────────────
+                   `caFile` points at the CNPG server CA mounted below; the
+                   platform-db / node-pg / asyncpg stacks combine it with
+                   hostname verification, so a renamed or forged server is
+                   refused. The CA reaches the product namespace through ESO
+                   (the `cnpg-ca` ClusterSecretStore), which is why it is a
+                   mounted file and not a values value. */}}
+            {{- with $pg.caFile }}
+            - name: DATABASE_SSL_CA
+              value: {{ . | quote }}
             {{- end }}
             {{- /* §8 — under IAM there is NO password to inject. The app mints a
                    token per connection from its IRSA identity, so this one
                    variable is the difference between a secret that must exist
-                   and one that must not. */}}
+                   and one that must not. Under `password` (on-prem CNPG managed
+                   roles) the credential arrives through the app secret bundle. */}}
             {{- with $pg.auth }}
             - name: DATABASE_AUTH
               value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /* ── §7.1/§7.3 — THE GRAPH CERTIFICATE IS A FILE, WORKER ONLY ──
+                   The Service app's certificate credential (one combined PEM)
+                   is mounted from the secret named in
+                   `secrets.workerOnly.graphCert` at
+                   `secrets.workerOnly.path`, and the worker reads it through
+                   AZURE_CLIENT_CERTIFICATE_PATH — the @azure/identity standard
+                   name. Never an env var: a PEM in the environment leaks into
+                   crash dumps, `kubectl describe` of child processes and every
+                   accidental log line. The secret is synced by ESO from Key
+                   Vault (gitops/platform stores); the chart only mounts what
+                   the values name. */}}
+            {{- if $.Values.secrets.workerOnly.graphCert }}
+            {{- if eq $svc.kind "worker" }}
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: {{ required "secrets.workerOnly.path is required when secrets.workerOnly.graphCert is set" $.Values.secrets.workerOnly.path | quote }}
             {{- end }}
             {{- end }}
             {{- /* ── PRODUCT-WIDE env, MERGED BEFORE the per-service block ──────
@@ -298,6 +332,20 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- /* CNPG server CA — every DB-using service of the product. */}}
+            {{- if and $.Values.data $.Values.data.postgres.caFile }}
+            - name: db-ca
+              mountPath: {{ $.Values.data.postgres.caFile }}
+              subPath: ca.crt
+              readOnly: true
+            {{- end }}
+            {{- /* The Graph PEM, worker only (see the env block above). */}}
+            {{- if and $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
+            - name: graph-cert
+              mountPath: {{ $.Values.secrets.workerOnly.path }}
+              subPath: cert.pem
+              readOnly: true
+            {{- end }}
             {{- with $svc.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -353,6 +401,20 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if and $.Values.data $.Values.data.postgres.caFile }}
+        - name: db-ca
+          secret:
+            secretName: {{ include "qnsc.product" $ }}-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- end }}
+        {{- /* Worker-only like the mount below: the api must not even carry the
+               volume, or a future api-side code path reads the PEM silently. */}}
+        {{- if and $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
+        - name: graph-cert
+          secret:
+            secretName: {{ $.Values.secrets.workerOnly.graphCert }}
+            items: [{ key: cert.pem, path: cert.pem }]
+        {{- end }}
         {{- range $sc := $svc.sidecars }}
         - name: {{ $sc.name }}-tmp
           emptyDir: {}

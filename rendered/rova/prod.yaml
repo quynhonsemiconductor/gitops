@@ -37,7 +37,7 @@ spec:
   egress:
     - to:
         - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: platform }
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
 
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
@@ -77,7 +77,7 @@ spec:
   ingress:
     - from:
         - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: platform }
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
       ports:
         - { protocol: TCP, port: 3000 }
     - from:
@@ -289,6 +289,10 @@ spec:
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
             - name: DATABASE_AUTH
               value: "iam"
           envFrom:
@@ -373,6 +377,10 @@ spec:
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+            - name: DATABASE_NAME
+              value: "rova"
+            - name: DATABASE_USER
+              value: "rova"
             - name: DATABASE_AUTH
               value: "iam"
           envFrom:
@@ -445,6 +453,9 @@ spec:
             - secretRef:
                 name: rova-migrator
                 optional: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           env:
             - name: DATABASE_NAME
               value: "rova"
@@ -452,6 +463,9 @@ spec:
               value: "rova_migrator"
             - name: DATABASE_AUTH
               value: "iam"
+      volumes:
+        - name: tmp
+          emptyDir: {}
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -502,35 +516,6 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
-
----
-# Source: qnsc-service/templates/httproute.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  parentRefs:
-    - name: qnsc
-      namespace: platform
-  hostnames:
-    - "rova-api.qnsc.vn"
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: api
-          port: 3000
 
 ---
 # Source: qnsc-service/templates/slo.yaml

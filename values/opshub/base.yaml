@@ -44,4 +44,4 @@ services:
     resources: { cpu: 500m, memory: 512Mi }
 
 data:
-  postgres: { mode: shared, pooling: pgbouncer }   # §5 — shared in prod AND dev
+  postgres: { mode: shared, pooling: none }   # §5 — shared in prod AND dev; pooling none (ONPREM-PLAN §13: pgbouncer deleted, host comes from the app secret)

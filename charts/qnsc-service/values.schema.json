@@ -44,9 +44,6 @@
     "defaults": {
       "type": "object"
     },
-    "gateway": {
-      "type": "object"
-    },
     "otel": {
       "type": "object"
     },
@@ -65,12 +62,12 @@
               "enum": [
                 "none",
                 "shared",
-                "dedicated"
+                "dedicated",
+                "cnpg"
               ]
             },
             "pooling": {
               "enum": [
-                "pgbouncer",
                 "rdsproxy",
                 "none"
               ]
@@ -106,6 +103,18 @@
             "user": {
               "type": "string",
               "description": "Postgres role to connect as."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "CNPG cluster name; the app connects to <cluster>-rw.<namespace>.svc. Required when mode is cnpg."
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Namespace holding the CNPG cluster (data-prod | data-dev)."
+            },
+            "caFile": {
+              "type": "string",
+              "description": "Container path to mount the CNPG server CA (from the <product>-db-ca Secret, key ca.crt) and export as DATABASE_SSL_CA for TLS verify-full (ONPREM-PLAN \u00a76.3)."
             }
           }
         },
@@ -395,6 +404,36 @@
     "secretsReaderServiceAccount": {
       "type": "string",
       "description": "ServiceAccount the namespace's SecretStore authenticates as. Defaults to `api`; must be an account this chart creates and whose IRSA role reads the product's secret prefix."
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the namespace-wide default-deny set. On-prem sets false: the one data-prod NetworkPolicy lives in gitops/platform (ONPREM-PLAN \u00a75.6/\u00a76.2)."
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workerOnly": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "graphCert": {
+              "type": "string",
+              "description": "Name of the Secret holding the Microsoft Graph certificate credential (one combined PEM). Mounted as a file into worker services only, never an env var (ONPREM-PLAN \u00a77.1)."
+            },
+            "path": {
+              "type": "string",
+              "description": "Container path to mount the combined PEM at; the worker reads AZURE_CLIENT_CERTIFICATE_PATH (ONPREM-PLAN \u00a77.3)."
+            }
+          }
+        }
+      }
     }
   }
 }
