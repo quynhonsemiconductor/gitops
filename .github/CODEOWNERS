@@ -1,17 +1,10 @@
 # Default owner for everything in this repo.
 # Enforced via the main-protection ruleset (require_code_owner_review).
 #
-# §10b — review here is a PRODUCTION ACCESS CONTROL, not a code-quality
-# convention: "whoever can push to `gitops` can deploy anything, because ArgoCD
-# will faithfully apply it."
-#
-# `platform-infra` rather than a product team: this repository deploys EVERY
-# product, so no single product's maintainers should own it.
-* @quynhonsemiconductor/platform-infra
+# §10b — review here is a PRODUCTION ACCESS CONTROL, not a code-quality convention:
+# "whoever can push to gitops can deploy anything, because ArgoCD will faithfully
+# apply it." This repository deploys EVERY product, so no single product's
+# maintainers should own it — it belongs to the platform leads.
+# Org docs: quynhonsemiconductor/.github → docs/ORG-GOVERNANCE.md (the area-team model).
 
-# ── The two paths where review matters most ─────────────────────────────────
-# A chart change reaches every Application at once (§11c), and a prod tag bump IS
-# the promotion (§11). Both are covered by the wildcard above; they are listed so
-# the reason is visible to whoever is reviewing.
-/charts/                  @quynhonsemiconductor/platform-infra
-/values/*/tags.prod.yaml  @quynhonsemiconductor/platform-infra
+* @quynhonsemiconductor/platform-leads
