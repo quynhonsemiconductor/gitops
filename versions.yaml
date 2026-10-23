@@ -78,17 +78,6 @@ platform:
     chart: plugin-barman-cloud
     repo: https://cloudnative-pg.github.io/charts
     version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
-  reloader:
-    # §6.3 — CA rotation restarts (platform/reloader/values.yaml explains why).
-    # Verified 2026-10-21 against stakater-charts + the Docker Hub registry API.
-    # Chart 2.2.18 published 2026-09-30; app image v1.4.22 built 2026-09-09
-    # (both past the 14-day floor; the 3.x line is a beta and is not pinned).
-    # The digest is the DOCKER HUB one — the values pin the repository to
-    # docker.io to match (the chart default registry is ghcr.io).
-    chart: reloader
-    repo: https://stakater.github.io/stakater-charts
-    version: "2.2.18"
-    image: docker.io/stakater/reloader:v1.4.22@sha256:96cc6bad219032f01a795803f23093ee0277b9308999ec4ce25a8382a22910df
   postgresql:
     # ImageCatalog pin (§6.3) — `standard` = the flavour carrying pgvector
     # (pg-dev's `kb` database needs it). Digest verified 2026-10-20 against

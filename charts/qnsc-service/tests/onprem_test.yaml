@@ -111,8 +111,8 @@ tests:
             subPath: ca.crt
             readOnly: true
 
-  # ── CA rotation: Reloader annotation + the db-ca hop (§6.3) ────────────────
-  - it: annotates the Deployment for Reloader when a CA file is mounted
+  # ── CA: static, no rotation loop (§6.3, 2026-10-23) ─────────────────────────
+  - it: does NOT annotate the Deployment for Reloader (the CA is static now)
     template: templates/deployment.yaml
     documentIndex: 0
     set:
@@ -124,14 +124,12 @@ tests:
         pooling: none
         caFile: /etc/qnsc/db-ca/ca.crt
     asserts:
-      - equal:
+      - notExists:
           path: metadata.annotations["secret.reloader.stakater.com/reload"]
-          value: rova-db-ca
 
   - it: renders the product db-ca ExternalSecret from the cnpg-ca store
-    # The rotation chain is renew -> ca-sync -> THIS Secret -> Reloader. If the
-    # hop disappears, the annotation points at a Secret nothing refreshes and
-    # the ~83-day fuse burns silently. Document 3: the AWS-era SecretStore and
+    # The CA is static; this ExternalSecret mirrors pg-rova-ca-pub (ca.crt
+    # only) with a 12 h refresh. Document 3: the AWS-era SecretStore and
     # the two app/migrator ExternalSecrets render before it.
     template: templates/externalsecret.yaml
     documentIndex: 3
