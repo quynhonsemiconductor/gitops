@@ -129,8 +129,13 @@ jobs:
 
       # GHCR HAS NO TAG IMMUTABILITY SETTING — this pre-push check is the ONLY
       # guard against replacing a published chart (§11c). So it FAILS CLOSED:
-      # only "authenticated tag list that does not contain the version" means
-      # free to publish; a token failure or any non-200 aborts the job instead.
+      #   - the /v2/ ping must return 200 with our token, proving the token is
+      #     valid BEFORE we trust any status from the package endpoints
+      #     (GHCR answers 401/403 AND 404 for unauthorized requests alike)
+      #   - tags/list 404 = the package does not exist yet — first push, and
+      #     the version is free by definition
+      #   - tags/list 200 = free only if the tag list lacks the version
+      #   - anything else aborts
       - name: GHCR version must not already be published (fails closed)
         env:
           GHCR_TOKEN: ${{ github.token }}
@@ -146,10 +151,24 @@ jobs:
             echo "::error::empty GHCR token — refusing to publish"; exit 1; }
 
           printf 'Authorization: Bearer %s\n' "$token" > "$RUNNER_TEMP/ghcr-auth-header"
+          # Prove the TOKEN works before trusting a status code: /v2/ is the
+          # registry ping. A bad/expired/under-scoped token gets 401/403 here,
+          # which must abort — otherwise a permission problem would masquerade
+          # as the tags/list 404 below and let a duplicate push through.
+          ping=$(curl -s -o /dev/null -w '%{http_code}' -H "@$RUNNER_TEMP/ghcr-auth-header" "https://ghcr.io/v2/")
+          [[ "$ping" == "200" ]] || {
+            rm -f "$RUNNER_TEMP/ghcr-auth-header"
+            echo "::error::GHCR token rejected at the /v2/ ping (HTTP ${ping}) — refusing to publish"; exit 1; }
+
           code=$(curl -s -o "$RUNNER_TEMP/ghcr-tags.json" -w '%{http_code}' \
                    -H "@$RUNNER_TEMP/ghcr-auth-header" \
                    "https://ghcr.io/v2/${package}/tags/list")
           rm -f "$RUNNER_TEMP/ghcr-auth-header"
+
+          if [[ "$code" == "404" ]]; then
+            echo "::notice::package ${package} does not exist yet — first push, ${version} is free"
+            exit 0
+          fi
           [[ "$code" == "200" ]] || {
             echo "::error::GHCR tags/list for ${package} returned HTTP ${code} — cannot verify, refusing to publish"; exit 1; }
 
