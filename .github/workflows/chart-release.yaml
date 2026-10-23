@@ -1,6 +1,8 @@
 name: chart-release
 
-# Publish the chart to ECR as an OCI artefact. §11c, task 1.8.
+# Publish the chart to ECR AND to GHCR as OCI artefacts. §11c, task 1.8; the
+# GHCR push is the on-prem path (ONPREM-PLAN §11.1) and runs in parallel with
+# ECR until the AWS cutover.
 #
 # §11c requires the version to be pinned PER APPLICATION, and a pin is only
 # meaningful if the thing it points at cannot change underneath it. So this
@@ -20,10 +22,18 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write   # push the chart to GHCR as a public OCI artefact (§11.1)
 
 env:
   REGISTRY: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
   AWS_REGION: ap-southeast-1
+  # The on-prem registry (ONPREM-PLAN §11.1): the chart is published to BOTH
+  # registries until the AWS cutover, then the ECR push is deleted. GHCR names
+  # an OCI package by its full repository PATH, so pushing the chart
+  # `qnsc-service` to oci://ghcr.io/quynhonsemiconductor/charts creates and
+  # fills the package charts/qnsc-service; the tag is the chart version, as OCI
+  # convention requires.
+  GHCR_NAMESPACE: ghcr.io/quynhonsemiconductor/charts
 
 jobs:
   release:
@@ -107,16 +117,70 @@ jobs:
           fi
           echo "::notice::${version} is free to publish"
 
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Helm's own login (not docker's): the push below is `helm push`, and
+          # this keeps the credential in helm's config, out of argv. Token via
+          # stdin, never a command-line argument.
+          printf '%s' "$GHCR_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      # GHCR HAS NO TAG IMMUTABILITY SETTING — this pre-push check is the ONLY
+      # guard against replacing a published chart (§11c). So it FAILS CLOSED:
+      # only "authenticated tag list that does not contain the version" means
+      # free to publish; a token failure or any non-200 aborts the job instead.
+      - name: GHCR version must not already be published (fails closed)
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
+          package="quynhonsemiconductor/charts/qnsc-service"
+
+          token=$(curl -sf --config - "https://ghcr.io/token?service=ghcr.io&scope=repository:${package}:pull" \
+                    <<< "user = \"${GITHUB_ACTOR}:${GHCR_TOKEN}\"" | jq -r .token) \
+            || { echo "::error::could not obtain a GHCR token — cannot verify the version is unused, refusing to publish"; exit 1; }
+          [[ -n "$token" && "$token" != "null" ]] || {
+            echo "::error::empty GHCR token — refusing to publish"; exit 1; }
+
+          printf 'Authorization: Bearer %s\n' "$token" > "$RUNNER_TEMP/ghcr-auth-header"
+          code=$(curl -s -o "$RUNNER_TEMP/ghcr-tags.json" -w '%{http_code}' \
+                   -H "@$RUNNER_TEMP/ghcr-auth-header" \
+                   "https://ghcr.io/v2/${package}/tags/list")
+          rm -f "$RUNNER_TEMP/ghcr-auth-header"
+          [[ "$code" == "200" ]] || {
+            echo "::error::GHCR tags/list for ${package} returned HTTP ${code} — cannot verify, refusing to publish"; exit 1; }
+
+          if jq -e --arg v "$version" 'any(.tags[]?; . == $v)' "$RUNNER_TEMP/ghcr-tags.json" >/dev/null; then
+            echo "::error::oci://${GHCR_NAMESPACE}/qnsc-service:${version} is already published."
+            echo "Bump the version in Chart.yaml and tag again — a published chart cannot be replaced (§11c)."
+            exit 1
+          fi
+          echo "::notice::${version} is free to publish (GHCR)"
+
       - name: Package and push
         run: |
           set -euo pipefail
           helm package charts/qnsc-service --destination /tmp
           version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
 
-          # Fails if the version already exists — ECR tag immutability is set on
-          # the chart repository for exactly this reason (§11c). A version that
-          # can be rewritten underneath a pinned Application is not pinned.
-          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${REGISTRY}/charts"
+          # GHCR FIRST: the on-prem registry is the one that must not be
+          # stranded. If this fails, nothing was published anywhere and the tag
+          # can simply be re-pushed.
+          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${GHCR_NAMESPACE}"
+          echo "::notice::published oci://${GHCR_NAMESPACE}/qnsc-service:${version} (GHCR)"
 
-          echo "::notice::published charts/qnsc-service:${version}"
+          # ECR second, until the AWS cutover; delete this push then (§11.1).
+          # Fails if the version already exists — ECR tag immutability is set on
+          # the chart repository for exactly this reason (§11c). Residual gap, a
+          # deliberate trade: if THIS push fails after the GHCR one succeeded,
+          # the version is now on GHCR only, and both pre-push checks refuse a
+          # re-tag — recovery is a manual
+          # `aws ecr batch-delete-image --repository-name charts/qnsc-service
+          # --image-ids imageTag=<version>` before re-tagging.
+          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${REGISTRY}/charts"
+          echo "::notice::published charts/qnsc-service:${version} (ECR)"
+
           echo "::notice::bump ONE dev Application in appsets/products.yaml, soak, then the rest (§11c)"
