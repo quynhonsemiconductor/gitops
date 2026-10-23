@@ -1,6 +1,8 @@
 name: chart-release
 
-# Publish the chart to ECR as an OCI artefact. §11c, task 1.8.
+# Publish the chart to ECR AND to GHCR as OCI artefacts. §11c, task 1.8; the
+# GHCR push is the on-prem path (ONPREM-PLAN §11.1) and runs in parallel with
+# ECR until the AWS cutover.
 #
 # §11c requires the version to be pinned PER APPLICATION, and a pin is only
 # meaningful if the thing it points at cannot change underneath it. So this
@@ -20,10 +22,16 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write   # push the chart to GHCR as a public OCI artefact (§11.1)
 
 env:
   REGISTRY: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
   AWS_REGION: ap-southeast-1
+  # The on-prem registry (ONPREM-PLAN §11.1): the chart is published to BOTH
+  # registries until the AWS cutover, then the ECR push is deleted. The GHCR
+  # package name is the chart name (qnsc-service) and the tag is the chart
+  # version, as OCI convention requires.
+  GHCR_NAMESPACE: ghcr.io/quynhonsemiconductor
 
 jobs:
   release:
@@ -107,6 +115,27 @@ jobs:
           fi
           echo "::notice::${version} is free to publish"
 
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Same refusal as the ECR check above, against GHCR: a package with
+      # immutable tagging enabled (set once the package exists — §11c) rejects a
+      # second push, but the default is MUTABLE, so the guard runs before the
+      # push instead of relying on registry policy.
+      - name: GHCR version must not already be published
+        run: |
+          set -euo pipefail
+          version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
+          if helm pull "oci://${GHCR_NAMESPACE}/qnsc-service" --version "${version}" >/dev/null 2>&1; then
+            echo "::error::oci://${GHCR_NAMESPACE}/qnsc-service:${version} is already published."
+            echo "Bump the version in Chart.yaml and tag again — a published chart cannot be replaced (§11c)."
+            exit 1
+          fi
+
       - name: Package and push
         run: |
           set -euo pipefail
@@ -117,6 +146,11 @@ jobs:
           # the chart repository for exactly this reason (§11c). A version that
           # can be rewritten underneath a pinned Application is not pinned.
           helm push "/tmp/qnsc-service-${version}.tgz" "oci://${REGISTRY}/charts"
+          echo "::notice::published charts/qnsc-service:${version} (ECR)"
 
-          echo "::notice::published charts/qnsc-service:${version}"
+          # Same bytes to the on-prem registry. Keep this push until the AWS
+          # cutover; delete the ECR push above then (§11.1).
+          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${GHCR_NAMESPACE}"
+          echo "::notice::published oci://${GHCR_NAMESPACE}/qnsc-service:${version} (GHCR)"
+
           echo "::notice::bump ONE dev Application in appsets/products.yaml, soak, then the rest (§11c)"
