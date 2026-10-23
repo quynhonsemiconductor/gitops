@@ -208,7 +208,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-api:sha-4f404e2394e9
+          image: ghcr.io/quynhonsemiconductor/rova-api:sha-4f404e2394e9
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -309,7 +309,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-worker:sha-4f404e2394e9
+          image: ghcr.io/quynhonsemiconductor/rova-worker:sha-4f404e2394e9
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -399,7 +399,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-4f404e2394e9
+          image: ghcr.io/quynhonsemiconductor/rova-migrator:sha-4f404e2394e9
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

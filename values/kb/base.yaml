@@ -25,7 +25,7 @@ services:
     port: 8000
     # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
     #  request and a broken response mid-answer." — infra/live/prod/main.tf
-    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-api }
+    image: { repo: ghcr.io/quynhonsemiconductor/kb-api }
     # 1024 / 6144 exactly as allocated on ECS. The 6144 carries clamd's 2048 plus
     # the e5-large-instruct ONNX session at ~1.5 GB resident.
     resources: { cpu: 1, memory: 6Gi }
@@ -96,7 +96,7 @@ services:
     expose: none
     # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
     #  so an interruption costs time rather than work." — same file.
-    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-worker }
+    image: { repo: ghcr.io/quynhonsemiconductor/kb-worker }
     # 2048 / 6144 as allocated: the same model, plus clamav at 1024, plus beat,
     # plus PaddleOCR per scanned file.
     resources: { cpu: 2, memory: 6Gi }
@@ -145,7 +145,7 @@ services:
   migrator:
     kind: job
     expose: none
-    image: { repo: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/kb-migrator }
+    image: { repo: ghcr.io/quynhonsemiconductor/kb-migrator }
     resources: { cpu: 500m, memory: 1Gi }
 
 data:
