@@ -18,7 +18,7 @@ spec:
 
   sourceRepos:
     - https://github.com/quynhonsemiconductor/gitops
-    - ghcr.io/quynhonsemiconductor/charts/*   # public OCI (H-D22)
+    - ghcr.io/quynhonsemiconductor/charts   # public OCI (H-D22) — EXACT string: an OCI repoURL is compared literally, the /* glob never matched anything
 
   destinations:
     - server: https://kubernetes.default.svc      # the prod cluster, where ArgoCD runs

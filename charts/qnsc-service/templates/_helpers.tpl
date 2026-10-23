@@ -55,10 +55,16 @@ A name encodes exactly the dimensions the thing varies on:
 {{- $svc := index . 1 -}}
 {{- $name := index . 2 -}}
 {{- if $svc.image -}}
-{{- if not $svc.image.tag -}}
-{{- fail (printf "service %q: image.tag is required — the chart never defaults a tag, because `latest` is how a develop build reached production (§11)" $name) -}}
+{{- if and $svc.image.digest (not $svc.image.tag) -}}
+{{- /* digest mode: repo@sha256:... — what `k8s-deploy` writes going forward.
+         A digest pins the exact bytes; a tag alone is rewrittenable. */}}
+{{- printf "%s@%s" (required "image.repo is required" $svc.image.repo) (required "image.digest must be sha256:..." $svc.image.digest) -}}
+{{- else if not $svc.image.tag -}}
+{{- fail (printf "service %q: image.tag (or image.digest) is required — the chart never defaults a tag, because `latest` is how a develop build reached production (§11)" $name) -}}
 {{- end -}}
+{{- if not $svc.image.digest -}}
 {{- printf "%s:%s" (required "image.repo is required" $svc.image.repo) $svc.image.tag -}}
+{{- end -}}
 {{- else -}}
 {{- fail (printf "service %q: `image` is required" $name) -}}
 {{- end -}}

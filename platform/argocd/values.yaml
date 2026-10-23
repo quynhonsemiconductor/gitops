@@ -31,7 +31,7 @@ configs:
     # access decision in this design.
     admin.enabled: "false"
 
-    # The chart lives in ECR as an OCI artefact (§11c).
+    # The chart is a PUBLIC OCI artefact on ghcr.io (H-D22) — plain https.
     helm.valuesFileSchemes: >-
       secrets+gpg-import,secrets+age-import,secrets,https
 
@@ -93,8 +93,10 @@ repoServer:
   # what cluster-dev grants an EKS access entry to, so adding this subject would
   # hand dev cluster-admin to the component that renders untrusted Helm charts.
   #
-  # The repo-server needs no cloud identity: the chart is pulled from GHCR with the
-  # repository credential (the ECR token refresher this used to need is gone).
+  # The repo-server needs no cloud identity: the chart is PUBLIC on
+  # ghcr.io/quynhonsemiconductor/charts and is pulled anonymously (H-D22) —
+  # no repository credential, and the ECR token refresher this used to need
+  # is long gone.
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 512Mi }

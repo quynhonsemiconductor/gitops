@@ -99,9 +99,12 @@ spec:
       sources:
         # The chart, pinned. Never a range, never a branch (§11c). GHCR tags are
         # immutable and the packages are PUBLIC (H-D22): ArgoCD pulls anonymously,
-        # no pull secret and no ECR token refresher.
-        - repoURL: ghcr.io/quynhonsemiconductor
-          chart: charts/qnsc-service
+        # no pull secret and no ECR token refresher. OCI repoURL is the FULL
+        # registry path — for OCI, `chart` carries the artifact name and
+        # repoURL must NOT be a bare registry (that worked for ECR's
+        # namespace-in-registry layout but never matched GHCR).
+        - repoURL: ghcr.io/quynhonsemiconductor/charts
+          chart: qnsc-service
           targetRevision: "{{.chartVersion}}"
           helm:
             valueFiles:
