@@ -18,7 +18,7 @@ spec:
 
   sourceRepos:
     - https://github.com/quynhonsemiconductor/gitops
-    - 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/charts/*
+    - ghcr.io/quynhonsemiconductor/charts/*   # public OCI (H-D22)
 
   destinations:
     - server: https://kubernetes.default.svc      # the prod cluster, where ArgoCD runs

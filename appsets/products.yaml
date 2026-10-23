@@ -97,9 +97,10 @@ spec:
         namespace: "{{.product}}"
 
       sources:
-        # The chart, pinned. Never a range, never a branch (§11c). ECR tag
-        # immutability means a version cannot be rewritten underneath this.
-        - repoURL: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
+        # The chart, pinned. Never a range, never a branch (§11c). GHCR tags are
+        # immutable and the packages are PUBLIC (H-D22): ArgoCD pulls anonymously,
+        # no pull secret and no ECR token refresher.
+        - repoURL: ghcr.io/quynhonsemiconductor
           chart: charts/qnsc-service
           targetRevision: "{{.chartVersion}}"
           helm:

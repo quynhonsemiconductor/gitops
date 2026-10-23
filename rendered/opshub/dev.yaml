@@ -208,7 +208,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-api:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -293,7 +293,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-worker:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-0000000
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -367,7 +367,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com/opshub-migrator:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-0000000
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
