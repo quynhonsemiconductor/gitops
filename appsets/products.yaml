@@ -68,7 +68,10 @@ spec:
     # ── prod ─────────────────────────────────────────────────────────────────
     - list:
         elements:
-          - { product: kb,     env: prod, cluster: prod, chartVersion: "0.1.0" }
+          # KB is DEV ONLY (plan H-D1). No kb-prod Application exists, so
+          # dropping the row deletes nothing (prune:false does not stop the
+          # ApplicationSet from removing an Application that its generator
+          # no longer produces — but there is none to remove).
           - { product: opshub, env: prod, cluster: prod, chartVersion: "0.1.0" }
           # rova is LAST (§17 step 6) and soaks for two weeks. It is also the only
           # product that actually tests the cutover — everything before it is a
