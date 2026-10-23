@@ -1,6 +1,6 @@
 # Image tags. CI rewrites these on every build; `sha-0000000` was the placeholder
 # and it is not a valid tag — the format is `sha-<FULL 40-character sha>`, which is
-# what the registry holds (GHCR from Stage 0 — H-D22). A short sha pulls nothing and the pods sit in
+# what the registry holds (GHCR from Stage 0 — H-D22). CI writes `tag: sha-<12>`; from Stage 0.2 it writes `digest: sha256:<64>` and the chart pins that. A short sha pulls nothing and the pods sit in
 # ImagePullBackOff.
 # This one is the merge commit of rova#639, so the image contains BOTH the IAM database
 # auth and the migrator's own IAM path — without the second, the migrator Job fails on

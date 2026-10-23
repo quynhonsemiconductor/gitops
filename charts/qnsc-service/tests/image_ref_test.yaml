@@ -1,0 +1,54 @@
+suite: image reference (digest vs tag)
+# Rova's real values satisfy the schema (product/env/kind) and the full
+# services set; each test overrides only services.api.image. Document 0 is the
+# api Deployment.
+templates:
+  - templates/deployment.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+tests:
+  - it: renders repo:tag when only tag is set
+    documentIndex: 0
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            tag: sha-tag-only
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/rova-api:sha-tag-only
+
+  - it: renders repo@digest when only digest is set
+    documentIndex: 0
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/rova-api@sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+
+  - it: DIGEST WINS when both tag and digest are set
+    documentIndex: 0
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            tag: sha-should-be-ignored
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/rova-api@sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+
+# A malformed digest cannot reach the template: values.schema.json rejects it
+# at values time (`pattern: ^sha256:[a-f0-9]{64}$`) — helm-unittest surfaces
+# that as a values error, which IS the guard working.

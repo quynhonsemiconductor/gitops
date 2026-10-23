@@ -235,7 +235,12 @@
                 "not": {
                   "const": "latest"
                 },
-                "description": "sha-<commit> in dev, v<version> in prod. NEVER latest \u2014 that is how a develop build reached a production task definition (\u00a711)."
+                "description": "sha-<commit> in dev, v<version> in prod. NEVER latest \u2014 that is how a develop build reached a production task definition (\u00a711). Ignored when digest is set."
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "description": "Pinned by digest (what k8s-deploy writes going forward). Wins over tag."
               }
             }
           },
