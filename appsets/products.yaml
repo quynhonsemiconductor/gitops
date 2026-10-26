@@ -45,7 +45,7 @@ spec:
           # Fixed in 0.11.2 (gitops#45) — never pin 0.11.1.
           - { product: kb,     env: dev, cluster: dev, chartVersion: "0.12.1" }
           - { product: opshub, env: dev, cluster: dev, chartVersion: "0.12.1" }
-          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.11.2" }
+          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.12.1" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is

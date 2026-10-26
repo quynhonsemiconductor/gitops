@@ -504,7 +504,7 @@ spec:
           emptyDir: {}
         - name: db-ca
           secret:
-            secretName: rova-db-ca
+            secretName: rova-migrator-db-ca
             items: [{ key: ca.crt, path: ca.crt }]
 
 ---
@@ -516,21 +516,13 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: rova
-    kind: SecretStore
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
   target:
     name: rova-app
   dataFrom:
-    - find:
-        path: qnsc/dev/rova/app/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+    - extract:
+        key: rova-dev-app
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -545,21 +537,13 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: rova
-    kind: SecretStore
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
   target:
     name: rova-migrator
   dataFrom:
-    - find:
-        path: qnsc/dev/rova/migrator/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+    - extract:
+        key: rova-dev-db-app
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -574,6 +558,30 @@ spec:
     kind: ClusterSecretStore
   target:
     name: rova-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-dev-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-migrator-db-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-dev
+    kind: ClusterSecretStore
+  target:
+    name: rova-migrator-db-ca
     creationPolicy: Owner
   data:
     - secretKey: ca.crt
@@ -686,19 +694,3 @@ spec:
             env: dev
           annotations:
             summary: "rova-api has reported no metrics for 10 minutes"
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: rova
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: ap-southeast-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: api
