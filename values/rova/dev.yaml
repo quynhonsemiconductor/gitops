@@ -1,5 +1,15 @@
 # §5b — dev turns things OFF. The chart has no dev/prod branch of its own; ArgoCD
 # merges base.yaml with this file before Helm sees anything.
+#
+# ── ON-PREM DEV (CUTOVER-2026-11 C3, the rova dev move) ──────────────────────
+# This file carries the whole on-prem delta: CNPG (pg-dev), the shared dev
+# Valkey, the same-origin host, the renamed R2 buckets, and the non-secret env
+# the ECS task definition used to own (rova infra/modules/stack/main.tf,
+# develop — transcribed, not invented). The SECRET half arrives through the
+# rova-app bundle from kv-qnsc-dev (§7.1): cookie/csrf secrets, the identity
+# secrets, entra-client-secret, the R2 credentials — and the Graph certificate,
+# which is NOT env at all: it is the worker-only mounted file wired at the
+# bottom of this file.
 env: dev
 size: s                      # 1 replica, no PDB, no topology spread
 
@@ -8,66 +18,113 @@ size: s                      # 1 replica, no PDB, no topology spread
 # so the earlier blocks — resources — vanish silently. Nothing
 # warns: helm renders, lint passes, and the workload quietly runs on-demand with the
 # chart's default resources. Everything for a service belongs in this one block.
-services:
-  api:
-    resources: { cpu: 100m, memory: 512Mi }
 
-    # ── A PARALLEL HOSTNAME FOR THE DURATION OF THE MIGRATION ───────────────
-    #
-    # The canonical API hostname is `rova-api-dev.qnsc.vn`, and it POINTS AT THE ECS
-    # TUNNEL right now, serving the dev environment people are using. Claiming it
-    # here would cut dev over silently, as a side effect of a deploy, with no
-    # rehearsal — the opposite of the parallel-estate strategy this migration is
-    # built on.
-    #
-    # So the new estate proves itself on its own name. Cutover is then one DNS record
-    # repointed at the new tunnel, reversible by repointing it back, and deleting
-    # this line — after which the helper's default (`rova-api-dev.qnsc.vn`) applies.
-    host: rova-api-eks-dev.qnsc.vn
+# §5.6/§6.2 — the chart's per-namespace default-deny set is OFF on-prem; the one
+# NetworkPolicy that matters (data-prod admits only rova-prod, restore-test,
+# cnpg-system and platform on metrics ports) lives in gitops/platform.
+networkPolicy:
+  enabled: false
 
-  worker:
-    resources: { cpu: 100m, memory: 256Mi }
-
-# The data tier's endpoint. An endpoint is NOT a credential, which is the whole reason
-# `auth: iam` needs no secret: there is nothing here worth protecting, and the token
-# that is worth protecting never exists at rest.
-# Source: `tofu output -raw postgres_endpoint` in infra/live/data-dev.
 data:
   postgres:
-    host: qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com
+    # §6.3 — pg-dev in data-dev: one cluster for all three dev products.
+    # TLS verify-full: the server CA arrives as the rova-db-ca Secret (via the
+    # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
+    # app connects to pg-dev-rw.data-dev.svc — a SAN on CNPG's server cert.
+    # The EKS-era values pointed at the RDS endpoint with `auth: iam`; on-prem
+    # the credential is a CNPG managed-role password from the secret bundles.
+    mode: cnpg
+    cluster: pg-dev
+    namespace: data-dev
+    auth: password
+    pooling: none      # inherited intent from base; the on-prem decision too (§6.3)
+    name: rova
+    user: rova_app     # §6.3 — CNPG managed role <product>_app
+    # migratorUser needs NO override: chart 0.12.1 defaults the migrator role to
+    # <product>_migrator (rova_migrator), exactly §6.3's pairing.
+    caFile: /etc/qnsc/db-ca/ca.crt
 
-# ── PRODUCT-WIDE, because api AND worker share one env validator ─────────────
-# Supplying these to `api` alone left the worker crash-looping on
-#   ENTRA_TENANT_ID: expected string, received undefined
-# with a healthy api beside it, which reads like a worker bug. `defaults.env` is
-# merged into every service, so there is ONE copy of an identity that must agree.
+services:
+  # §5.7 dev sizing: api 100m / 768 Mi, worker 50m / 480 Mi, heap flags at the
+  # prod values (512 / 256) for parity.
+  api:
+    resources: { cpu: 100m, memory: 768Mi }
+    env:
+      - { name: PORT, value: "3000" }
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+      # pg-dev runs max_connections=100 shared across all dev products; 10 per
+      # service leaves headroom for kb's pool, the migrators and managed roles.
+      - { name: DATABASE_POOL_MAX, value: "10" }
+
+  worker:
+    resources: { cpu: 50m, memory: 480Mi }
+    env:
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+      - { name: DATABASE_POOL_MAX, value: "10" }
+
+# ── Product-wide, because api AND worker share one env validator ─────────────
+# Entra is the case that forced this shape: supplying the tenant/client id to the
+# api alone left the worker crash-looping on ENTRA_TENANT_ID. Non-secret values
+# only — anything a leak would enable lives in the kv-qnsc-dev bundle.
 defaults:
-  # ── Entra configuration — NOT secrets, so they live in git ──────────────
-  #
-  # The estate's rule, quoted from rova/infra/live/develop/variables.tf: "These are
-  # NOT secrets: an Entra tenant/client id appears in the browser's auth redirect…
-  # The corresponding SECRETS live in Secrets Manager (entra-client-secret,
-  # github-app-private-key) and the Cloudflare API token stays a GitHub secret."
-  #
-  # They are deliberately NOT GitHub Actions variables. That was tried and
-  # reverted: ENTRA_CLIENT_ID is environment-scoped, `infra-plan` has no
-  # `environment:` context, so it resolved to "" and every plan reported three task
-  # definitions "must be replaced". "Reviewers who see phantom replacements on
-  # every PR stop reading plans — which is exactly when a real one slips through."
-  # In git the value is identical at plan and apply time, and reviewable in a diff.
-  #
-  # Copied from rova/infra/live/develop, so both estates authenticate against ONE
-  # app registration rather than drifting into two.
-  #
-  # ⚠ THE REDIRECT URI POINTS AT THE FRONTEND, NOT AT THIS API, and that is
-  # correct: the browser is redirected to the app domain and the BFF route is served
-  # beneath it. It is also why signing in end to end against the new estate needs a
-  # human step in Entra — adding this cluster's hostname as a permitted redirect
-  # URI. Until then the API starts and serves, and the auth round trip lands on ECS.
   env:
-    - name: ENTRA_TENANT_ID
-      value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
-    - name: ENTRA_CLIENT_ID
-      value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
-    - name: ENTRA_REDIRECT_URI
-      value: https://rova-dev.qnsc.vn/v1/bff/callback
+    - { name: NODE_ENV, value: "production" }
+    - { name: DEPLOYMENT_ENV, value: "dev" }
+    # §6.4 — the shared dev cache. rova keeps database index 0 and no explicit
+    # /0 suffix (the schema default appends nothing; parity with the ECS env).
+    # Plain redis:// — the on-prem Valkey has no TLS, unlike rediss:// ElastiCache.
+    - { name: REDIS_URL, value: "redis://valkey-dev.data-dev.svc:6379" }
+    - { name: OTEL_ENABLED, value: "true" }
+    # §8.2 — SAME-ORIGIN: one hostname per app. The SPA (Workers static assets)
+    # and this API share rova-dev.qnsc.vn; the Tunnel routes /api/auth/*, /v1/*
+    # and /readyz straight to the api Service. The EKS-era
+    # rova-api-eks-dev.qnsc.vn parallel-name override and the
+    # ENTRA_REDIRECT_URI value are GONE: identity v8 derives the redirect from
+    # APP_BASE_URL (the v7 BFF value only existed for rollback), and the
+    # *-api-* / *-eks-* DNS records are retired at the cutover (§8.2).
+    - { name: APP_BASE_URL, value: "https://rova-dev.qnsc.vn" }
+    - { name: CORS_ORIGINS, value: "https://rova-dev.qnsc.vn" }
+    # Entra — public identifiers (§7.2), unchanged from the EKS-era file: ONE
+    # tenant and ONE dev sign-in app for both estates.
+    - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: ENTRA_CLIENT_ID, value: "45fabceb-e51c-446b-894e-af4c4b7f30f8" }
+    # B2B guest provisioning stays on in dev; JIT sign-up stays off.
+    - { name: ENTRA_GUEST_INVITE_ENABLED, value: "true" }
+    - { name: SSO_JIT_ENABLED, value: "false" }
+    - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
+    # §7.3 — Graph mail: the dev mailbox and the "Rova Dev Service" app. The
+    # certificate is the worker-only FILE below, never an env var. MAIL_FROM_EMAIL
+    # keeps the ECS value (module default noreply@qnsc.vn).
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
+    - { name: MAIL_GRAPH_SENDER, value: "noreply-rova-dev@qnsc.vn" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "ba917ac2-3580-43ef-a8c1-c8cb6288651a" }
+    # §6.5 — the renamed dev buckets (rova-develop-* → rova-dev-*; created and
+    # seeded in the same cutover apply, old bucket read-only for two weeks). R2
+    # credentials are NOT here — they are the rova-app bundle's (rova-dev-r2-app).
+    - { name: S3_ATTACHMENTS_BUCKET, value: "rova-dev-attachments" }
+    - { name: S3_PUBLIC_ASSETS_BUCKET, value: "rova-dev-public-assets" }
+    - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
+    # The public-assets custom domain moves to the new bucket in the same
+    # live/edge apply (§6.5); it is a CDN base URL, not a credential.
+    - { name: CDN_PUBLIC_ASSETS_BASE_URL, value: "https://rova-assets-dev.qnsc.vn" }
+
+# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
+# Setting clusterSecretStore switches the chart to the on-prem shape: no
+# per-namespace AWS SecretStore is rendered. Two ExternalSecrets extract one
+# Key Vault JSON bundle each:
+#   rova-app      <- kv-qnsc-dev/rova-dev-app   (secrets.bundle; app env vars)
+#   rova-migrator <- kv-qnsc-dev/rova-dev-db-app (secrets.db; DB roles, PreSync wave -1)
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
+# secretsReaderServiceAccount stays unset — it is the AWS shape only.
+secrets:
+  clusterSecretStore: kv-qnsc-dev
+  bundle: rova-dev-app
+  db: rova-dev-db-app
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a
+  # FILE into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH (it
+  # also carries the guest-invite User.Invite.All credential — same app).
+  workerOnly:
+    graphCert: rova-dev-graph-cert
+    path: /etc/qnsc/graph/cert.pem

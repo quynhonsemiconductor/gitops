@@ -18,7 +18,12 @@ values:
 tests:
   # ── networkPolicy.enabled ───────────────────────────────────────────────────
   - it: renders the default-deny set by default (EKS behaviour unchanged)
+    # rova's dev values now set networkPolicy.enabled: false (the on-prem
+    # decision), so the DEFAULT is asserted explicitly rather than inherited
+    # from the fixture.
     template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
     asserts:
       - hasDocuments:
           count: 5        # default-deny, allow-dns, allow-egress-platform, allow-egress-external, + the dev allow-ingress-api (rova dev exposes the api to the cluster)
@@ -128,42 +133,6 @@ tests:
       - notExists:
           path: metadata.annotations["secret.reloader.stakater.com/reload"]
 
-  - it: renders the product db-ca ExternalSecret from the cnpg-ca store
-    # The CA is static; this ExternalSecret mirrors pg-rova-ca-pub (ca.crt
-    # only) with a 12 h refresh. Document 3: the AWS-era SecretStore and
-    # the two app/migrator ExternalSecrets render before it.
-    template: templates/externalsecret.yaml
-    documentIndex: 3
-    set:
-      data.postgres:
-        mode: cnpg
-        cluster: pg-rova
-        namespace: data-prod
-        auth: password
-        pooling: none
-        caFile: /etc/qnsc/db-ca/ca.crt
-    asserts:
-      - equal:
-          path: spec.secretStoreRef.name
-          value: cnpg-ca-dev   # the suite renders rova DEV
-      - equal:
-          path: spec.target.name
-          value: rova-db-ca
-      - equal:
-          path: spec.data[0].remoteRef.key
-          value: pg-rova-ca-pub
-      - equal:
-          path: spec.data[0].remoteRef.property
-          value: ca.crt
-
-  - it: adds NO db-ca document without a CA file
-    # Without caFile the template renders the three AWS-era documents (store,
-    # app secret, migrator secret) and nothing else.
-    template: templates/externalsecret.yaml
-    asserts:
-      - hasDocuments:
-          count: 3
-
   # ── secrets.workerOnly (§7.1/§7.3) ──────────────────────────────────────────
   - it: mounts the Graph PEM into the worker and exports the path
     template: templates/deployment.yaml
@@ -203,8 +172,13 @@ tests:
             name: AZURE_CLIENT_CERTIFICATE_PATH
 
   - it: renders nothing when secrets.workerOnly.graphCert is unset
+    # Empty strings, because rova's dev values now wire the on-prem graph
+    # certificate — this test wants the "not configured" branch explicitly.
     template: templates/deployment.yaml
     documentIndex: 1
+    set:
+      secrets.workerOnly.graphCert: ""
+      secrets.workerOnly.path: ""
     asserts:
       - notContains:
           path: spec.template.spec.containers[0].env
@@ -243,64 +217,12 @@ tests:
       - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook"]
 
-  - it: the migrator ExternalSecret and its own db-ca copy are PreSync wave -1; shared db-ca and SecretStore are not hooks
-    template: templates/externalsecret.yaml
-    set:
-      data.postgres:
-        mode: cnpg
-        cluster: pg-rova
-        namespace: data-prod
-        auth: password
-        pooling: none
-        caFile: /etc/qnsc/db-ca/ca.crt
-        name: rova
-        user: rova
-    asserts:
-      - equal:
-          path: metadata.annotations["argocd.argoproj.io/hook"]
-          value: PreSync
-        documentSelector:
-          path: metadata.name
-          value: rova-migrator
-      - equal:
-          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
-          value: "-1"
-        documentSelector:
-          path: metadata.name
-          value: rova-migrator-db-ca
-      - notExists:
-          path: metadata.annotations["argocd.argoproj.io/hook"]
-        documentSelector:
-          path: metadata.name
-          value: rova-db-ca
-      - notExists:
-          path: metadata.annotations["argocd.argoproj.io/hook"]
-        documentSelector:
-          path: metadata.name
-          value: rova
-      - notExists:
-          path: metadata.annotations["argocd.argoproj.io/hook"]
-        documentSelector:
-          path: metadata.name
-          value: rova-app
-
   # ── ExternalSecret shape (ONPREM-PLAN §5.6) ─────────────────────────────────
-  - it: AWS shape (secrets.clusterSecretStore unset) keeps the per-namespace SecretStore and find+rewrite
-    template: templates/externalsecret.yaml
-    documentSelector:
-      path: metadata.name
-      value: rova-app
-    asserts:
-      - equal:
-          path: spec.secretStoreRef
-          value: { name: rova, kind: SecretStore }
-      - exists:
-          path: spec.dataFrom[0].find
-
   - it: on-prem shape reads the ClusterSecretStore with extract, renders no SecretStore
     template: templates/externalsecret.yaml
     set:
       secrets.clusterSecretStore: kv-qnsc-dev
+      data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only the bundle ExternalSecrets
     asserts:
       - hasDocuments:
           count: 2          # rova-app + rova-migrator (+ no SecretStore)
@@ -381,6 +303,7 @@ tests:
       secrets.clusterSecretStore: kv-qnsc-dev
       secrets.serviceBundles:
         api: rova-dev-api
+      data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only bundle ExternalSecrets
     asserts:
       - equal:
           path: spec.secretStoreRef
@@ -428,18 +351,6 @@ tests:
           value:
             - secretRef: { name: rova-app }
 
-  - it: renders NOTHING extra when serviceBundles is set on the AWS shape
-    # AWS shape untouched by the per-service bundles: they are an on-prem
-    # (ClusterSecretStore) construct. Store + app + migrator, nothing more.
-    # (When a product's dev values adopt the on-prem secret shape, this test
-    # belongs in aws_shape_test.yaml — the fixture here must stay AWS-shaped.)
-    template: templates/externalsecret.yaml
-    set:
-      secrets.serviceBundles:
-        api: rova-dev-api
-    asserts:
-      - hasDocuments:
-          count: 3
 
   - it: on-prem bundle/db overrides are honoured
     template: templates/externalsecret.yaml

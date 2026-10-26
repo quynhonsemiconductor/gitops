@@ -1,0 +1,121 @@
+suite: AWS secret shape (EKS-era)
+# The four AWS-branch tests of the ExternalSecret template used to ride in
+# onprem_test.yaml with the rova fixture. That stopped working when rova's dev
+# values adopted the on-prem secret shape (CUTOVER-2026-11 C3): helm-unittest
+# cannot UNSET a fixture key, and the schema rejects an empty
+# secrets.clusterSecretStore — so "unset" has to come from the fixture itself.
+# This suite therefore renders base + tags ONLY: the EKS-era values, which is
+# the shape these tests document.
+templates:
+  - templates/externalsecret.yaml
+values:
+  - ../../../values/rova/base.yaml
+  # The image tag lives in the MACHINE-OWNED file (see kinds_test.yaml).
+  - ../../../values/rova/tags.dev.yaml
+# env lives in the (on-prem) dev.yaml this suite deliberately does NOT load.
+set:
+  env: dev
+
+tests:
+  - it: renders the product db-ca ExternalSecret from the cnpg-ca store
+    # The CA is static; this ExternalSecret mirrors pg-rova-ca-pub (ca.crt
+    # only) with a 12 h refresh. Document 3: the AWS-era SecretStore and
+    # the two app/migrator ExternalSecrets render before it.
+    template: templates/externalsecret.yaml
+    documentIndex: 3
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+    asserts:
+      - equal:
+          path: spec.secretStoreRef.name
+          value: cnpg-ca-dev   # the suite renders rova DEV
+      - equal:
+          path: spec.target.name
+          value: rova-db-ca
+      - equal:
+          path: spec.data[0].remoteRef.key
+          value: pg-rova-ca-pub
+      - equal:
+          path: spec.data[0].remoteRef.property
+          value: ca.crt
+
+  - it: adds NO db-ca document without a CA file
+    # Without caFile the template renders the three AWS-era documents (store,
+    # app secret, migrator secret) and nothing else.
+    template: templates/externalsecret.yaml
+    set:
+      data.postgres.caFile: ""
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: the migrator ExternalSecret and its own db-ca copy are PreSync wave -1; shared db-ca and SecretStore are not hooks
+    template: templates/externalsecret.yaml
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: PreSync
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-app
+
+  - it: AWS shape (secrets.clusterSecretStore unset) keeps the per-namespace SecretStore and find+rewrite
+    template: templates/externalsecret.yaml
+    documentSelector:
+      path: metadata.name
+      value: rova-app
+    asserts:
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: rova, kind: SecretStore }
+      - exists:
+          path: spec.dataFrom[0].find
+  - it: renders NOTHING extra when serviceBundles is set on the AWS shape
+    # AWS shape untouched by the per-service bundles: they are an on-prem
+    # (ClusterSecretStore) construct. Store + app + migrator, nothing more.
+    # Moved here from onprem_test.yaml when rova's dev values adopted the
+    # on-prem secret shape: the AWS branch needs an AWS-shaped fixture.
+    template: templates/externalsecret.yaml
+    set:
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - hasDocuments:
+          count: 3
