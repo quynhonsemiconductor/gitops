@@ -3,10 +3,18 @@ kind: Namespace
 metadata:
   name: platform
   labels:
-    pod-security.kubernetes.io/enforce: restricted
+    # PRIVILEGED, not restricted — found in the local k3d bootstrap rehearsal
+    # (2026-10-26): the Alloy agent DaemonSet cannot run under restricted PSS.
+    # It mounts /var/log (a hostPath, which restricted forbids outright) and
+    # adds SYS_PTRACE/BPF/PERFMON capabilities for pyroscope.ebpf. There is no
+    # partial setting that grants those: it is privileged or Alloy does not run.
+    # Same shape as the argocd namespace above it: upstream chart, named
+    # exception, revisit note.
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/enforce-version: latest
-    # audit and warn at the same level: a workload that would be rejected shows up
-    # in the audit log before someone tries to deploy it.
+    # audit and warn stay at restricted: a NEW platform workload that would
+    # violate restricted still shows up in the audit log before someone tries
+    # to deploy it. Only the Alloy agent is known to need out.
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
     qnsc.vn/tenant: platform
