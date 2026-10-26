@@ -40,11 +40,22 @@ spec:
           # dev is genuinely low-risk — and it proves more of the chart than
           # anything else: PgBouncer, the migrator role, the worker kind, a 1.5 GB
           # model needing a startupProbe, and the clamav sidecar.
-          - { product: kb,     env: dev, cluster: dev, chartVersion: "0.1.0" }
-          - { product: opshub, env: dev, cluster: dev, chartVersion: "0.1.0" }
-          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.1.0" }
+          - { product: kb,     env: dev, cluster: dev, chartVersion: "0.11.1" }
+          - { product: opshub, env: dev, cluster: dev, chartVersion: "0.11.1" }
+          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.11.1" }
         template:
+          # The CRD requires every generator template to carry a FULL Application
+          # skeleton (metadata.name, spec.project, spec.destination) — it is
+          # validated structurally before ArgoCD merges it over the base template
+          # below, where the real definitions live. Values here are therefore the
+          # same placeholders, repeated to satisfy validation only.
+          metadata:
+            name: "{{.product}}-{{.env}}"
           spec:
+            project: products
+            destination:
+              name: "{{.cluster}}"
+              namespace: "{{.product}}"
             syncPolicy:
               automated:
                 prune: true
@@ -72,13 +83,20 @@ spec:
           # dropping the row deletes nothing (prune:false does not stop the
           # ApplicationSet from removing an Application that its generator
           # no longer produces — but there is none to remove).
-          - { product: opshub, env: prod, cluster: prod, chartVersion: "0.1.0" }
+          - { product: opshub, env: prod, cluster: prod, chartVersion: "0.11.1" }
           # rova is LAST (§17 step 6) and soaks for two weeks. It is also the only
           # product that actually tests the cutover — everything before it is a
           # greenfield deploy that happens to use the chart.
-          - { product: rova,   env: prod, cluster: prod, chartVersion: "0.1.0" }
+          - { product: rova,   env: prod, cluster: prod, chartVersion: "0.11.1" }
         template:
+          # Full skeleton: same reason as the dev generator above.
+          metadata:
+            name: "{{.product}}-{{.env}}"
           spec:
+            project: products
+            destination:
+              name: "{{.cluster}}"
+              namespace: "{{.product}}"
             syncPolicy:
               automated:
                 # §11c — "a bad render should FAIL, not delete." In dev a stale
