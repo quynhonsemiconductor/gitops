@@ -123,10 +123,10 @@ secrets:
   workerOnly: {}
   # store / remoteKey / migrator: see below
 
-# ONPREM-PLAN §5.6 — where the ExternalSecrets read from. Unset = the AWS shape
-# (a SecretStore per namespace on IRSA). On-prem sets:
+# ONPREM-PLAN §5.6 — on-prem selects its secret source by setting
+# secrets.clusterSecretStore; unset = the AWS shape. On-prem values:
 #   secrets:
-#     store: { kind: ClusterSecretStore, name: kv-qnsc-dev }   # kv-qnsc-<env>
-# and the app secret is then Key Vault secret <product>-<env>-app, the migrator's
-# <product>-<env>-migrator (override: secrets.remoteKey.app / .migrator;
-# secrets.migrator: false skips the migrator ExternalSecret when none exists).
+#     clusterSecretStore: kv-qnsc-<env>
+#     bundle: <product>-<env>-app        # Key Vault secret (JSON) -> <product>-app
+#     db: <product>-<env>-db-app         # -> <product>-migrator (DB credentials)
+# bundle and db default to those names when omitted.

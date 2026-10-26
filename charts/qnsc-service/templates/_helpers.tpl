@@ -246,33 +246,33 @@ argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 {{- end }}
 
 {{/*
-ON-PREM SECRET SHAPE (ONPREM-PLAN §5.6). `secrets.store.name` set -> the ExternalSecrets
-read a platform-owned (Cluster)SecretStore by name and the chart renders NO SecretStore
-of its own; unset -> the AWS shape (per-namespace SecretStore on IRSA, find+rewrite).
-Returns "true" or "" so it can be used as a condition.
+ON-PREM SECRET SHAPE (ONPREM-PLAN §5.6). `secrets.clusterSecretStore` set -> the
+ExternalSecrets read that platform-owned ClusterSecretStore (kv-qnsc-<env>) and the
+chart renders NO SecretStore of its own; unset -> the AWS shape (per-namespace
+SecretStore on IRSA, find+rewrite). Returns "true" or "" for use as a condition.
 */}}
 {{- define "qnsc.onpremStore" -}}
-{{- if and .Values.secrets .Values.secrets.store .Values.secrets.store.name -}}true{{- end -}}
+{{- if and .Values.secrets .Values.secrets.clusterSecretStore -}}true{{- end -}}
 {{- end }}
 
 {{- define "qnsc.storeRef" -}}
 {{- if include "qnsc.onpremStore" . -}}
-name: {{ .Values.secrets.store.name }}
-kind: {{ .Values.secrets.store.kind | default "ClusterSecretStore" }}
+name: {{ .Values.secrets.clusterSecretStore }}
+kind: ClusterSecretStore
 {{- else -}}
 name: {{ include "qnsc.product" . }}
 kind: SecretStore
 {{- end -}}
 {{- end }}
 
-{{/* Remote key of one role's secret: secrets.remoteKey.<role> or <product>-<env>-<role>. */}}
+{{/* Remote key: role "app" -> secrets.bundle (<product>-<env>-app); role "migrator" ->
+     secrets.db (<product>-<env>-db-app), the credential the plan gives the DB role. */}}
 {{- define "qnsc.remoteKey" -}}
 {{- $root := index . 0 -}}{{- $role := index . 1 -}}
-{{- $rk := dict -}}{{- if $root.Values.secrets }}{{- $rk = $root.Values.secrets.remoteKey | default dict -}}{{- end -}}
-{{- index $rk $role | default (printf "%s-%s-%s" (include "qnsc.product" $root) (include "qnsc.env" $root) $role) -}}
-{{- end }}
-
-{{/* The migrator ExternalSecret is rendered unless secrets.migrator is false. */}}
-{{- define "qnsc.migratorSecret" -}}
-{{- if not (and .Values.secrets (hasKey .Values.secrets "migrator") (not .Values.secrets.migrator)) -}}true{{- end -}}
+{{- $sec := $root.Values.secrets | default dict -}}
+{{- if eq $role "app" -}}
+{{- $sec.bundle | default (printf "%s-%s-app" (include "qnsc.product" $root) (include "qnsc.env" $root)) -}}
+{{- else -}}
+{{- $sec.db | default (printf "%s-%s-db-app" (include "qnsc.product" $root) (include "qnsc.env" $root)) -}}
+{{- end -}}
 {{- end }}

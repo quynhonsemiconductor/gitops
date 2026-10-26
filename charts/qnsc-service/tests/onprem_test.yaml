@@ -285,7 +285,7 @@ tests:
           value: rova-app
 
   # ── ExternalSecret shape (ONPREM-PLAN §5.6) ─────────────────────────────────
-  - it: AWS shape (secrets.store unset) keeps the per-namespace SecretStore and find+rewrite
+  - it: AWS shape (secrets.clusterSecretStore unset) keeps the per-namespace SecretStore and find+rewrite
     template: templates/externalsecret.yaml
     documentSelector:
       path: metadata.name
@@ -300,7 +300,7 @@ tests:
   - it: on-prem shape reads the ClusterSecretStore with extract, renders no SecretStore
     template: templates/externalsecret.yaml
     set:
-      secrets.store: { kind: ClusterSecretStore, name: kv-qnsc-dev }
+      secrets.clusterSecretStore: kv-qnsc-dev
     asserts:
       - hasDocuments:
           count: 2          # rova-app + rova-migrator (+ no SecretStore)
@@ -318,7 +318,7 @@ tests:
           value: rova-app
       - equal:
           path: spec.dataFrom
-          value: [{ extract: { key: rova-dev-migrator } }]
+          value: [{ extract: { key: rova-dev-db-app } }]
         documentSelector:
           path: metadata.name
           value: rova-migrator
@@ -329,18 +329,55 @@ tests:
           path: metadata.name
           value: rova-migrator
 
-  - it: on-prem remoteKey overrides and secrets.migrator=false are honoured
+  - it: on-prem bundle/db overrides are honoured
     template: templates/externalsecret.yaml
     set:
-      secrets.store: { name: kv-qnsc-dev }
-      secrets.remoteKey: { app: custom-app }
-      secrets.migrator: false
+      secrets.clusterSecretStore: kv-qnsc-dev
+      secrets.bundle: custom-app
+      secrets.db: custom-db
     asserts:
-      - hasDocuments:
-          count: 1
       - equal:
           path: spec.dataFrom[0].extract.key
           value: custom-app
+        documentSelector:
+          path: metadata.name
+          value: rova-app
       - equal:
-          path: spec.secretStoreRef.kind
-          value: ClusterSecretStore
+          path: spec.dataFrom[0].extract.key
+          value: custom-db
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+
+  - it: on-prem CA copies read ca.crt of <cluster>-ca-pub from cnpg-ca-<env>, 12h, db-ca shared one not hooked
+    template: templates/externalsecret.yaml
+    set:
+      secrets.clusterSecretStore: kv-qnsc-dev
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-dev
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova
+    asserts:
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: cnpg-ca-dev, kind: ClusterSecretStore }
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca
+      - equal:
+          path: spec.data[0].remoteRef
+          value: { key: pg-rova-ca-pub, property: ca.crt }
+        documentSelector:
+          path: metadata.name
+          value: rova-db-ca
+      - equal:
+          path: spec.refreshInterval
+          value: 12h
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca

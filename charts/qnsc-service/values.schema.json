@@ -423,25 +423,11 @@
     "secrets": {
       "type": "object",
       "additionalProperties": false,
-      "description": "workerOnly: Graph cert mount. store/remoteKey/migrator: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset store = AWS shape.",
+      "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset clusterSecretStore = AWS shape.",
       "properties": {
-        "store": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "kind": { "enum": ["ClusterSecretStore", "SecretStore"] },
-            "name": { "type": "string", "minLength": 1 }
-          }
-        },
-        "remoteKey": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "app": { "type": "string" },
-            "migrator": { "type": "string" }
-          }
-        },
-        "migrator": { "type": "boolean" },
+        "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
+        "bundle": { "type": "string", "description": "Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app." },
+        "db": { "type": "string", "description": "Key Vault secret behind <product>-migrator (DB credentials). Default <product>-<env>-db-app." },
         "workerOnly": {
           "type": "object",
           "additionalProperties": false,
