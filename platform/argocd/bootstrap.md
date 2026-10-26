@@ -14,10 +14,19 @@ products.yaml was not appliable   per-generator templates failed CRD
 PreSync hook deadlock             the migrator Job hook ran before the chart's
                                   ServiceAccounts existed — into an empty
                                   namespace the hook can never start
-                                                      → chart fix (PR, chart
-                                                        v0.11.2): ServiceAccounts
-                                                        are PreSync hooks on
-                                                        wave -1
+                                                      → chart fix, gitops PR #45
+                                                        (chart v0.11.2): only the
+                                                        `migrator` ServiceAccount
+                                                        and the Job's other
+                                                        prerequisites (SecretStore,
+                                                        migrator + db-ca
+                                                        ExternalSecrets) are
+                                                        PreSync hooks on wave -1;
+                                                        api/worker accounts stay
+                                                        normal — a hooked account
+                                                        is recreated every sync
+                                                        and invalidates running
+                                                        pods' tokens
 Alloy could not be applied        HOSTNAME duplicated the chart's default env;
                                   SSA rejects duplicates → gitops PR #41 (fixed)
 Alloy could not schedule          platform namespace PSS restricted rejects the
@@ -25,7 +34,10 @@ Alloy could not schedule          platform namespace PSS restricted rejects the
                                                       → gitops PR #43 (fixed)
 CNPG ImageCatalog reference       `imageName: postgresql/18` is rejected by
                                   operator 1.30.1; use imageCatalogRef
-                                                      → fixed in cnpg/imagecatalog.yaml
+                                                      → gitops PR #46 (fixed)
+ESO stores had no namespace       stores-onprem.yaml applies into
+                                  `external-secrets`, which nothing created
+                                                      → gitops PR #47 (fixed)
 monitoring CRDs are bootstrap     the chart renders PrometheusRule; without the
                                   prometheus-operator CRDs (k8s-monitoring, M-2)
                                   every product sync fails at discovery
@@ -39,7 +51,9 @@ Timings are at the bottom. This document now describes the ON-PREM bootstrap
 # 0. prerequisites — one k3s node per env (runbooks/server-setup.md), then:
 
 # 1. namespaces + policy
-kubectl apply -f ../namespaces/            # includes namespaces/onprem.yaml
+kubectl apply -f ../namespaces/            # includes namespaces/onprem.yaml and
+                                           # the external-secrets namespace
+                                           # the stores below need (PR #47)
 kubectl apply -f ../policy/admission.yaml
 kubectl apply -f ../policy/bindings.yaml   # a policy with no binding enforces
                                            # nothing, and nothing says so
@@ -47,7 +61,8 @@ kubectl apply -f ../policy/bindings.yaml   # a policy with no binding enforces
 # 2. ESO — the operator, then the stores
 helm upgrade --install external-secrets external-secrets/external-secrets \
   -n platform -f ../eso/values.yaml --version "$ESO_VERSION"
-kubectl apply -f ../eso/stores-onprem.yaml # the four ClusterSecretStores. The
+kubectl apply -f ../eso/stores-onprem.yaml # (needs step 1's external-secrets
+                                           # namespace, PR #47) the four ClusterSecretStores. The
                                            # Azure stores go Valid only once the
                                            # hand-applied SP certificate Secrets
                                            # exist (§14 step 2 — see
