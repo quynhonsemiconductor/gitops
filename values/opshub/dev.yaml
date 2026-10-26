@@ -79,10 +79,20 @@ defaults:
     - { name: MAIL_GRAPH_SENDER, value: "noreply-opshub-dev@qnsc.vn" }
     - { name: GRAPH_CLIENT_ID, value: "328bac47-4848-42b5-9464-bb4ba7b0cb56" }
 
-# §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a FILE
-# into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH. The secret
-# itself is synced by ESO from kv-qnsc-dev (opshub-dev-graph-cert).
+# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
+# Setting clusterSecretStore switches the chart to the on-prem shape: no
+# per-namespace AWS SecretStore is rendered. Two ExternalSecrets extract one
+# Key Vault JSON bundle each:
+#   opshub-app      <- kv-qnsc-dev/opshub-dev-app   (secrets.bundle; app env vars)
+#   opshub-migrator <- kv-qnsc-dev/opshub-dev-db-app (secrets.db; DB roles, PreSync wave -1)
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
+# secretsReaderServiceAccount stays unset — it is the AWS shape only.
 secrets:
+  clusterSecretStore: kv-qnsc-dev
+  bundle: opshub-dev-app
+  db: opshub-dev-db-app
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a
+  # FILE into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH.
   workerOnly:
     graphCert: opshub-dev-graph-cert
     path: /etc/qnsc/graph/cert.pem

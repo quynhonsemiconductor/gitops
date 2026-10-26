@@ -442,7 +442,7 @@ spec:
           emptyDir: {}
         - name: db-ca
           secret:
-            secretName: opshub-db-ca
+            secretName: opshub-migrator-db-ca
             items: [{ key: ca.crt, path: ca.crt }]
 
 ---
@@ -454,21 +454,13 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: opshub
-    kind: SecretStore
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
   target:
     name: opshub-app
   dataFrom:
-    - find:
-        path: qnsc/dev/opshub/app/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+    - extract:
+        key: opshub-dev-app
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -483,21 +475,13 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: opshub
-    kind: SecretStore
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
   target:
     name: opshub-migrator
   dataFrom:
-    - find:
-        path: qnsc/dev/opshub/migrator/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+    - extract:
+        key: opshub-dev-db-app
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -512,6 +496,30 @@ spec:
     kind: ClusterSecretStore
   target:
     name: opshub-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-dev-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-migrator-db-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-migrator-db-ca
     creationPolicy: Owner
   data:
     - secretKey: ca.crt
@@ -624,19 +632,3 @@ spec:
             env: dev
           annotations:
             summary: "opshub-api has reported no metrics for 10 minutes"
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: opshub
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: ap-southeast-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: api
