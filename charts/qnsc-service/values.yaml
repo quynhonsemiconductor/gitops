@@ -121,3 +121,12 @@ networkPolicy:
 # it unconditionally, and a missing key would be a nil-pointer render error.
 secrets:
   workerOnly: {}
+  # store / remoteKey / migrator: see below
+
+# ONPREM-PLAN §5.6 — on-prem selects its secret source by setting
+# secrets.clusterSecretStore; unset = the AWS shape. On-prem values:
+#   secrets:
+#     clusterSecretStore: kv-qnsc-<env>
+#     bundle: <product>-<env>-app        # Key Vault secret (JSON) -> <product>-app
+#     db: <product>-<env>-db-app         # -> <product>-migrator (DB credentials)
+# bundle and db default to those names when omitted.
