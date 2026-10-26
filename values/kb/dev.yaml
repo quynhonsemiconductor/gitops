@@ -31,6 +31,10 @@ data:
     pooling: none      # §6.3 — no pooler anywhere on-prem
     name: kb
     user: kb_app
+    # §6.3 — managed roles are <product>_app and <product>_migrator; the chart
+    # defaults the migrator role to <product>_migrator, stated here so the
+    # pairing with the kv secret is visible in one place.
+    migratorUser: kb_migrator
     caFile: /etc/qnsc/db-ca/ca.crt
 
 services:
@@ -74,6 +78,10 @@ defaults:
     - { name: FRONTEND_URL, value: "https://kb-dev.qnsc.vn" }
     - { name: CORS_ORIGINS, value: "https://kb-dev.qnsc.vn" }
     - { name: MICROSOFT_LOGIN_REDIRECT_URI, value: "https://kb-dev.qnsc.vn/api/v1/auth/entra/callback" }
+    # Delegated SharePoint/Drive connector consent callback — a DIFFERENT Entra
+    # flow from sign-in (same host, /api/v1/connectors path); both URIs must be
+    # registered on the "KB Dev" app (§8.2 same-origin: the host moved).
+    - { name: MICROSOFT_REDIRECT_URI, value: "https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback" }
     - { name: CONNECTOR_WEBHOOK_BASE_URL, value: "https://kb-dev.qnsc.vn" }
     # Entra / mail — public identifiers (§7.2/§7.3): the "KB Dev" sign-in app and
     # the "KB Dev Service" mail app. The mail certificate is the worker file below.

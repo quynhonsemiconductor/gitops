@@ -189,6 +189,8 @@ spec:
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_LOGIN_REDIRECT_URI
               value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback
             - name: CONNECTOR_WEBHOOK_BASE_URL
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_TENANT_ID
@@ -341,6 +343,8 @@ spec:
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_LOGIN_REDIRECT_URI
               value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback
             - name: CONNECTOR_WEBHOOK_BASE_URL
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_TENANT_ID
@@ -478,7 +482,7 @@ spec:
             - name: DATABASE_NAME
               value: "kb"
             - name: DATABASE_USER
-              value: "kb_app_migrator"
+              value: "kb_migrator"
             - name: DATABASE_SSL_CA
               value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
@@ -501,6 +505,8 @@ spec:
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_LOGIN_REDIRECT_URI
               value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback
             - name: CONNECTOR_WEBHOOK_BASE_URL
               value: https://kb-dev.qnsc.vn
             - name: MICROSOFT_TENANT_ID
