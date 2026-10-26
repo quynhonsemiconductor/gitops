@@ -113,8 +113,11 @@ loki.write "grafana" {
 prometheus.exporter.unix "node" {}
 
 prometheus.scrape "node" {
-  targets    = prometheus.exporter.unix.node.targets
-  forward_to = [prometheus.relabel.allowlist.receiver]
+  // Explicit job label: the onprem node-down alert matches up{job="node"}
+  // (Alloy's default is the component name, which no alert should have to know).
+  job_name    = "node"
+  targets     = prometheus.exporter.unix.node.targets
+  forward_to  = [prometheus.relabel.allowlist.receiver]
 }
 
 prometheus.scrape "cadvisor" {
@@ -135,14 +138,41 @@ prometheus.relabel "allowlist" {
 
   rule {
     source_labels = ["__name__"]
-    regex = "(kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas.*|container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_oom_events_total|node_cpu_seconds_total|node_memory_MemAvailable_bytes|node_filesystem_avail_bytes|kube_node_status_condition|up)"
+    // On-prem additions (ONPREM §12 alerts + panels): the ZFS pool series and
+    // the CNPG instance-exporter families the replication/WAL-archiving alerts
+    // read, plus the exporter self-metrics' siblings we still drop below.
+    // `valkey_`/redis_ series do not exist day 1 (no exporter on the StatefulSets)
+    // and are deliberately NOT kept — add them here only together with an
+    // exporter and a command-stats drop.
+    regex = "(kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas.*|container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_oom_events_total|node_cpu_seconds_total|node_memory_MemAvailable_bytes|node_memory_MemFree_bytes|node_memory_Cached_bytes|node_memory_Buffers_bytes|node_filesystem_avail_bytes|node_filesystem_size_bytes|node_filesystem_readonly|kube_node_status_condition|up|node_load1|node_zfs_zpool_.*|node_zfs_arc_.*|node_textfile_scrape_error|cnpg_.*|pg_stat_archiver.*|cloudflared_.*)"
     action = "keep"
   }
 
   // §9d — drop `pod` wherever a dashboard reads `app`. Pod names are the number
   // one cardinality source with HPA and Spot churn.
+  //
+  // On-prem `instance` STAYS everywhere: on a single node it is one stable
+  // value (the node IP — no HPA/Spot churn), the node-down and filesystem
+  // alerts are per-target, and Grafana's no-data detection reads it. The
+  // AWS-era reason for dropping it (per-task churn) does not exist here.
+  // Only `pod` and `id` are dropped, everywhere.
+  // CNPG series carry their own `cluster` label (the CNPG cluster name,
+  // e.g. pg-rova) which would collide with Alloy's external `cluster` label
+  // at remote_write. Rename it to `cnpg_cluster`, drop the original, and let
+  // the external cluster label (the k3s estate) fill back in — both values
+  // survive under distinct names.
   rule {
-    regex  = "pod|instance|id"
+    source_labels = ["cluster"]
+    regex         = "(.+)"
+    target_label  = "cnpg_cluster"
+  }
+  rule {
+    regex  = "cluster"
+    action = "labeldrop"
+  }
+
+  rule {
+    regex  = "pod|id"
     action = "labeldrop"
   }
 }
