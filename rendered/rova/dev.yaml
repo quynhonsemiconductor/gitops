@@ -100,6 +100,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-api
 automountServiceAccountToken: false
 
@@ -118,6 +120,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-migrator
 automountServiceAccountToken: false
 
@@ -136,6 +140,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-rova-worker
 automountServiceAccountToken: false
 
