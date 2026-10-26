@@ -618,10 +618,6 @@ apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: opshub
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   provider:
     aws:

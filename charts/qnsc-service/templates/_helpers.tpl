@@ -221,23 +221,23 @@ connected client on an unguarded node drain, and Karpenter drains eagerly.
 
 {{/*
 PreSync prerequisites of the migrator Job (job.yaml). ArgoCD runs ALL hooks before
-ANY normal resource, so everything the PreSync Job needs that this chart also
-creates must itself be a hook, one wave before the Job (wave 0):
+ANY normal resource, so what the PreSync Job needs must be a hook, one wave before
+the Job (wave 0). A hook is DELETED and recreated every sync, so ONLY resources
+used exclusively by the Job may be hooks:
 
-  ServiceAccount `migrator`       serviceaccount.yaml
-  SecretStore                     externalsecret.yaml  (ExternalSecrets resolve it)
-  ExternalSecret <product>-migrator   -> Secret envFrom'd by the Job (optional: true,
-                                      but under password auth the credential IS in it)
-  ExternalSecret <product>-db-ca      -> Secret mounted by the Job (NOT optional: a
-                                      missing volume Secret keeps the pod in
+  ServiceAccount `migrator`            serviceaccount.yaml
+  ExternalSecret <product>-migrator    -> Secret envFrom'd by the Job
+  ExternalSecret <product>-migrator-db-ca -> the Job's own copy of the CNPG CA
+                                      (a missing volume Secret keeps the pod in
                                       ContainerCreating until the deadline)
 
 Argo's built-in health check holds wave 0 until each ExternalSecret is Ready.
-Deliberately NOT hooked: the api/worker ServiceAccounts (a hook is recreated every
-sync -> new UID -> bound tokens of running pods invalidated) and the <product>-app
-ExternalSecret (the Job does not read it). Cost of the hooks that remain: the
-migrator/db-ca Secrets are re-created on each sync; running pods keep the values
-they already have.
+Deliberately NOT hooked (shared with running workloads): the api/worker
+ServiceAccounts (new UID -> bound tokens invalidated), the SecretStore (the
+<product>-app ExternalSecret would go NotReady each sync), the shared
+<product>-db-ca (its Secret is mounted by running Deployments). AWS-era gap: the
+SecretStore is a normal resource, so a never-synced AWS namespace has no store at
+PreSync; on-prem uses a platform ClusterSecretStore and is unaffected.
 */}}
 {{- define "qnsc.presyncPrereq" -}}
 argocd.argoproj.io/hook: PreSync

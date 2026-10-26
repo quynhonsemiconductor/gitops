@@ -163,7 +163,7 @@ spec:
         {{- if and $.Values.data $.Values.data.postgres.caFile }}
         - name: db-ca
           secret:
-            secretName: {{ include "qnsc.product" $ }}-db-ca
+            secretName: {{ include "qnsc.product" $ }}-migrator-db-ca
             items: [{ key: ca.crt, path: ca.crt }]
         {{- end }}
 {{- end }}

@@ -243,7 +243,7 @@ tests:
       - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook"]
 
-  - it: the migrator ExternalSecret and db-ca ExternalSecret exist at PreSync wave -1
+  - it: the migrator ExternalSecret and its own db-ca copy are PreSync wave -1; shared db-ca and SecretStore are not hooks
     template: templates/externalsecret.yaml
     set:
       data.postgres:
@@ -267,7 +267,17 @@ tests:
           value: "-1"
         documentSelector:
           path: metadata.name
+          value: rova-migrator-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
           value: rova-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova
       - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook"]
         documentSelector:
