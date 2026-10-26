@@ -13,13 +13,23 @@ values:
   - ../../../values/kb/tags.dev.yaml
 
 tests:
-  # ── §4c — like-for-like migration ───────────────────────────────────────────
-  - it: keeps clamav in the pod, as it runs on ECS today
-    # A sidecar works on Kubernetes exactly as it did on ECS, so the move can be
-    # like-for-like. Splitting it into `platform` is an optimisation taken AFTER
-    # the migration — optimising during it means a regression could be either.
+  # ── §4c — sidecar capability ────────────────────────────────────────────────
+  - it: keeps clamav in the pod when a product's values declare the sidecar
+    # A sidecar works on Kubernetes exactly as it did on ECS. kb used to carry
+    # this sidecar as its like-for-like shape; on-prem (CUTOVER-2026-11 C2)
+    # clamd moved to the `platform` namespace, so kb's values no longer declare
+    # it — the test now supplies the sidecar INLINE so it keeps testing what it
+    # always tested: the chart's ability to render one, not kb's current shape.
     template: templates/deployment.yaml
     documentIndex: 0
+    set:
+      services.api.sidecars:
+        - name: clamav
+          image: clamav/clamav:1.4
+          ports: [{ name: clamd, containerPort: 3310 }]
+          resources: { cpu: 256m, memory: 2Gi }
+          volumeMounts:
+            - { name: clamav-db, mountPath: /var/lib/clamav }
     asserts:
       - lengthEqual:
           path: spec.template.spec.containers
@@ -77,8 +87,16 @@ tests:
     # freshclam writes to /var/lib/clamav. A sidecar that cannot update its
     # signature database is the 2026-09 failure in reverse — clamd came up only on
     # the runs where the update had FAILED, because the older database fit.
+    # Sidecar inline: see the capability note on the test above.
     template: templates/deployment.yaml
     documentIndex: 0
+    set:
+      services.api.sidecars:
+        - name: clamav
+          image: clamav/clamav:1.4
+          resources: { cpu: 256m, memory: 2Gi }
+          volumeMounts:
+            - { name: clamav-db, mountPath: /var/lib/clamav }
     asserts:
       - equal:
           path: spec.template.spec.containers[1].volumeMounts[1].mountPath

@@ -1,91 +1,4 @@
 ---
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-spec:
-  podSelector: {}
-  policyTypes: [Ingress, Egress]
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-dns
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: kube-system }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-egress-platform
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: "platform" }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-egress-external
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-ingress-api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: kb
-    app.kubernetes.io/part-of: kb
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: kb
-    qnsc.vn/env: dev
-    qnsc.vn/tenant: product
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: api
-      app.kubernetes.io/instance: kb
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: "platform" }
-      ports:
-        - { protocol: TCP, port: 8000 }
-    - from:
-        - podSelector: {}          # same namespace, service to service
-      ports:
-        - { protocol: TCP, port: 8000 }
-
----
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -223,10 +136,10 @@ spec:
               containerPort: 8000
           resources:
             requests:
-              cpu: 2
-              memory: 8Gi
+              cpu: 250m
+              memory: 2.25Gi
             limits:
-              memory: 8Gi
+              memory: 2.25Gi
           livenessProbe:
             httpGet: { path: /livez, port: 8000 }
             periodSeconds: 10
@@ -246,56 +159,91 @@ spec:
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=kb,deployment.environment=dev,service.version=sha-0000000
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
+            - name: DATABASE_USER
+              value: "kb_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: ENVIRONMENT
+              value: production
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: REDIS_URL
+              value: redis://valkey-kb-dev.data-dev.svc:6379/1
+            - name: FRONTEND_URL
+              value: https://kb-dev.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: dbd99dbb-d20e-4076-8f8b-75c15e733414
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb-dev@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 7b9ae622-4df7-4cc5-bcbb-b8be1256ecaf
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: kb-dev-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: onnx
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
             - name: MALWARE_SCANNER_HOST
-              value: 127.0.0.1
+              value: clamd.platform.svc
             - name: MALWARE_SCANNER_PORT
               value: "3310"
+            - name: ENABLE_API_DOCS
+              value: "false"
+            - name: ALLOW_SELF_REGISTRATION
+              value: "false"
           envFrom:
             - secretRef:
                 name: kb-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-        - name: clamav
-          image: clamav/clamav:1.4
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          ports:
-            - containerPort: 3310
-              name: clamd
-          resources:
-            requests:
-              cpu: 256m
-              memory: 2Gi
-            limits:
-              memory: 2Gi
-          startupProbe:
-            exec:
-              command:
-              - clamdcheck.sh
-            failureThreshold: 60
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command:
-              - clamdcheck.sh
-            failureThreshold: 3
-            periodSeconds: 60
-            timeoutSeconds: 10
-          volumeMounts:
-            - name: clamav-tmp
-              mountPath: /tmp
-            - mountPath: /var/lib/clamav
-              name: clamav-db
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: clamav-tmp
-          emptyDir: {}
-        - emptyDir: {}
-          name: clamav-db
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
@@ -350,10 +298,10 @@ spec:
               drop: ["ALL"]
           resources:
             requests:
-              cpu: 4
-              memory: 8Gi
+              cpu: 500m
+              memory: 4.5Gi
             limits:
-              memory: 8Gi
+              memory: 4.5Gi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-receiver.platform.svc:4318
@@ -361,49 +309,99 @@ spec:
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=kb,deployment.environment=dev,service.version=sha-0000000
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
+            - name: DATABASE_USER
+              value: "kb_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: "/etc/qnsc/graph/cert.pem"
+            - name: ENVIRONMENT
+              value: production
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: REDIS_URL
+              value: redis://valkey-kb-dev.data-dev.svc:6379/1
+            - name: FRONTEND_URL
+              value: https://kb-dev.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: dbd99dbb-d20e-4076-8f8b-75c15e733414
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb-dev@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 7b9ae622-4df7-4cc5-bcbb-b8be1256ecaf
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: kb-dev-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: onnx
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
             - name: MALWARE_SCANNER_HOST
-              value: 127.0.0.1
+              value: clamd.platform.svc
             - name: MALWARE_SCANNER_PORT
               value: "3310"
+            - name: EMBEDDING_ONNX_THREADS
+              value: "3"
           envFrom:
             - secretRef:
                 name: kb-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-        - name: clamav
-          image: clamav/clamav:1.4
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          ports:
-            - containerPort: 3310
-              name: clamd
-          resources:
-            requests:
-              cpu: 256m
-              memory: 1Gi
-            limits:
-              memory: 1Gi
-          startupProbe:
-            exec:
-              command:
-              - clamdcheck.sh
-            failureThreshold: 60
-            periodSeconds: 10
-          volumeMounts:
-            - name: clamav-tmp
-              mountPath: /tmp
-            - mountPath: /var/lib/clamav
-              name: clamav-db
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: graph-cert
+              mountPath: /etc/qnsc/graph/cert.pem
+              subPath: cert.pem
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: clamav-tmp
-          emptyDir: {}
-        - emptyDir: {}
-          name: clamav-db
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        - name: graph-cert
+          secret:
+            secretName: kb-dev-graph-cert
+            items: [{ key: cert.pem, path: cert.pem }]
 
 ---
 # Source: qnsc-service/templates/job.yaml
@@ -468,12 +466,78 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
           env:
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
             - name: DATABASE_USER
-              value: "kb_migrator"
+              value: "kb_app_migrator"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: ENVIRONMENT
+              value: production
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: REDIS_URL
+              value: redis://valkey-kb-dev.data-dev.svc:6379/1
+            - name: FRONTEND_URL
+              value: https://kb-dev.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: dbd99dbb-d20e-4076-8f8b-75c15e733414
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb-dev@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 7b9ae622-4df7-4cc5-bcbb-b8be1256ecaf
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: kb-dev-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: onnx
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -528,6 +592,26 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-db-ca
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-dev
+    kind: ClusterSecretStore
+  target:
+    name: kb-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-dev-ca-pub
+        property: ca.crt
 
 ---
 # Source: qnsc-service/templates/slo.yaml
