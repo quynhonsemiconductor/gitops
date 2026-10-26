@@ -18,7 +18,12 @@ values:
 tests:
   # ── networkPolicy.enabled ───────────────────────────────────────────────────
   - it: renders the default-deny set by default (EKS behaviour unchanged)
+    # rova's dev values now set networkPolicy.enabled: false (the on-prem
+    # decision), so the DEFAULT is asserted explicitly rather than inherited
+    # from the fixture.
     template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
     asserts:
       - hasDocuments:
           count: 5        # default-deny, allow-dns, allow-egress-platform, allow-egress-external, + the dev allow-ingress-api (rova dev exposes the api to the cluster)
@@ -158,8 +163,12 @@ tests:
 
   - it: adds NO db-ca document without a CA file
     # Without caFile the template renders the three AWS-era documents (store,
-    # app secret, migrator secret) and nothing else.
+    # app secret, migrator secret) and nothing else. Empty string, because
+    # rova's dev values now carry the on-prem caFile — the test wants the
+    # "no CA configured" branch, so it unsets the value explicitly.
     template: templates/externalsecret.yaml
+    set:
+      data.postgres.caFile: ""
     asserts:
       - hasDocuments:
           count: 3
@@ -203,8 +212,13 @@ tests:
             name: AZURE_CLIENT_CERTIFICATE_PATH
 
   - it: renders nothing when secrets.workerOnly.graphCert is unset
+    # Empty strings, because rova's dev values now wire the on-prem graph
+    # certificate — this test wants the "not configured" branch explicitly.
     template: templates/deployment.yaml
     documentIndex: 1
+    set:
+      secrets.workerOnly.graphCert: ""
+      secrets.workerOnly.path: ""
     asserts:
       - notContains:
           path: spec.template.spec.containers[0].env
