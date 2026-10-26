@@ -121,3 +121,12 @@ networkPolicy:
 # it unconditionally, and a missing key would be a nil-pointer render error.
 secrets:
   workerOnly: {}
+  # store / remoteKey / migrator: see below
+
+# ONPREM-PLAN §5.6 — where the ExternalSecrets read from. Unset = the AWS shape
+# (a SecretStore per namespace on IRSA). On-prem sets:
+#   secrets:
+#     store: { kind: ClusterSecretStore, name: kv-qnsc-dev }   # kv-qnsc-<env>
+# and the app secret is then Key Vault secret <product>-<env>-app, the migrator's
+# <product>-<env>-migrator (override: secrets.remoteKey.app / .migrator;
+# secrets.migrator: false skips the migrator ExternalSecret when none exists).

@@ -423,7 +423,25 @@
     "secrets": {
       "type": "object",
       "additionalProperties": false,
+      "description": "workerOnly: Graph cert mount. store/remoteKey/migrator: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset store = AWS shape.",
       "properties": {
+        "store": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["ClusterSecretStore", "SecretStore"] },
+            "name": { "type": "string", "minLength": 1 }
+          }
+        },
+        "remoteKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "app": { "type": "string" },
+            "migrator": { "type": "string" }
+          }
+        },
+        "migrator": { "type": "boolean" },
         "workerOnly": {
           "type": "object",
           "additionalProperties": false,

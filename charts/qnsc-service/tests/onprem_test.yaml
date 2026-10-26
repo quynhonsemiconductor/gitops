@@ -283,3 +283,64 @@ tests:
         documentSelector:
           path: metadata.name
           value: rova-app
+
+  # ── ExternalSecret shape (ONPREM-PLAN §5.6) ─────────────────────────────────
+  - it: AWS shape (secrets.store unset) keeps the per-namespace SecretStore and find+rewrite
+    template: templates/externalsecret.yaml
+    documentSelector:
+      path: metadata.name
+      value: rova-app
+    asserts:
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: rova, kind: SecretStore }
+      - exists:
+          path: spec.dataFrom[0].find
+
+  - it: on-prem shape reads the ClusterSecretStore with extract, renders no SecretStore
+    template: templates/externalsecret.yaml
+    set:
+      secrets.store: { kind: ClusterSecretStore, name: kv-qnsc-dev }
+    asserts:
+      - hasDocuments:
+          count: 2          # rova-app + rova-migrator (+ no SecretStore)
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+        documentSelector:
+          path: metadata.name
+          value: rova-app
+      - equal:
+          path: spec.dataFrom
+          value: [{ extract: { key: rova-dev-app } }]
+        documentSelector:
+          path: metadata.name
+          value: rova-app
+      - equal:
+          path: spec.dataFrom
+          value: [{ extract: { key: rova-dev-migrator } }]
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: PreSync
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+
+  - it: on-prem remoteKey overrides and secrets.migrator=false are honoured
+    template: templates/externalsecret.yaml
+    set:
+      secrets.store: { name: kv-qnsc-dev }
+      secrets.remoteKey: { app: custom-app }
+      secrets.migrator: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.dataFrom[0].extract.key
+          value: custom-app
+      - equal:
+          path: spec.secretStoreRef.kind
+          value: ClusterSecretStore

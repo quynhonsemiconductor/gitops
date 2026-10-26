@@ -244,3 +244,35 @@ argocd.argoproj.io/hook: PreSync
 argocd.argoproj.io/sync-wave: "-1"
 argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 {{- end }}
+
+{{/*
+ON-PREM SECRET SHAPE (ONPREM-PLAN §5.6). `secrets.store.name` set -> the ExternalSecrets
+read a platform-owned (Cluster)SecretStore by name and the chart renders NO SecretStore
+of its own; unset -> the AWS shape (per-namespace SecretStore on IRSA, find+rewrite).
+Returns "true" or "" so it can be used as a condition.
+*/}}
+{{- define "qnsc.onpremStore" -}}
+{{- if and .Values.secrets .Values.secrets.store .Values.secrets.store.name -}}true{{- end -}}
+{{- end }}
+
+{{- define "qnsc.storeRef" -}}
+{{- if include "qnsc.onpremStore" . -}}
+name: {{ .Values.secrets.store.name }}
+kind: {{ .Values.secrets.store.kind | default "ClusterSecretStore" }}
+{{- else -}}
+name: {{ include "qnsc.product" . }}
+kind: SecretStore
+{{- end -}}
+{{- end }}
+
+{{/* Remote key of one role's secret: secrets.remoteKey.<role> or <product>-<env>-<role>. */}}
+{{- define "qnsc.remoteKey" -}}
+{{- $root := index . 0 -}}{{- $role := index . 1 -}}
+{{- $rk := dict -}}{{- if $root.Values.secrets }}{{- $rk = $root.Values.secrets.remoteKey | default dict -}}{{- end -}}
+{{- index $rk $role | default (printf "%s-%s-%s" (include "qnsc.product" $root) (include "qnsc.env" $root) $role) -}}
+{{- end }}
+
+{{/* The migrator ExternalSecret is rendered unless secrets.migrator is false. */}}
+{{- define "qnsc.migratorSecret" -}}
+{{- if not (and .Values.secrets (hasKey .Values.secrets "migrator") (not .Values.secrets.migrator)) -}}true{{- end -}}
+{{- end }}
