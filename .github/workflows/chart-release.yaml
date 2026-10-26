@@ -71,7 +71,7 @@ jobs:
             exit 1
           }
 
-      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
+      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
         id: aws
         with:
           # ── DERIVED, NOT CONFIGURED, AND NOT A SECRET ──────────────────────────
