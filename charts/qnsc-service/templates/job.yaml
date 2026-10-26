@@ -137,9 +137,15 @@ spec:
             - name: DATABASE_NAME
               value: {{ . | quote }}
             {{- end }}
-            {{- with $pg.user }}
+            {{- /* ONPREM-PLAN §6.3 — the managed roles are <product>_app and
+                   <product>_migrator, i.e. the migrator role derives from the
+                   PRODUCT slug. The old derivation (<user>_migrator) made
+                   user=<product>_app produce <product>_app_migrator — a role
+                   nobody created (opshub_app_migrator). `migratorUser`
+                   overrides explicitly for anything that differs. */}}
+            {{- with $pg.migratorUser | default (printf "%s_migrator" (include "qnsc.product" $)) }}
             - name: DATABASE_USER
-              value: {{ printf "%s_migrator" . | quote }}
+              value: {{ . | quote }}
             {{- end }}
             {{- with $pg.caFile }}
             - name: DATABASE_SSL_CA

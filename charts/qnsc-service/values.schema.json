@@ -102,7 +102,11 @@
             },
             "user": {
               "type": "string",
-              "description": "Postgres role to connect as."
+              "description": "Postgres role the application connects as."
+            },
+            "migratorUser": {
+              "type": "string",
+              "description": "Postgres role the migrator Job connects as. ONPREM-PLAN §6.3 names the managed roles <product>_app and <product>_migrator, so when `user` is <product>_app this must be set — the default (<user>_migrator) would derive <product>_app_migrator, a role nobody created."
             },
             "cluster": {
               "type": "string",
@@ -428,6 +432,15 @@
         "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
         "bundle": { "type": "string", "description": "Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app." },
         "db": { "type": "string", "description": "Key Vault secret behind <product>-migrator (DB credentials). Default <product>-<env>-db-app." },
+        "serviceBundles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": { "type": "string", "minLength": 1, "description": "Key Vault secret (JSON) rendered as <product>-api-bundle and attached by envFrom to the api ONLY, after the shared bundle (later wins). For products whose worker env schema refuses api-only secrets (opshub: BETTER_AUTH_SECRET, ENTRA_CLIENT_SECRET, EDGE_CLIENT_IP_SECRET) and vice versa (GRAPH_*)." },
+            "worker": { "type": "string", "minLength": 1, "description": "Same, for the worker: <product>-worker-bundle." }
+          },
+          "description": "ON-PREM SHAPE ONLY (secrets.clusterSecretStore set); renders nothing on the AWS shape. The shared `bundle` keeps what both services genuinely share."
+        },
         "workerOnly": {
           "type": "object",
           "additionalProperties": false,

@@ -469,6 +469,8 @@ spec:
             - name: tmp
               mountPath: /tmp
           env:
+            - name: DATABASE_USER
+              value: "kb_migrator"
       volumes:
         - name: tmp
           emptyDir: {}
