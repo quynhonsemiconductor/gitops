@@ -100,8 +100,6 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-kb-api
 automountServiceAccountToken: false
 
@@ -122,6 +120,7 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-kb-migrator
 automountServiceAccountToken: false
 
@@ -140,8 +139,6 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-kb-worker
 automountServiceAccountToken: false
 
@@ -507,6 +504,10 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: kb-migrator
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   refreshInterval: 1h
   secretStoreRef:
@@ -638,6 +639,10 @@ apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: kb
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   provider:
     aws:

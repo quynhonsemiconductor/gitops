@@ -218,3 +218,29 @@ connected client on an unguarded node drain, and Karpenter drains eagerly.
 {{- end -}}
 
 
+
+{{/*
+PreSync prerequisites of the migrator Job (job.yaml). ArgoCD runs ALL hooks before
+ANY normal resource, so everything the PreSync Job needs that this chart also
+creates must itself be a hook, one wave before the Job (wave 0):
+
+  ServiceAccount `migrator`       serviceaccount.yaml
+  SecretStore                     externalsecret.yaml  (ExternalSecrets resolve it)
+  ExternalSecret <product>-migrator   -> Secret envFrom'd by the Job (optional: true,
+                                      but under password auth the credential IS in it)
+  ExternalSecret <product>-db-ca      -> Secret mounted by the Job (NOT optional: a
+                                      missing volume Secret keeps the pod in
+                                      ContainerCreating until the deadline)
+
+Argo's built-in health check holds wave 0 until each ExternalSecret is Ready.
+Deliberately NOT hooked: the api/worker ServiceAccounts (a hook is recreated every
+sync -> new UID -> bound tokens of running pods invalidated) and the <product>-app
+ExternalSecret (the Job does not read it). Cost of the hooks that remain: the
+migrator/db-ca Secrets are re-created on each sync; running pods keep the values
+they already have.
+*/}}
+{{- define "qnsc.presyncPrereq" -}}
+argocd.argoproj.io/hook: PreSync
+argocd.argoproj.io/sync-wave: "-1"
+argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+{{- end }}
