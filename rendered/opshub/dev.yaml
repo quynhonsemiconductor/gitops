@@ -183,8 +183,14 @@ spec:
               value: graph
             - name: MAIL_GRAPH_SENDER
               value: noreply-opshub-dev@qnsc.vn
-            - name: GRAPH_CLIENT_ID
-              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
+            - name: REDIS_KEY_PREFIX
+              value: 'opshub:'
+            - name: S3_FILES_BUCKET
+              value: opshub-dev-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
             - name: PORT
               value: "3000"
             - name: NODE_OPTIONS
@@ -198,6 +204,8 @@ spec:
           envFrom:
             - secretRef:
                 name: opshub-app
+            - secretRef:
+                name: opshub-api-bundle
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -307,12 +315,20 @@ spec:
               value: graph
             - name: MAIL_GRAPH_SENDER
               value: noreply-opshub-dev@qnsc.vn
-            - name: GRAPH_CLIENT_ID
-              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
+            - name: REDIS_KEY_PREFIX
+              value: 'opshub:'
+            - name: S3_FILES_BUCKET
+              value: opshub-dev-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
             - name: NODE_OPTIONS
               value: --max-old-space-size=256
             - name: DATABASE_POOL_MAX
               value: "10"
+            - name: GRAPH_CLIENT_ID
+              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
           envFrom:
             - secretRef:
                 name: opshub-app
@@ -414,7 +430,7 @@ spec:
             - name: DATABASE_NAME
               value: "opshub"
             - name: DATABASE_USER
-              value: "opshub_app_migrator"
+              value: "opshub_migrator"
             - name: DATABASE_SSL_CA
               value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
@@ -435,8 +451,14 @@ spec:
               value: graph
             - name: MAIL_GRAPH_SENDER
               value: noreply-opshub-dev@qnsc.vn
-            - name: GRAPH_CLIENT_ID
-              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
+            - name: REDIS_KEY_PREFIX
+              value: 'opshub:'
+            - name: S3_FILES_BUCKET
+              value: opshub-dev-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
       volumes:
         - name: tmp
           emptyDir: {}
@@ -482,6 +504,23 @@ spec:
   dataFrom:
     - extract:
         key: opshub-dev-db-app
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-api-bundle
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-api-bundle
+  dataFrom:
+    - extract:
+        key: opshub-dev-api
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
