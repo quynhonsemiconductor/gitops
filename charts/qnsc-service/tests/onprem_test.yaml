@@ -9,6 +9,7 @@ templates:
   - templates/deployment.yaml
   - templates/job.yaml
   - templates/externalsecret.yaml
+  - templates/serviceaccount.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/dev.yaml
@@ -215,3 +216,70 @@ tests:
           any: true
           content:
             name: graph-cert
+
+  # ── PreSync prerequisites of the migrator Job ───────────────────────────────
+  - it: only the migrator ServiceAccount is a PreSync hook (wave -1, BeforeHookCreation)
+    template: templates/serviceaccount.yaml
+    documentSelector:
+      path: metadata.name
+      value: migrator
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: PreSync
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook-delete-policy"]
+          value: BeforeHookCreation
+
+  - it: the api ServiceAccount is a normal resource (a hook would recreate it and invalidate running pods' tokens)
+    template: templates/serviceaccount.yaml
+    documentSelector:
+      path: metadata.name
+      value: api
+    asserts:
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+
+  - it: the migrator ExternalSecret and its own db-ca copy are PreSync wave -1; shared db-ca and SecretStore are not hooks
+    template: templates/externalsecret.yaml
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: PreSync
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-app

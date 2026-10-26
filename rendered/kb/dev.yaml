@@ -118,6 +118,9 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-dev-kb-migrator
 automountServiceAccountToken: false
 
@@ -501,6 +504,10 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: kb-migrator
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   refreshInterval: 1h
   secretStoreRef:
