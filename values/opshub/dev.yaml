@@ -1,6 +1,124 @@
+# opshub — on-prem DEV (CUTOVER-2026-11 C1, the M-8-style move).
+#
+# The EKS-era file was a three-line resource overlay. This file now carries the
+# whole on-prem delta: CNPG, the shared dev Valkey, the same-origin host, and
+# the non-secret env the ECS task definition used to own (opshub
+# infra/modules/stack/main.tf, develop — transcribed, not invented). The SECRET
+# half arrives through the opshub-app bundle from kv-qnsc-dev (§7.1):
+# cookie/csrf/better-auth secrets, entra-client-secret, storage credentials,
+# and the Graph certificate — which is NOT env at all, it is the worker-only
+# mounted file wired at the bottom of this file.
 env: dev
 size: s
+
+# §5.6/§6.2 — the chart's per-namespace default-deny set is OFF on-prem. The one
+# NetworkPolicy that matters (data-prod admits only rova-prod, restore-test,
+# cnpg-system and platform on metrics ports) lives in gitops/platform.
+networkPolicy:
+  enabled: false
+
+data:
+  postgres:
+    # §6.3 — pg-dev in data-dev: one cluster for all three dev products.
+    # TLS verify-full: the server CA arrives as the opshub-db-ca Secret (via the
+    # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
+    # app connects to pg-dev-rw.data-dev.svc — a SAN on CNPG's server cert.
+    mode: cnpg
+    cluster: pg-dev
+    namespace: data-dev
+    auth: password     # CNPG managed role; the credential comes from the app secret bundle
+    pooling: none      # §6.3 — no pooler; the worker holds a session-level LISTEN connection
+    name: opshub
+    user: opshub_app
+    # §6.3 — managed roles are <product>_app and <product>_migrator; the chart
+    # defaults the migrator role to <product>_migrator, stated here so the
+    # pairing with the kv secret is visible in one place.
+    migratorUser: opshub_migrator
+    caFile: /etc/qnsc/db-ca/ca.crt
+
 services:
-  api:      { resources: { cpu: 500m, memory: 1Gi }, }
-  worker:   { resources: { cpu: 250m, memory: 512Mi }, }
+  api:
+    # §5.7 dev sizing: api 100m / 768 Mi with the prod heap flag for parity.
+    resources: { cpu: 100m, memory: 768Mi }
+    env:
+      - { name: PORT, value: "3000" }
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+      # pg-dev runs max_connections=100 shared across all dev products; 10 per
+      # service leaves headroom for kb's pool, the migrators and managed roles.
+      - { name: DATABASE_POOL_MAX, value: "10" }
+      # §8.2 — SAME-ORIGIN: one hostname per app. The Tunnel routes /api/auth/*,
+      # /v1/* and /readyz straight to this Service; there is no second API
+      # hostname any more. CORS kept at parity with the ECS env, which also set
+      # it to the app URL.
+      - { name: APP_URL, value: "https://opshub-dev.qnsc.vn" }
+      - { name: CORS_ORIGINS, value: "https://opshub-dev.qnsc.vn" }
+
+  worker:
+    resources: { cpu: 50m, memory: 480Mi }
+    env:
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+      - { name: DATABASE_POOL_MAX, value: "10" }
+      # Worker-only (the API's schema refuses GRAPH_* — it asks Graph through
+      # graph_task_outbox). The CERTIFICATE is the mounted file below.
+      - { name: GRAPH_CLIENT_ID, value: "328bac47-4848-42b5-9464-bb4ba7b0cb56" }
+
   migrator: { }
+
+# ── Product-wide, because api AND worker share one env validator ─────────────
+# Non-secret configuration only. Anything a leaked value would enable lives in
+# the kv-qnsc-dev bundle, never here.
+defaults:
+  env:
+    - { name: NODE_ENV, value: "production" }
+    - { name: DEPLOYMENT_ENV, value: "dev" }
+    # §6.4 — the shared dev cache (rova + opshub). opshub keeps database index 2
+    # (rova 0; the allocation lives in the platform plan). Plain redis:// — the
+    # on-prem Valkey has no TLS, unlike the rediss:// ElastiCache endpoint.
+    - { name: VALKEY_URL, value: "redis://valkey-dev.data-dev.svc:6379/2" }
+    - { name: OTEL_ENABLED, value: "true" }
+    # Entra — public identifiers (§7.2): the "OpsHub Dev" sign-in app. The
+    # redirect URI is derived by identity v8 from APP_URL; no override here.
+    - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: ENTRA_CLIENT_ID, value: "5a83d82b-34ed-4701-b426-635fd303d875" }
+    # §7.3 — Graph mail: the dev mailbox and the "OpsHub Dev Service" app. The
+    # certificate is NOT an env var — see secrets.workerOnly below. GRAPH_CLIENT_ID
+    # lives on the WORKER only (below): the API's env schema REFUSES GRAPH_*,
+    # because an API that needs Graph writes a graph_task_outbox row instead.
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MAIL_GRAPH_SENDER, value: "noreply-opshub-dev@qnsc.vn" }
+    # §6.4 — the key prefix that separates the two products sharing valkey-dev
+    # (the app supports it; the db index stays as the second separator).
+    - { name: REDIS_KEY_PREFIX, value: "opshub:" }
+    # §6.5 — storage: R2 stays the object store; the renamed dev bucket and the
+    # path-style R2 S3 endpoint are plain env. The CREDENTIALS
+    # (STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY) are keys of the
+    # opshub-dev-app bundle — never values here.
+    - { name: S3_FILES_BUCKET, value: "opshub-dev-attachments" }
+    - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
+
+# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
+# Setting clusterSecretStore switches the chart to the on-prem shape: no
+# per-namespace AWS SecretStore is rendered. Two ExternalSecrets extract one
+# Key Vault JSON bundle each:
+#   opshub-app      <- kv-qnsc-dev/opshub-dev-app   (secrets.bundle; app env vars)
+#   opshub-migrator <- kv-qnsc-dev/opshub-dev-db-app (secrets.db; DB roles, PreSync wave -1)
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
+# secretsReaderServiceAccount stays unset — it is the AWS shape only.
+secrets:
+  clusterSecretStore: kv-qnsc-dev
+  bundle: opshub-dev-app
+  db: opshub-dev-db-app
+  # The api-only split the opshub env schema DEMANDS: the worker REFUSES TO
+  # START with BETTER_AUTH_SECRET / ENTRA_CLIENT_SECRET / EDGE_CLIENT_IP_SECRET
+  # (+PREVIOUS), and the API refuses GRAPH_* — so those can never share the
+  # bundle. opshub-dev-api holds the API-only secrets (chart 0.12.1
+  # serviceBundles); the worker needs no bundle of its own — it shares
+  # opshub-dev-app and gets GRAPH_CLIENT_ID from plain env above.
+  serviceBundles:
+    api: opshub-dev-api
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a
+  # FILE into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH.
+  workerOnly:
+    graphCert: opshub-dev-graph-cert
+    path: /etc/qnsc/graph/cert.pem
