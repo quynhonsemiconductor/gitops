@@ -31,9 +31,14 @@ alloy:
     - name: CLUSTER_NAME
       valueFrom:
         configMapKeyRef: { name: cluster-info, key: name }
-    - name: HOSTNAME
-      valueFrom:
-        fieldRef: { fieldPath: spec.nodeName }
+      # HOSTNAME deliberately NOT set here: the chart injects it itself
+      # (env: HOSTNAME = spec.nodeName, a chart default since well before
+      # 1.12.1), and a second entry is a hard failure, not a shadow:
+      #   server-side apply failed ... .env: duplicate entries for key
+      #   [name="HOSTNAME"]
+      # Found in the local k3d bootstrap rehearsal 2026-10-26 against the
+      # pinned chart 1.12.1. agent.alloy reads sys.env("HOSTNAME"), which the
+      # chart's own env provides — nothing else was gained by the duplicate.
 
   resources:
     requests: { cpu: 150m, memory: 256Mi }
