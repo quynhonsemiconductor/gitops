@@ -39,7 +39,9 @@ data:
     auth: password
     pooling: none      # inherited intent from base; the on-prem decision too (§6.3)
     name: rova
-    user: rova_app     # §6.3 — CNPG managed role <product>_app; migrator gets <product>_migrator
+    user: rova_app     # §6.3 — CNPG managed role <product>_app
+    # migratorUser needs NO override: chart 0.12.1 defaults the migrator role to
+    # <product>_migrator (rova_migrator), exactly §6.3's pairing.
     caFile: /etc/qnsc/db-ca/ca.crt
 
 services:

@@ -107,4 +107,15 @@ tests:
           value: { name: rova, kind: SecretStore }
       - exists:
           path: spec.dataFrom[0].find
-
+  - it: renders NOTHING extra when serviceBundles is set on the AWS shape
+    # AWS shape untouched by the per-service bundles: they are an on-prem
+    # (ClusterSecretStore) construct. Store + app + migrator, nothing more.
+    # Moved here from onprem_test.yaml when rova's dev values adopted the
+    # on-prem secret shape: the AWS branch needs an AWS-shaped fixture.
+    template: templates/externalsecret.yaml
+    set:
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - hasDocuments:
+          count: 3

@@ -303,6 +303,7 @@ tests:
       secrets.clusterSecretStore: kv-qnsc-dev
       secrets.serviceBundles:
         api: rova-dev-api
+      data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only bundle ExternalSecrets
     asserts:
       - equal:
           path: spec.secretStoreRef
@@ -350,18 +351,6 @@ tests:
           value:
             - secretRef: { name: rova-app }
 
-  - it: renders NOTHING extra when serviceBundles is set on the AWS shape
-    # AWS shape untouched by the per-service bundles: they are an on-prem
-    # (ClusterSecretStore) construct. Store + app + migrator, nothing more.
-    # (When a product's dev values adopt the on-prem secret shape, this test
-    # belongs in aws_shape_test.yaml — the fixture here must stay AWS-shaped.)
-    template: templates/externalsecret.yaml
-    set:
-      secrets.serviceBundles:
-        api: rova-dev-api
-    asserts:
-      - hasDocuments:
-          count: 3
 
   - it: on-prem bundle/db overrides are honoured
     template: templates/externalsecret.yaml

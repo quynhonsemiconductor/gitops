@@ -454,7 +454,7 @@ spec:
             - name: DATABASE_NAME
               value: "rova"
             - name: DATABASE_USER
-              value: "rova_app_migrator"
+              value: "rova_migrator"
             - name: DATABASE_SSL_CA
               value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
