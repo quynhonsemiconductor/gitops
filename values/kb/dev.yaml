@@ -1,11 +1,125 @@
-# Like-for-like with qnsc-kb-backend/infra/live/develop/main.tf:
-# api 2048/8192, worker 4096/8192, both on Spot.
+# kb — on-prem DEV (CUTOVER-2026-11 C2, the M-9 half; M-10 is the frontend repo).
+#
+# Carries the whole on-prem delta: CNPG (pg-dev), the dedicated Celery broker
+# (valkey-kb-dev), the same-origin host, R2 (no sidecar clamd — the platform
+# service instead), and the non-secret env the ECS task definition used to own
+# (qnsc-kb-backend infra/modules/stack/main.tf, develop — transcribed, not
+# invented). Secrets arrive through the kb-app bundle from kv-qnsc-dev (§7.1):
+# secret-key, data-encryption-key (+ previous), database passwords, Gemini key,
+# R2 credentials — and the Graph certificate, which is the worker-only FILE
+# wired at the bottom of this file, never an env var.
 env: dev
 size: s
+
+# §5.6/§6.2 — the chart's per-namespace default-deny set is OFF on-prem; the
+# one NetworkPolicy that matters (data-prod) lives in gitops/platform.
+networkPolicy:
+  enabled: false
+
 data:
-  postgres: { mode: shared }        # dev is shared with no exceptions (§5)
+  postgres:
+    # §6.3 — pg-dev in data-dev: one cluster for all three dev products. The
+    # pgvector + pgcrypto extensions (base.yaml) are checked against CNPG's
+    # image catalog (ONPREM-PLAN §6.3: pgvector 0.8.2).
+    # TLS verify-full: the server CA arrives as the kb-db-ca Secret (via the
+    # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
+    # asyncpg SSLContext is built from that file with hostname verification.
+    mode: cnpg
+    cluster: pg-dev
+    namespace: data-dev
+    auth: password     # CNPG managed roles; credentials come from the secret bundles
+    pooling: none      # §6.3 — no pooler anywhere on-prem
+    name: kb
+    user: kb_app
+    # §6.3 — managed roles are <product>_app and <product>_migrator; the chart
+    # defaults the migrator role to <product>_migrator, stated here so the
+    # pairing with the kv secret is visible in one place.
+    migratorUser: kb_migrator
+    caFile: /etc/qnsc/db-ca/ca.crt
+
 services:
   api:
-    resources: { cpu: 2, memory: 8Gi }
+    # §5.7 dev sizing: uvicorn 1 worker + the in-process ONNX session, measured
+    # 1.6-1.7 GB resident on ECS with the int8 export — 2.25 Gi leaves headroom.
+    resources: { cpu: 250m, memory: 2.25Gi }
+    env:
+      # §13.1 — the sidecar clamd is GONE; scanning goes to the platform service.
+      - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
+      - { name: MALWARE_SCANNER_PORT, value: "3310" }
+      - { name: ENABLE_API_DOCS, value: "false" }
+      - { name: ALLOW_SELF_REGISTRATION, value: "false" }
+
   worker:
-    resources: { cpu: 4, memory: 8Gi }
+    # §5.7 dev sizing: Celery --concurrency=1, model per process, PaddleOCR.
+    resources: { cpu: 500m, memory: 4.5Gi }
+    env:
+      - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
+      - { name: MALWARE_SCANNER_PORT, value: "3310" }
+      # Same value ECS develop runs: 3 ONNX threads against the new CPU shape.
+      - { name: EMBEDDING_ONNX_THREADS, value: "3" }
+
+  migrator: { }
+
+# ── Product-wide env, transcribed from the ECS task definition ───────────────
+# api and worker must agree on config (EMBEDDING_MODEL rule) — one copy here.
+defaults:
+  env:
+    # KB pins production in EVERY environment so validate_production() runs.
+    - { name: ENVIRONMENT, value: "production" }
+    - { name: JOB_MODE, value: "celery" }
+    - { name: AUTO_CREATE_SCHEMA, value: "false" }
+    - { name: ENABLE_RLS, value: "true" }
+    - { name: BOOTSTRAP_ADMIN_ENABLED, value: "false" }
+    # §6.4 — the KB-ONLY broker (noeviction + AOF; eviction would drop queued
+    # tasks). Database index 1 kept at parity; rova holds 0 on the dev cache.
+    - { name: REDIS_URL, value: "redis://valkey-kb-dev.data-dev.svc:6379/1" }
+    # §8.2 — SAME-ORIGIN: one host per app. The SPA (Workers static assets) and
+    # this API share kb-dev.qnsc.vn; /api/* and /readyz route through the Tunnel.
+    - { name: FRONTEND_URL, value: "https://kb-dev.qnsc.vn" }
+    - { name: CORS_ORIGINS, value: "https://kb-dev.qnsc.vn" }
+    - { name: MICROSOFT_LOGIN_REDIRECT_URI, value: "https://kb-dev.qnsc.vn/api/v1/auth/entra/callback" }
+    # Delegated SharePoint/Drive connector consent callback — a DIFFERENT Entra
+    # flow from sign-in (same host, /api/v1/connectors path); both URIs must be
+    # registered on the "KB Dev" app (§8.2 same-origin: the host moved).
+    - { name: MICROSOFT_REDIRECT_URI, value: "https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback" }
+    - { name: CONNECTOR_WEBHOOK_BASE_URL, value: "https://kb-dev.qnsc.vn" }
+    # Entra / mail — public identifiers (§7.2/§7.3): the "KB Dev" sign-in app and
+    # the "KB Dev Service" mail app. The mail certificate is the worker file below.
+    - { name: MICROSOFT_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: MICROSOFT_CLIENT_ID, value: "dbd99dbb-d20e-4076-8f8b-75c15e733414" }
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MICROSOFT_GRAPH_SENDER, value: "noreply-kb-dev@qnsc.vn" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "7b9ae622-4df7-4cc5-bcbb-b8be1256ecaf" }
+    - { name: ALLOWED_EMAIL_DOMAINS, value: "qnsc.vn" }
+    # §6.5 — the renamed dev bucket (qnsc-kb-develop-sources → kb-dev-sources).
+    # R2 stays the object store; the credentials are the kb-app bundle's.
+    - { name: SOURCE_STORAGE_BACKEND, value: "r2" }
+    - { name: SOURCE_STORAGE_BUCKET, value: "kb-dev-sources" }
+    - { name: SOURCE_STORAGE_PREFIX, value: "qnsc-sources" }
+    - { name: S3_ENDPOINT_URL, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    # The model MUST match what the image bakes (Dockerfile ARG EMBEDDING_MODEL);
+    # EMBEDDING_DIMENSION is derived from this name in src/core/config.py.
+    - { name: EMBEDDING_MODEL, value: "intfloat/multilingual-e5-large-instruct" }
+    - { name: EMBEDDING_VERSION, value: "e5-large-instruct-v1" }
+    - { name: EMBEDDING_RUNTIME, value: "onnx" }
+    # validate_production() refuses to boot with scanning off — and it is on
+    # everywhere, via the platform clamd now.
+    - { name: MALWARE_SCAN_ENABLED, value: "true" }
+
+# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
+# Setting clusterSecretStore switches the chart to the on-prem shape: no
+# per-namespace AWS SecretStore is rendered. Two ExternalSecrets extract one
+# Key Vault JSON bundle each:
+#   kb-app      <- kv-qnsc-dev/kb-dev-app   (secrets.bundle; app env vars)
+#   kb-migrator <- kv-qnsc-dev/kb-dev-db-app (secrets.db; DB roles, PreSync wave -1)
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
+# secretsReaderServiceAccount stays unset — it is the AWS shape only.
+secrets:
+  clusterSecretStore: kv-qnsc-dev
+  bundle: kb-dev-app
+  db: kb-dev-db-app
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a
+  # FILE into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH.
+  workerOnly:
+    graphCert: kb-dev-graph-cert
+    path: /etc/qnsc/graph/cert.pem

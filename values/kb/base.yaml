@@ -8,12 +8,12 @@
 # point of a migration step. Optimising at the same time means a regression could
 # be either, and this is the product that is half of both environments.
 #
-# The optimisations are designed, costed and deferred:
-#   §4c   split clamav into `platform` — reclaims ~2 GB per api replica and is
-#         what unblocks arm64. Worth ~$35/month
+# The optimisations were designed, costed and deferred — and the FIRST one is now
+# DONE as part of the on-prem move (CUTOVER-2026-11 C2): clamav is split into the
+# `platform` namespace (clamd.platform.svc), so the sidecars, their emptyDir
+# volumes and the 2 GB per replica are gone from this file. Still deferred:
 #   §4c   split the e5 model into an embedding service — makes scaling kb cheap
 #   §15d  right-size from measured p50 rather than allocated ceilings
-# Each is a values change in this file, after kb is running and measured.
 
 product: kb
 size: m
@@ -26,8 +26,9 @@ services:
     # "The api stays OFF Spot even after go-live: a Spot interruption is a dropped
     #  request and a broken response mid-answer." — infra/live/prod/main.tf
     image: { repo: ghcr.io/quynhonsemiconductor/kb-api }
-    # 1024 / 6144 exactly as allocated on ECS. The 6144 carries clamd's 2048 plus
-    # the e5-large-instruct ONNX session at ~1.5 GB resident.
+    # 1 / 6Gi as allocated on ECS. WITHOUT the clamd sidecar the 6 Gi is now
+    # loose — the ONNX session is ~1.5 GB resident — but like-for-like sizing is
+    # a dev.yaml change measured on the new host, not a guess made during the move.
     resources: { cpu: 1, memory: 6Gi }
     # The ONNX session takes tens of seconds to load. Without a startupProbe the
     # liveness probe kills the pod mid-load, forever (§9j).
@@ -45,60 +46,21 @@ services:
     # and admission.yaml denies anything else — so the APP gained a `/livez` route
     # instead, which is also what makes `startupPath: /livez` above resolve.
     readinessPath: /health/ready
-    volumes:
-      - name: clamav-db
-        emptyDir: {}
     replicas: 1   # fixed. It was a KEDA range 1..6; KEDA was dropped 2026-10-13 and the floor is kept
     slo:
       availability: 99.0
       latency: { p99: 2s }     # RAG answers are not 500 ms operations
-    env:
-      # localhost, because the sidecar shares the pod's network namespace — the
-      # same thing awsvpc gave the ECS task. The application variable is unchanged.
-      - name: MALWARE_SCANNER_HOST
-        value: "127.0.0.1"
-      - name: MALWARE_SCANNER_PORT
-        value: "3310"
-    sidecars:
-      - name: clamav
-        image: clamav/clamav:1.4
-        ports: [{ name: clamd, containerPort: 3310 }]
-        # 2048 is not a preference. At 1024 clamd came up ONLY on runs where the
-        # signature UPDATE had failed, because a failed update leaves the older,
-        # smaller database and that one fits. Tasks cycled for ~30 minutes per
-        # deploy and it read as intermittent rather than as a sizing error.
-        resources: { cpu: 256m, memory: 2Gi }
-        # freshclam WRITES the signature database here, so it cannot live on a
-        # read-only filesystem — and a sidecar that cannot update its database is
-        # the 2026-09 failure in reverse: clamd came up only on the runs where the
-        # update had FAILED, because the older, smaller database fit.
-        #
-        # emptyDir, not a PVC: §13 forbids PVCs, the database is re-downloadable,
-        # and a fresh pod fetching it is correct behaviour.
-        volumeMounts:
-          - name: clamav-db
-            mountPath: /var/lib/clamav
-        # clamd loads the whole database before answering anything. ECS capped the
-        # start period at 300s; Kubernetes does not, so this is 60 × 10s = 600s of
-        # headroom for a cold load.
-        startupProbe:
-          exec: { command: ["clamdcheck.sh"] }
-          periodSeconds: 10
-          failureThreshold: 60
-        livenessProbe:
-          exec: { command: ["clamdcheck.sh"] }
-          periodSeconds: 60
-          timeoutSeconds: 10
-          failureThreshold: 3
-
+    # MALWARE_SCANNER_HOST moves to dev.yaml — on-prem it is the platform
+    # service (clamd.platform.svc), not a loopback sidecar.
   worker:
     kind: worker
     expose: none
     # "The worker takes Spot deliberately — Celery redelivers an interrupted task,
     #  so an interruption costs time rather than work." — same file.
     image: { repo: ghcr.io/quynhonsemiconductor/kb-worker }
-    # 2048 / 6144 as allocated: the same model, plus clamav at 1024, plus beat,
-    # plus PaddleOCR per scanned file.
+    # 2048 / 6144 as allocated on ECS: the same model, plus beat, plus
+    # PaddleOCR per scanned file. (clamav used to be a 1024 slice of this; the
+    # sidecar is gone on-prem — dev.yaml carries the new sizing.)
     resources: { cpu: 2, memory: 6Gi }
     # NO `startupPath`, and this used to say `/livez`. It rendered a startupProbe
     # with an httpGet against port 8080 on a container that serves no HTTP at all —
@@ -112,9 +74,6 @@ services:
     # lost is rollout gating — the pod reports Ready before it is consuming — which
     # for a Celery queue is a delay, not a loss. See the comment in the chart's
     # deployment.yaml.
-    volumes:
-      - name: clamav-db
-        emptyDir: {}
     # ── NOT SCALED, and this is a correctness constraint rather than a choice ──
     # Celery beat still rides inside this container:
     #   "max_count stays 1 while Celery beat rides in this task — two replicas
@@ -124,23 +83,6 @@ services:
     # it becomes its own service with `singleton: true`, and only then does
     # a higher `replicas` belongs here.
     replicas: 1
-    sidecars:
-      - name: clamav
-        image: clamav/clamav:1.4
-        ports: [{ name: clamd, containerPort: 3310 }]
-        resources: { cpu: 256m, memory: 1Gi }
-        volumeMounts:
-          - name: clamav-db
-            mountPath: /var/lib/clamav
-        startupProbe:
-          exec: { command: ["clamdcheck.sh"] }
-          periodSeconds: 10
-          failureThreshold: 60
-    env:
-      - name: MALWARE_SCANNER_HOST
-        value: "127.0.0.1"
-      - name: MALWARE_SCANNER_PORT
-        value: "3310"
 
   migrator:
     kind: job
