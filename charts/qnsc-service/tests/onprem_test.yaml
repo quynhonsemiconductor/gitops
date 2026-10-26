@@ -329,6 +329,118 @@ tests:
           path: metadata.name
           value: rova-migrator
 
+  - it: derives the migrator DB user from the PRODUCT slug (§6.3), not from the app role's name
+    # ONPREM-PLAN §6.3: managed roles are <product>_app and <product>_migrator.
+    # The old derivation (<user>_migrator) made user=rova_app produce
+    # rova_app_migrator — a role nobody created; same for opshub.
+    template: templates/job.yaml
+    documentIndex: 0
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova_app
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_USER
+            value: rova_migrator
+
+  - it: honours data.postgres.migratorUser when a product's role naming differs
+    template: templates/job.yaml
+    documentIndex: 0
+    set:
+      data.postgres:
+        mode: cnpg
+        cluster: pg-rova
+        namespace: data-prod
+        auth: password
+        pooling: none
+        caFile: /etc/qnsc/db-ca/ca.crt
+        name: rova
+        user: rova_app
+        migratorUser: rova-mig9
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: DATABASE_USER
+            value: rova-mig9
+
+  - it: renders a per-service bundle ExternalSecret from the named Key Vault key (on-prem)
+    template: templates/externalsecret.yaml
+    set:
+      secrets.clusterSecretStore: kv-qnsc-dev
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+        documentSelector:
+          path: metadata.name
+          value: rova-api-bundle
+      - equal:
+          path: spec.dataFrom
+          value:
+            - extract: { key: rova-dev-api }
+        documentSelector:
+          path: metadata.name
+          value: rova-api-bundle
+      # count 3 IS the "no worker bundle, no SecretStore" assertion:
+      # helm-unittest fails a documentSelector that matches nothing, so absence
+      # of rova-worker-bundle can only be asserted through the count.
+      - hasDocuments:
+          count: 3
+
+  - it: attaches the per-service bundle AFTER the shared one on its service only (later envFrom wins)
+    template: templates/deployment.yaml
+    documentIndex: 0        # the api
+    set:
+      secrets.clusterSecretStore: kv-qnsc-dev
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - secretRef: { name: rova-app }
+            - secretRef: { name: rova-api-bundle }
+
+  - it: leaves a service with no bundle entry on the shared bundle alone
+    template: templates/deployment.yaml
+    documentIndex: 1        # the worker
+    set:
+      secrets.clusterSecretStore: kv-qnsc-dev
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - secretRef: { name: rova-app }
+
+  - it: renders NOTHING extra when serviceBundles is set on the AWS shape
+    # AWS shape untouched by the per-service bundles: they are an on-prem
+    # (ClusterSecretStore) construct. Store + app + migrator, nothing more.
+    # (When a product's dev values adopt the on-prem secret shape, this test
+    # belongs in aws_shape_test.yaml — the fixture here must stay AWS-shaped.)
+    template: templates/externalsecret.yaml
+    set:
+      secrets.serviceBundles:
+        api: rova-dev-api
+    asserts:
+      - hasDocuments:
+          count: 3
+
   - it: on-prem bundle/db overrides are honoured
     template: templates/externalsecret.yaml
     set:

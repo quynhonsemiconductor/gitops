@@ -390,6 +390,8 @@ spec:
             - name: tmp
               mountPath: /tmp
           env:
+            - name: DATABASE_USER
+              value: "opshub_migrator"
       volumes:
         - name: tmp
           emptyDir: {}

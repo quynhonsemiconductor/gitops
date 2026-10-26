@@ -325,6 +325,14 @@ spec:
             {{- if $.Values.data }}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-app
+            {{- /* Per-service bundle (secrets.serviceBundles, on-prem only): AFTER
+                   the shared one, so its keys win any collision. See
+                   externalsecret.yaml for why a product needs this. */}}
+            {{- $sb := ($.Values.secrets).serviceBundles | default dict }}
+            {{- if and (include "qnsc.onpremStore" $) (index $sb $name) }}
+            - secretRef:
+                name: {{ printf "%s-%s-bundle" (include "qnsc.product" $) $name }}
+            {{- end }}
             {{- end }}
             {{- with $svc.envFrom }}
             {{- toYaml . | nindent 12 }}

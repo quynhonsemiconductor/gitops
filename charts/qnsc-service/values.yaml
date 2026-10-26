@@ -129,4 +129,8 @@ secrets:
 #     clusterSecretStore: kv-qnsc-<env>
 #     bundle: <product>-<env>-app        # Key Vault secret (JSON) -> <product>-app
 #     db: <product>-<env>-db-app         # -> <product>-migrator (DB credentials)
-# bundle and db default to those names when omitted.
+#     serviceBundles: { api: <product>-<env>-api }   # optional per-service split
+# bundle and db default to those names when omitted. serviceBundles is on-prem
+# only: one extra ExternalSecret per named service, attached by envFrom AFTER
+# the shared bundle (later wins) — for products whose worker env schema
+# refuses api-only secrets (opshub) and vice versa (GRAPH_*).
