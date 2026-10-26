@@ -1,91 +1,4 @@
 ---
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-spec:
-  podSelector: {}
-  policyTypes: [Ingress, Egress]
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-dns
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: kube-system }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-egress-platform
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: "platform" }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-egress-external
-spec:
-  podSelector: {}
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-ingress-api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: opshub
-    app.kubernetes.io/part-of: opshub
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: opshub
-    qnsc.vn/env: dev
-    qnsc.vn/tenant: product
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: api
-      app.kubernetes.io/instance: opshub
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: "platform" }
-      ports:
-        - { protocol: TCP, port: 3000 }
-    - from:
-        - podSelector: {}          # same namespace, service to service
-      ports:
-        - { protocol: TCP, port: 3000 }
-
----
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -223,10 +136,10 @@ spec:
               containerPort: 3000
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 100m
+              memory: 768Mi
             limits:
-              memory: 1Gi
+              memory: 768Mi
           livenessProbe:
             httpGet: { path: /livez, port: 3000 }
             periodSeconds: 10
@@ -242,15 +155,63 @@ spec:
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=dev,service.version=sha-0000000
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
+            - name: DATABASE_USER
+              value: "opshub_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
+            - name: VALKEY_URL
+              value: redis://valkey-dev.data-dev.svc:6379/2
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: 5a83d82b-34ed-4701-b426-635fd303d875
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub-dev@qnsc.vn
+            - name: GRAPH_CLIENT_ID
+              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
+            - name: PORT
+              value: "3000"
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=512
+            - name: DATABASE_POOL_MAX
+              value: "10"
+            - name: APP_URL
+              value: https://opshub-dev.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://opshub-dev.qnsc.vn
           envFrom:
             - secretRef:
                 name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: opshub-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
@@ -305,10 +266,10 @@ spec:
               drop: ["ALL"]
           resources:
             requests:
-              cpu: 250m
-              memory: 512Mi
+              cpu: 50m
+              memory: 480Mi
             limits:
-              memory: 512Mi
+              memory: 480Mi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-receiver.platform.svc:4318
@@ -316,15 +277,67 @@ spec:
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=dev,service.version=sha-0000000
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
+            - name: DATABASE_USER
+              value: "opshub_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: "/etc/qnsc/graph/cert.pem"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
+            - name: VALKEY_URL
+              value: redis://valkey-dev.data-dev.svc:6379/2
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: 5a83d82b-34ed-4701-b426-635fd303d875
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub-dev@qnsc.vn
+            - name: GRAPH_CLIENT_ID
+              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=256
+            - name: DATABASE_POOL_MAX
+              value: "10"
           envFrom:
             - secretRef:
                 name: opshub-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: graph-cert
+              mountPath: /etc/qnsc/graph/cert.pem
+              subPath: cert.pem
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: opshub-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        - name: graph-cert
+          secret:
+            secretName: opshub-dev-graph-cert
+            items: [{ key: cert.pem, path: cert.pem }]
 
 ---
 # Source: qnsc-service/templates/job.yaml
@@ -389,12 +402,48 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
           env:
+            - name: DATABASE_HOST
+              value: pg-dev-rw.data-dev.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
             - name: DATABASE_USER
-              value: "opshub_migrator"
+              value: "opshub_app_migrator"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
+            - name: VALKEY_URL
+              value: redis://valkey-dev.data-dev.svc:6379/2
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: 5a83d82b-34ed-4701-b426-635fd303d875
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub-dev@qnsc.vn
+            - name: GRAPH_CLIENT_ID
+              value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: opshub-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -449,6 +498,26 @@ spec:
             target: "$1"
         - transform:
             template: '{{ .value | upper | replace "-" "_" }}'
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-db-ca
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-dev-ca-pub
+        property: ca.crt
 
 ---
 # Source: qnsc-service/templates/slo.yaml

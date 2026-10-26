@@ -1,6 +1,88 @@
+# opshub — on-prem DEV (CUTOVER-2026-11 C1, the M-8-style move).
+#
+# The EKS-era file was a three-line resource overlay. This file now carries the
+# whole on-prem delta: CNPG, the shared dev Valkey, the same-origin host, and
+# the non-secret env the ECS task definition used to own (opshub
+# infra/modules/stack/main.tf, develop — transcribed, not invented). The SECRET
+# half arrives through the opshub-app bundle from kv-qnsc-dev (§7.1):
+# cookie/csrf/better-auth secrets, entra-client-secret, storage credentials,
+# and the Graph certificate — which is NOT env at all, it is the worker-only
+# mounted file wired at the bottom of this file.
 env: dev
 size: s
+
+# §5.6/§6.2 — the chart's per-namespace default-deny set is OFF on-prem. The one
+# NetworkPolicy that matters (data-prod admits only rova-prod, restore-test,
+# cnpg-system and platform on metrics ports) lives in gitops/platform.
+networkPolicy:
+  enabled: false
+
+data:
+  postgres:
+    # §6.3 — pg-dev in data-dev: one cluster for all three dev products.
+    # TLS verify-full: the server CA arrives as the opshub-db-ca Secret (via the
+    # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
+    # app connects to pg-dev-rw.data-dev.svc — a SAN on CNPG's server cert.
+    mode: cnpg
+    cluster: pg-dev
+    namespace: data-dev
+    auth: password     # CNPG managed role; the credential comes from the app secret bundle
+    pooling: none      # §6.3 — no pooler; the worker holds a session-level LISTEN connection
+    name: opshub
+    user: opshub_app
+    caFile: /etc/qnsc/db-ca/ca.crt
+
 services:
-  api:      { resources: { cpu: 500m, memory: 1Gi }, }
-  worker:   { resources: { cpu: 250m, memory: 512Mi }, }
+  api:
+    # §5.7 dev sizing: api 100m / 768 Mi with the prod heap flag for parity.
+    resources: { cpu: 100m, memory: 768Mi }
+    env:
+      - { name: PORT, value: "3000" }
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+      # pg-dev runs max_connections=100 shared across all dev products; 10 per
+      # service leaves headroom for kb's pool, the migrators and managed roles.
+      - { name: DATABASE_POOL_MAX, value: "10" }
+      # §8.2 — SAME-ORIGIN: one hostname per app. The Tunnel routes /api/auth/*,
+      # /v1/* and /readyz straight to this Service; there is no second API
+      # hostname any more. CORS kept at parity with the ECS env, which also set
+      # it to the app URL.
+      - { name: APP_URL, value: "https://opshub-dev.qnsc.vn" }
+      - { name: CORS_ORIGINS, value: "https://opshub-dev.qnsc.vn" }
+
+  worker:
+    resources: { cpu: 50m, memory: 480Mi }
+    env:
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+      - { name: DATABASE_POOL_MAX, value: "10" }
+
   migrator: { }
+
+# ── Product-wide, because api AND worker share one env validator ─────────────
+# Non-secret configuration only. Anything a leaked value would enable lives in
+# the kv-qnsc-dev bundle, never here.
+defaults:
+  env:
+    - { name: NODE_ENV, value: "production" }
+    - { name: DEPLOYMENT_ENV, value: "dev" }
+    # §6.4 — the shared dev cache (rova + opshub). opshub keeps database index 2
+    # (rova 0; the allocation lives in the platform plan). Plain redis:// — the
+    # on-prem Valkey has no TLS, unlike the rediss:// ElastiCache endpoint.
+    - { name: VALKEY_URL, value: "redis://valkey-dev.data-dev.svc:6379/2" }
+    - { name: OTEL_ENABLED, value: "true" }
+    # Entra — public identifiers (§7.2): the "OpsHub Dev" sign-in app. The
+    # redirect URI is derived by identity v8 from APP_URL; no override here.
+    - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: ENTRA_CLIENT_ID, value: "5a83d82b-34ed-4701-b426-635fd303d875" }
+    # §7.3 — Graph mail: the dev mailbox and the "OpsHub Dev Service" app. The
+    # certificate is NOT an env var — see secrets.workerOnly below.
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MAIL_GRAPH_SENDER, value: "noreply-opshub-dev@qnsc.vn" }
+    - { name: GRAPH_CLIENT_ID, value: "328bac47-4848-42b5-9464-bb4ba7b0cb56" }
+
+# §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a FILE
+# into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH. The secret
+# itself is synced by ESO from kv-qnsc-dev (opshub-dev-graph-cert).
+secrets:
+  workerOnly:
+    graphCert: opshub-dev-graph-cert
+    path: /etc/qnsc/graph/cert.pem
