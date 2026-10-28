@@ -1,0 +1,15 @@
+# Intentionally public names in this repository (leak-guard suppresses a finding
+# when a line below matches its text OR its repository-relative path).
+#
+# This repository IS the deployment configuration and is public on purpose
+# (on-prem plan): the rendered manifests, per-product values, platform
+# manifests and the Helm chart carry the real hostnames, addresses and — path-
+# allowlisted, never written here — the org identifiers that are already part
+# of the public deployment. Path entries (not value entries) for those: an
+# allowlist line is itself public, so an identifier literal must never be one.
+^rendered/
+^values/
+^platform/
+^charts/
+^\.gitleaks\.toml$
+^\.github/workflows/chart-release\.yaml$
