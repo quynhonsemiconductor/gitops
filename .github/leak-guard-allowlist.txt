@@ -1,0 +1,38 @@
+# Intentionally public names in this repository (identifier policy 2026-10-29;
+# ci v1.27.0 syntax: key-scoped identifiers, exact text values, literal files).
+#
+# This repository IS the deployment configuration and is public on purpose
+# (on-prem plan). rendered/ is GENERATED from values/ and platform/ and is
+# proven current by chart-ci.yaml's "golden render is current" check
+# (scripts/render.sh + git diff --exit-code rendered/) — it is not allowlisted
+# at all: what its identifiers are is decided by these same entries, because
+# a fresh render carries exactly what values/ and platform/ carry.
+#
+# Tier-2 ids (Entra tenant, app client ids) sit in `value:` scalars of
+# deployment env blocks and in eso's `tenantId:` fields — suppressed ONLY
+# there, by key scope. The Azure subscription id (tier 1) has no entry and
+# no entry could suppress it: a hit means removal.
+key:value
+key:tenantId
+# Product hostnames (tier 2, exact).
+rova\.qnsc\.vn
+rova-dev\.qnsc\.vn
+rova-api\.qnsc\.vn
+rova-api-dev\.qnsc\.vn
+rova-api-eks-dev\.qnsc\.vn
+rova-assets\.qnsc\.vn
+rova-assets-dev\.qnsc\.vn
+opshub-dev\.qnsc\.vn
+kb-dev\.qnsc\.vn
+s\.qnsc\.vn
+s-dev\.qnsc\.vn
+preview\.qnsc\.vn
+dev\.qnsc\.vn
+# Role mailboxes (tier 2, exact) — no staff addresses exist in this tree.
+noreply@qnsc\.vn
+noreply-rova-dev@qnsc\.vn
+noreply-opshub-dev@qnsc\.vn
+noreply-kb-dev@qnsc\.vn
+# The AWS IMDS endpoint (link-local, in a NetworkPolicy exception) — not an
+# on-prem address or topology.
+169\.254\.169\.254
