@@ -304,7 +304,7 @@ spec:
             - name: DATABASE_NAME
               value: "rova"
             - name: DATABASE_USER
-              value: "rova_app"
+              value: "rova_worker"
             - name: DATABASE_SSL_CA
               value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
@@ -359,7 +359,7 @@ spec:
             - secretRef:
                 name: rova-app
             - secretRef:
-                name: rova-db-app
+                name: rova-db-worker
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -567,6 +567,24 @@ spec:
     - secretKey: DATABASE_PASSWORD
       remoteRef:
         key: rova-dev-db-app
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-db-worker
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: rova-db-worker
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: rova-dev-db-worker
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
