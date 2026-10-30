@@ -43,9 +43,9 @@ spec:
           # chartVersion 0.11.2, NOT 0.11.1: 0.11.1 has the PreSync deadlock (the
           # migrator hook runs before its ServiceAccount exists on a first deploy).
           # Fixed in 0.11.2 (gitops#45) — never pin 0.11.1.
-          - { product: kb,     env: dev, cluster: dev, chartVersion: "0.12.1" }
-          - { product: opshub, env: dev, cluster: dev, chartVersion: "0.12.1" }
-          - { product: rova,   env: dev, cluster: dev, chartVersion: "0.12.1" }
+          - { product: kb,     env: dev, chartVersion: "0.12.1" }
+          - { product: opshub, env: dev, chartVersion: "0.12.1" }
+          - { product: rova,   env: dev, chartVersion: "0.12.1" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is
@@ -57,17 +57,16 @@ spec:
           spec:
             project: products
             destination:
-              name: "{{.cluster}}"
-              namespace: "{{.product}}"
+              server: https://kubernetes.default.svc
+              namespace: "{{.product}}-{{.env}}"
             syncPolicy:
               automated:
                 prune: true
               # RespectIgnoreDifferences makes a sync honour ignoreDifferences below: without it, ignoreDifferences only hides the
               # OutOfSync status, and the next sync (selfHeal) still resets `.spec.replicas` to the chart's value, undoing kube-downscaler.
-              # This is the WHOLE list, not an addition: a list at generator level REPLACES the base template's (CreateNamespace,
-              # ServerSideApply, PruneLast), it does not merge with it, so the three base options are repeated here on purpose.
+              # This is the WHOLE list, not an addition: a list at generator level REPLACES the base template's (ServerSideApply,
+              # PruneLast), it does not merge with it, so the two base options are repeated here on purpose.
               syncOptions:
-                - CreateNamespace=true
                 - ServerSideApply=true
                 - PruneLast=true
                 - RespectIgnoreDifferences=true
@@ -80,36 +79,10 @@ spec:
                 jqPathExpressions: [".spec.replicas"]
 
     # ── prod ─────────────────────────────────────────────────────────────────
-    - list:
-        elements:
-          # KB is DEV ONLY (plan H-D1). No kb-prod Application exists, so
-          # dropping the row deletes nothing (prune:false does not stop the
-          # ApplicationSet from removing an Application that its generator
-          # no longer produces — but there is none to remove).
-          # chartVersion 0.11.2, NOT 0.11.1: 0.11.1 has the PreSync deadlock (the
-          # migrator hook runs before its ServiceAccount exists on a first deploy).
-          # Fixed in 0.11.2 (gitops#45) — never pin 0.11.1.
-          - { product: opshub, env: prod, cluster: prod, chartVersion: "0.11.2" }
-          # rova is LAST (§17 step 6) and soaks for two weeks. It is also the only
-          # product that actually tests the cutover — everything before it is a
-          # greenfield deploy that happens to use the chart.
-          - { product: rova,   env: prod, cluster: prod, chartVersion: "0.11.2" }
-        template:
-          # Full skeleton: same reason as the dev generator above.
-          metadata:
-            name: "{{.product}}-{{.env}}"
-          spec:
-            project: products
-            destination:
-              name: "{{.cluster}}"
-              namespace: "{{.product}}"
-            syncPolicy:
-              automated:
-                # §11c — "a bad render should FAIL, not delete." In dev a stale
-                # resource is noise. In prod, a template bug that stops rendering
-                # a Deployment would otherwise delete it, and ArgoCD would report
-                # Synced while the service was gone.
-                prune: false
+    # No prod rows yet (PLT-B2): prod values are not complete (the chart pin
+    # predates the on-prem secrets shape, tags are placeholders). The prod
+    # generator comes back, with `prune: false`, in the prod-values PR together
+    # with the rova-prod / opshub-prod namespaces in the project destinations.
 
     # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
     # simply has no dev row — §5c: "Absence is the mechanism."
@@ -119,9 +92,12 @@ spec:
       name: "{{.product}}-{{.env}}"           # §7c — ArgoCD Application naming
     spec:
       project: products
+      # ONE k3s cluster; environments are namespaces (ONPREM-PLAN §6.2). The
+      # namespace is declared in git (platform/namespaces/onprem.yaml) with its
+      # qnsc.vn/env and qnsc.vn/tenant labels, never created by a sync.
       destination:
-        name: "{{.cluster}}"
-        namespace: "{{.product}}"
+        server: https://kubernetes.default.svc
+        namespace: "{{.product}}-{{.env}}"
 
       sources:
         # The chart, pinned. Never a range, never a branch (§11c). GHCR tags are
@@ -150,7 +126,6 @@ spec:
           # `prune` comes from the generator above — it is the one thing that
           # genuinely differs between dev and prod.
         syncOptions:
-          - CreateNamespace=true
           - ServerSideApply=true
           # Namespaces outlive any single sync and carry the labels §10's
           # NetworkPolicies select on. Never pruned, in either environment.

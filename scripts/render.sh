@@ -22,7 +22,7 @@ for base in values/*/base.yaml; do
     [ -f "$envfile" ] || continue        # §5c — a prod-only product has no dev.yaml
     mkdir -p "rendered/${product}"
     helm template "$product" "$CHART" \
-      --namespace "$product" \
+      --namespace "${product}-${env}" \
       -f "$base" -f "$envfile" -f "values/${product}/tags.${env}.yaml" \
       > "rendered/${product}/${env}.yaml"
     echo "  rendered ${product}/${env}  ($(grep -c '^kind:' "rendered/${product}/${env}.yaml") resources)"
