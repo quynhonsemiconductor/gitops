@@ -28,9 +28,9 @@ alloy:
         name: grafana-cloud
 
   extraEnv:
+    # One cluster, so a literal: no ConfigMap, no ENV substitution at bootstrap.
     - name: CLUSTER_NAME
-      valueFrom:
-        configMapKeyRef: { name: cluster-info, key: name }
+      value: qnsc-onprem
       # HOSTNAME deliberately NOT set here: the chart injects it itself
       # (env: HOSTNAME = spec.nodeName, a chart default since well before
       # 1.12.1), and a second entry is a hard failure, not a shadow:

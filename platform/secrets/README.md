@@ -1,30 +1,21 @@
 # platform/secrets
 
-The platform's own credentials. **BUG FOUND IN REVIEW:** `platform/` referenced
-three things nothing created, and each would have failed differently and
-confusingly on first apply.
+The platform's own credentials, as ExternalSecrets on the `kv-qnsc-platform`
+ClusterSecretStore (ONPREM-PLAN §7.1). The platform is not a product, so these live
+here and not in the chart.
 
 ```
-grafana-cloud   Alloy's agent and gateway both read it via envFrom. Missing, the
-                pods CrashLoopBackOff on a nil endpoint and no telemetry exists —
-                which is the 2026-09-06 blackout arriving on day one
-cloudflared     the tunnel token. Missing, cloudflared starts, connects to
-                nothing, and every route 502s with the cluster looking healthy
-cluster-info    a ConfigMap, not a secret. Alloy stamps `cluster` as an external
-                label from it; without it every metric from dev and prod lands
-                under the same series
+grafana-cloud   <- platform-grafana-alloy (JSON; keys are Alloy's env var names).
+                   Missing, Alloy CrashLoopBackOffs on a nil endpoint and no
+                   telemetry exists
+cloudflared     <- platform-cloudflared-qnsc-apps (plain string, the tunnel token).
+                   Missing, cloudflared starts, connects to nothing, and every
+                   route 502s with the cluster looking healthy
 ```
 
-These are the platform's own, so they live here rather than in the chart — which
-renders a `SecretStore` and `ExternalSecret` per PRODUCT namespace (§8), and the
-platform is not a product.
+Ordering: the store goes Valid only after the hand-applied ESO service-principal
+Secret exists (ONPREM-PLAN §14 step 2). Nothing that envFrom's these Secrets may
+start before that.
 
-## The bootstrap ordering this creates
-
-ESO must be installed **and** its IRSA role must exist before these sync, and Alloy
-must not start before they exist. `platform/argocd/bootstrap.md` already orders it
-that way; §13 lists this exact trap among the things a rebuild rehearsal is meant
-to find:
-
-> "Secrets — values live in Secrets Manager, correctly — but ESO must be installed
-> and its IRSA role must exist before anything syncs."
+The cluster name Alloy stamps on every series is a literal in
+`../alloy/values-agent.yaml` (one cluster, no ENV substitution, no ConfigMap).

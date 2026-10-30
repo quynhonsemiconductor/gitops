@@ -52,7 +52,7 @@ spec:
             - name: TUNNEL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: cloudflared          # synced by ESO from qnsc/<env>/platform/ (§8)
+                  name: cloudflared          # synced by ESO from kv-qnsc-platform (platform/secrets)
                   key: token
           ports:
             - { name: metrics, containerPort: 2000 }
