@@ -9,9 +9,12 @@ name: chart
 #   helm unittest   the platform invariants still hold
 #   golden render   THE CONTROL — the exact manifest diff for every Application
 
+# The `chart` job is a REQUIRED status check. A path filter on the trigger means it never
+# reports on a PR that touches none of those paths, and the PR is blocked forever. So the
+# workflow runs on every PR; `changes` decides whether the heavy `checks` job is needed;
+# the final `chart` job ALWAYS reports (success when the checks passed or were not needed).
 on:
   pull_request:
-    paths: [charts/**, values/**, rendered/**, .github/workflows/chart-ci.yaml]
   push:
     branches: [main]
 
@@ -31,7 +34,33 @@ env:
   CRD_CATALOG_SHA: "f3e4382095909ac60000da025f323ba44d4c738a"
 
 jobs:
-  chart:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.diff.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" \
+               | grep -Eq '^(charts|values|rendered|platform|apps|appsets|scripts)/|^\.github/workflows/chart-ci\.yaml$'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  checks:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -134,3 +163,17 @@ jobs:
             git diff rendered/
             exit 1
           fi
+
+  # The required check. Always runs; fails if `checks` failed or was cancelled, passes
+  # when it succeeded or was legitimately skipped (no relevant files).
+  chart:
+    needs: [changes, checks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          CHECKS: ${{ needs.checks.result }}
+        run: |
+          echo "changes=$CHANGES checks=$CHECKS"
+          [ "$CHANGES" = "success" ] && { [ "$CHECKS" = "success" ] || [ "$CHECKS" = "skipped" ]; }
