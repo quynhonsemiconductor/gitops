@@ -232,6 +232,8 @@ spec:
           envFrom:
             - secretRef:
                 name: kb-app
+            - secretRef:
+                name: kb-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -384,6 +386,8 @@ spec:
           envFrom:
             - secretRef:
                 name: kb-app
+            - secretRef:
+                name: kb-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -579,8 +583,27 @@ spec:
     kind: ClusterSecretStore
   target:
     name: kb-migrator
-  dataFrom:
-    - extract:
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: kb-dev-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: kb-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
         key: kb-dev-db-app
 
 ---

@@ -252,7 +252,11 @@ spec:
             - name: DATABASE_NAME
               value: {{ . | quote }}
             {{- end }}
-            {{- with $pg.user }}
+            {{- /* A worker with its own DB role (data.postgres.workerUser) logs in as
+                   it; everything else as data.postgres.user. ONE DATABASE_USER per
+                   container — a per-service env override would duplicate the name
+                   and server-side apply rejects duplicates. */}}
+            {{- with (ternary ($pg.workerUser | default $pg.user) $pg.user (eq $svc.kind "worker")) }}
             - name: DATABASE_USER
               value: {{ . | quote }}
             {{- end }}
@@ -333,6 +337,14 @@ spec:
             - secretRef:
                 name: {{ printf "%s-%s-bundle" (include "qnsc.product" $) $name }}
             {{- end }}
+            {{- end }}
+            {{- /* The runtime DB password, AFTER the bundles (ONPREM-PLAN §6.3): the
+                   worker reads <product>-db-worker when the product has a worker
+                   role (secrets.dbWorker), every other service <product>-db-app.
+                   The migrator Job gets its own (job.yaml). */}}
+            {{- if and (include "qnsc.onpremStore" $) $.Values.data.postgres (ne $.Values.data.postgres.mode "none") }}
+            - secretRef:
+                name: {{ include "qnsc.product" $ }}-db-{{ if and (eq $svc.kind "worker") ($.Values.secrets).dbWorker }}worker{{ else }}app{{ end }}
             {{- end }}
             {{- with $svc.envFrom }}
             {{- toYaml . | nindent 12 }}

@@ -216,6 +216,8 @@ spec:
           envFrom:
             - secretRef:
                 name: rova-app
+            - secretRef:
+                name: rova-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -356,6 +358,8 @@ spec:
           envFrom:
             - secretRef:
                 name: rova-app
+            - secretRef:
+                name: rova-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -541,8 +545,27 @@ spec:
     kind: ClusterSecretStore
   target:
     name: rova-migrator
-  dataFrom:
-    - extract:
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: rova-dev-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: rova-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
         key: rova-dev-db-app
 
 ---

@@ -225,7 +225,7 @@ tests:
       data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only the bundle ExternalSecrets
     asserts:
       - hasDocuments:
-          count: 2          # rova-app + rova-migrator (+ no SecretStore)
+          count: 3          # rova-app + rova-migrator + rova-db-app (+ no SecretStore)
       - equal:
           path: spec.secretStoreRef
           value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
@@ -238,12 +238,25 @@ tests:
         documentSelector:
           path: metadata.name
           value: rova-app
+      # PLT-B3: the migrator reads ITS OWN password (db-migrator), never the app role's
+      # (db-app). Mutation check: reverting remoteKey to secrets.db fails this and the next.
       - equal:
-          path: spec.dataFrom
-          value: [{ extract: { key: rova-dev-db-app } }]
+          path: spec.data
+          value: [{ secretKey: DATABASE_PASSWORD, remoteRef: { key: rova-dev-db-migrator } }]
         documentSelector:
           path: metadata.name
           value: rova-migrator
+      - equal:
+          path: spec.data
+          value: [{ secretKey: DATABASE_PASSWORD, remoteRef: { key: rova-dev-db-app } }]
+        documentSelector:
+          path: metadata.name
+          value: rova-db-app
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-db-app
       - equal:
           path: metadata.annotations["argocd.argoproj.io/hook"]
           value: PreSync
@@ -318,11 +331,12 @@ tests:
         documentSelector:
           path: metadata.name
           value: rova-api-bundle
-      # count 3 IS the "no worker bundle, no SecretStore" assertion:
+      # count 4 IS the "no worker bundle, no SecretStore" assertion:
       # helm-unittest fails a documentSelector that matches nothing, so absence
       # of rova-worker-bundle can only be asserted through the count.
+      # (rova-app, rova-migrator, rova-db-app, rova-api-bundle)
       - hasDocuments:
-          count: 3
+          count: 4
 
   - it: attaches the per-service bundle AFTER the shared one on its service only (later envFrom wins)
     template: templates/deployment.yaml
@@ -337,6 +351,7 @@ tests:
           value:
             - secretRef: { name: rova-app }
             - secretRef: { name: rova-api-bundle }
+            - secretRef: { name: rova-db-app }
 
   - it: leaves a service with no bundle entry on the shared bundle alone
     template: templates/deployment.yaml
@@ -350,7 +365,59 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           value:
             - secretRef: { name: rova-app }
+            - secretRef: { name: rova-db-app }
 
+  - it: gives the worker its own DB password and role when the product has a worker role
+    template: templates/deployment.yaml
+    documentIndex: 1        # the worker
+    set:
+      secrets.dbWorker: rova-dev-db-worker
+      data.postgres.workerUser: rova_worker
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - secretRef: { name: rova-app }
+            - secretRef: { name: rova-db-worker }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_USER, value: rova_worker }
+
+  - it: keeps the api on the app role even when a worker role is set
+    template: templates/deployment.yaml
+    documentIndex: 0        # the api
+    set:
+      secrets.dbWorker: rova-dev-db-worker
+      data.postgres.workerUser: rova_worker
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: rova-db-app } }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_USER, value: rova_app }
+
+  - it: renders a db-worker ExternalSecret only when secrets.dbWorker is set
+    template: templates/externalsecret.yaml
+    set:
+      secrets.dbWorker: rova-dev-db-worker
+      data.postgres.caFile: ""
+    asserts:
+      - equal:
+          path: spec.data
+          value: [{ secretKey: DATABASE_PASSWORD, remoteRef: { key: rova-dev-db-worker } }]
+        documentSelector:
+          path: metadata.name
+          value: rova-db-worker
+
+  - it: gives the migrator Job only the migrator Secret (not the app role's)
+    template: templates/job.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - secretRef: { name: rova-migrator, optional: true }
 
   - it: on-prem bundle/db overrides are honoured
     template: templates/externalsecret.yaml
@@ -358,6 +425,7 @@ tests:
       secrets.clusterSecretStore: kv-qnsc-dev
       secrets.bundle: custom-app
       secrets.db: custom-db
+      secrets.dbMigrator: custom-mig
     asserts:
       - equal:
           path: spec.dataFrom[0].extract.key
@@ -366,8 +434,14 @@ tests:
           path: metadata.name
           value: rova-app
       - equal:
-          path: spec.dataFrom[0].extract.key
+          path: spec.data[0].remoteRef.key
           value: custom-db
+        documentSelector:
+          path: metadata.name
+          value: rova-db-app
+      - equal:
+          path: spec.data[0].remoteRef.key
+          value: custom-mig
         documentSelector:
           path: metadata.name
           value: rova-migrator
