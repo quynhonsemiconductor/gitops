@@ -24,7 +24,9 @@ tests:
         documentSelector: { path: metadata.name, value: rova-env }
       - equal:
           path: spec.data
-          value: [{ secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-dev-better-auth-secret } }]
+          value:
+            - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-dev-better-auth-secret } }
+            - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-dev-platform-admin-emails } }
         documentSelector: { path: metadata.name, value: rova-env-api }
 
   - it: renders no rova-app bundle ExternalSecret and no bundle envFrom

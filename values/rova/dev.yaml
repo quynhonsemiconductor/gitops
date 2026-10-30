@@ -134,6 +134,9 @@ secrets:
     STORAGE_SECRET_ACCESS_KEY: rova-dev-storage-secret-access-key
   envApiOnly:
     BETTER_AUTH_SECRET: rova-dev-better-auth-secret   # env.schema.ts:92-95 "API ONLY"
+    # Required at API boot when NODE_ENV=production (rova apps/api/src/bootstrap/platform-admin-emails.ts:11-17).
+    # A staff email roster: kept in Key Vault, not here (public-repo identifier policy). API only.
+    PLATFORM_ADMIN_EMAILS: rova-dev-platform-admin-emails
   db: rova-dev-db-app
   dbMigrator: rova-dev-db-migrator
   dbWorker: rova-dev-db-worker

@@ -680,6 +680,9 @@ spec:
     - secretKey: BETTER_AUTH_SECRET
       remoteRef:
         key: rova-dev-better-auth-secret
+    - secretKey: PLATFORM_ADMIN_EMAILS
+      remoteRef:
+        key: rova-dev-platform-admin-emails
 
 ---
 # Source: qnsc-service/templates/slo.yaml
