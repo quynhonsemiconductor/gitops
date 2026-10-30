@@ -171,6 +171,40 @@ tests:
           content:
             name: AZURE_CLIENT_CERTIFICATE_PATH
 
+  - it: syncs the Graph cert Secret the worker mounts, from the ClusterSecretStore, as cert.pem
+    # PLT-B4: nothing created this Secret, so the worker stayed in ContainerCreating.
+    template: templates/externalsecret.yaml
+    set:
+      data.postgres.caFile: ""
+    asserts:
+      - equal:
+          path: spec.secretStoreRef
+          value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+        documentSelector:
+          path: metadata.name
+          value: rova-dev-graph-cert
+      - equal:
+          path: spec.target.name
+          value: rova-dev-graph-cert
+        documentSelector:
+          path: metadata.name
+          value: rova-dev-graph-cert
+      - equal:
+          path: spec.data
+          value: [{ secretKey: cert.pem, remoteRef: { key: rova-dev-graph-cert } }]
+        documentSelector:
+          path: metadata.name
+          value: rova-dev-graph-cert
+
+  - it: renders no Graph cert ExternalSecret when graphCert is unset
+    template: templates/externalsecret.yaml
+    set:
+      data.postgres.caFile: ""
+      secrets.workerOnly.graphCert: ""
+    asserts:
+      - hasDocuments:
+          count: 3        # rova-app, rova-migrator, rova-db-app and nothing for the cert
+
   - it: renders nothing when secrets.workerOnly.graphCert is unset
     # Empty strings, because rova's dev values now wire the on-prem graph
     # certificate — this test wants the "not configured" branch explicitly.
@@ -225,7 +259,7 @@ tests:
       data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only the bundle ExternalSecrets
     asserts:
       - hasDocuments:
-          count: 3          # rova-app + rova-migrator + rova-db-app (+ no SecretStore)
+          count: 4          # rova-app + rova-migrator + rova-db-app + rova-dev-graph-cert (+ no SecretStore)
       - equal:
           path: spec.secretStoreRef
           value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
@@ -334,9 +368,9 @@ tests:
       # count 4 IS the "no worker bundle, no SecretStore" assertion:
       # helm-unittest fails a documentSelector that matches nothing, so absence
       # of rova-worker-bundle can only be asserted through the count.
-      # (rova-app, rova-migrator, rova-db-app, rova-api-bundle)
+      # (rova-app, rova-migrator, rova-db-app, rova-dev-graph-cert, rova-api-bundle)
       - hasDocuments:
-          count: 4
+          count: 5
 
   - it: attaches the per-service bundle AFTER the shared one on its service only (later envFrom wins)
     template: templates/deployment.yaml
