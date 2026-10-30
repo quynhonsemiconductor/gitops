@@ -215,7 +215,9 @@ spec:
               value: "10"
           envFrom:
             - secretRef:
-                name: rova-app
+                name: rova-env
+            - secretRef:
+                name: rova-env-api
             - secretRef:
                 name: rova-db-app
           volumeMounts:
@@ -357,7 +359,7 @@ spec:
               value: "10"
           envFrom:
             - secretRef:
-                name: rova-app
+                name: rova-env
             - secretRef:
                 name: rova-db-worker
           volumeMounts:
@@ -516,23 +518,6 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: rova-app
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: kv-qnsc-dev
-    kind: ClusterSecretStore
-  target:
-    name: rova-app
-  dataFrom:
-    - extract:
-        key: rova-dev-app
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
   name: rova-migrator
   annotations:
     argocd.argoproj.io/hook: PreSync
@@ -647,6 +632,54 @@ spec:
     - secretKey: cert.pem
       remoteRef:
         key: rova-dev-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: rova-env
+  data:
+    - secretKey: COOKIE_SECRET
+      remoteRef:
+        key: rova-dev-cookie-secret
+    - secretKey: CSRF_SECRET
+      remoteRef:
+        key: rova-dev-csrf-secret
+    - secretKey: ENTRA_CLIENT_SECRET
+      remoteRef:
+        key: rova-dev-entra-client-secret
+    - secretKey: STORAGE_ACCESS_KEY_ID
+      remoteRef:
+        key: rova-dev-storage-access-key-id
+    - secretKey: STORAGE_SECRET_ACCESS_KEY
+      remoteRef:
+        key: rova-dev-storage-secret-access-key
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-env-api
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: rova-env-api
+  data:
+    - secretKey: BETTER_AUTH_SECRET
+      remoteRef:
+        key: rova-dev-better-auth-secret
 
 ---
 # Source: qnsc-service/templates/slo.yaml

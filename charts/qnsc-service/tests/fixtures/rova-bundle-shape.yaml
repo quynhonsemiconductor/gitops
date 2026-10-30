@@ -1,0 +1,7 @@
+# Test fixture only. rova dev now uses per-value secrets (secrets.env); suites that
+# exercise the deprecated JSON bundle layer this on top of dev.yaml to get the old
+# shape back (helm drops a key set to null).
+secrets:
+  env: null
+  envApiOnly: null
+  bundle: rova-dev-app

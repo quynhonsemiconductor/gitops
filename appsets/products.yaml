@@ -40,10 +40,10 @@ spec:
     - list:
         elements:
           # rova dev only until each other product moves (kb and opshub rows return with
-          # their dev moves; today they would sit Degraded). Chart 0.13.0 is the on-prem
-          # secrets shape (db-migrator / db-worker passwords, graph cert ExternalSecret).
+          # their dev moves; today they would sit Degraded). Chart 0.14.0 is the on-prem
+          # secrets shape (one Key Vault secret per value, db-migrator / db-worker passwords, graph cert).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.13.0" }
+          - { product: rova,   env: dev, chartVersion: "0.14.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is

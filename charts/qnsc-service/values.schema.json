@@ -436,13 +436,13 @@
         "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
         "bundle": { "type": "string", "description": "DEPRECATED (use env). Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app. Cannot be combined with env / envApiOnly." },
         "env": {
-          "type": "object",
+          "type": ["object", "null"],
           "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
           "additionalProperties": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,127}$" },
           "description": "ON-PREM: one Key Vault secret per value. Map of ENV_VAR_NAME -> Key Vault secret name (a plain string). Rendered as ExternalSecret <product>-env (one data entry per variable) and attached by envFrom to every service and cronjob, not the migrator Job. Replaces secrets.bundle."
         },
         "envApiOnly": {
-          "type": "object",
+          "type": ["object", "null"],
           "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
           "additionalProperties": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,127}$" },
           "description": "Same as env, rendered as <product>-env-api and attached to http services only (a secret a worker must not hold). A variable cannot be in both maps."

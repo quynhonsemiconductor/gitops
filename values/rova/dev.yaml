@@ -5,9 +5,9 @@
 # This file carries the whole on-prem delta: CNPG (pg-dev), the shared dev
 # Valkey, the same-origin host, the renamed R2 buckets, and the non-secret env
 # the ECS task definition used to own (rova infra/modules/stack/main.tf,
-# develop — transcribed, not invented). The SECRET half arrives through the
-# rova-app bundle from kv-qnsc-dev (§7.1): cookie/csrf secrets, the identity
-# secrets, entra-client-secret, the R2 credentials — and the Graph certificate,
+# develop — transcribed, not invented). The SECRET half arrives
+# one Key Vault secret per value (secrets.env below, kv-qnsc-dev §7.1): cookie/csrf
+# and identity secrets, entra-client-secret, the R2 credentials — and the Graph certificate,
 # which is NOT env at all: it is the worker-only mounted file wired at the
 # bottom of this file.
 env: dev
@@ -32,7 +32,7 @@ data:
     # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
     # app connects to pg-dev-rw.data-dev.svc — a SAN on CNPG's server cert.
     # The EKS-era values pointed at the RDS endpoint with `auth: iam`; on-prem
-    # the credential is a CNPG managed-role password from the secret bundles.
+    # the credential is a CNPG managed-role password (secrets.db / dbWorker / dbMigrator).
     mode: cnpg
     cluster: pg-dev
     namespace: data-dev
@@ -66,7 +66,7 @@ services:
 # ── Product-wide, because api AND worker share one env validator ─────────────
 # Entra is the case that forced this shape: supplying the tenant/client id to the
 # api alone left the worker crash-looping on ENTRA_TENANT_ID. Non-secret values
-# only — anything a leak would enable lives in the kv-qnsc-dev bundle.
+# only — anything a leak would enable lives in Key Vault (secrets.env).
 defaults:
   env:
     - { name: NODE_ENV, value: "production" }
@@ -102,7 +102,7 @@ defaults:
     - { name: MAIL_GRAPH_CLIENT_ID, value: "ba917ac2-3580-43ef-a8c1-c8cb6288651a" }
     # §6.5 — the renamed dev buckets (rova-develop-* → rova-dev-*; created and
     # seeded in the same cutover apply, old bucket read-only for two weeks). R2
-    # credentials are NOT here — they are the rova-app bundle's (rova-dev-r2-app).
+    # credentials are NOT here — they are secrets.env (rova-dev-storage-*).
     - { name: S3_ATTACHMENTS_BUCKET, value: "rova-dev-attachments" }
     - { name: S3_PUBLIC_ASSETS_BUCKET, value: "rova-dev-public-assets" }
     - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
@@ -111,17 +111,29 @@ defaults:
     # live/edge apply (§6.5); it is a CDN base URL, not a credential.
     - { name: CDN_PUBLIC_ASSETS_BASE_URL, value: "https://rova-assets-dev.qnsc.vn" }
 
-# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
-# Setting clusterSecretStore switches the chart to the on-prem shape: no
-# per-namespace AWS SecretStore is rendered. ExternalSecrets read Key Vault through the ClusterSecretStore:
-#   rova-app      <- kv-qnsc-dev/rova-dev-app   (secrets.bundle; app env vars)
-#   rova-db-app   <- kv-qnsc-dev/rova-dev-db-app (secrets.db; api + worker password, envFrom)
-#   rova-migrator <- kv-qnsc-dev/rova-dev-db-migrator (secrets.dbMigrator; PreSync wave -1)
-# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
-# secretsReaderServiceAccount stays unset — it is the AWS shape only.
+# ── ON-PREM SECRET SHAPE (chart 0.14.0, ONPREM-PLAN §5.6) ────────────────────
+# Setting clusterSecretStore selects the on-prem shape (no per-namespace AWS
+# SecretStore). ONE Key Vault secret PER VALUE, listed with its class and
+# generation rule in values/rova/dev.secrets.yaml:
+#   rova-env      <- secrets.env        every service (shared signing + third-party secrets)
+#   rova-env-api  <- secrets.envApiOnly api only (BETTER_AUTH_SECRET: the worker never signs anyone in)
+#   rova-db-app / rova-db-worker / rova-migrator <- the DB role passwords (not duplicated here)
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The deprecated JSON secrets.bundle
+# (rova-dev-app) is gone. Non-secret config stays in defaults.env above.
 secrets:
   clusterSecretStore: kv-qnsc-dev
-  bundle: rova-dev-app
+  env:
+    # api AND worker validate the same schema; these three are required in it
+    # (rova libs/platform/src/config/env.schema.ts:106, :110, :324).
+    COOKIE_SECRET: rova-dev-cookie-secret
+    CSRF_SECRET: rova-dev-csrf-secret
+    ENTRA_CLIENT_SECRET: rova-dev-entra-client-secret
+    # R2 S3 credentials (env.schema.ts:208-209);
+    # STORAGE_PUBLIC_* stay unset: the public bucket reuses this credential.
+    STORAGE_ACCESS_KEY_ID: rova-dev-storage-access-key-id
+    STORAGE_SECRET_ACCESS_KEY: rova-dev-storage-secret-access-key
+  envApiOnly:
+    BETTER_AUTH_SECRET: rova-dev-better-auth-secret   # env.schema.ts:92-95 "API ONLY"
   db: rova-dev-db-app
   dbMigrator: rova-dev-db-migrator
   dbWorker: rova-dev-db-worker
