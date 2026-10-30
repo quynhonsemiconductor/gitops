@@ -1,35 +1,24 @@
 # ArgoCD. §5b, §10b, §13.
 #
 # helm upgrade --install argocd argo/argo-cd \
-#   -n argocd --create-namespace -f values.yaml \
+#   -n argocd -f values.yaml \
 #   --version <versions.yaml: platform.argo-cd.version>
 #
-# ── IT RUNS IN PROD AND MANAGES BOTH CLUSTERS ────────────────────────────────
-# §5b, and §2 footnotes the isolation claim for exactly this reason: "ArgoCD
-# reaches both clusters by design… it means the isolation below is 'no shared
-# control plane EXCEPT the deployer'."
-#
-# The $10-15/month that arrangement saves is not why. It is how a deployer has to
-# work — and being the only component with credentials on both sides makes its
-# own RBAC and its repository access the thing to review carefully.
+# The `argocd` namespace is declared in ../namespaces/argocd.yaml (labels first,
+# so Helm adopts it). ONE k3s cluster: ArgoCD manages only the cluster it runs in
+# (https://kubernetes.default.svc), so there is no cluster registration.
 #
 # §2b — one of the THREE components whose API pins the Kubernetes version.
 
 configs:
   cm:
-    # SSO through Entra, which rova and opshub already authenticate against (§4b).
-    # No local accounts beyond the admin below, which is disabled.
-    oidc.config: |
-      name: Entra
-      issuer: $oidc.entra.issuer
-      clientID: $oidc.entra.clientID
-      clientSecret: $oidc.entra.clientSecret
-      requestedScopes: [openid, profile, email, groups]
-
-    # §10b — the admin account is disabled after bootstrap. It is a shared
-    # credential with no name attached, which is the opposite of every other
-    # access decision in this design.
-    admin.enabled: "false"
+    # LOCAL ADMIN, NO SSO (ONPREM-PLAN §9: ArgoCD SSO waits for "a second person
+    # needs ArgoCD"; today the UI is behind Cloudflare Access with MFA). The admin
+    # password is a bcrypt hash synced by ESO into `argocd-secret`
+    # (externalsecret.yaml), never in Git. The previous Entra OIDC block named
+    # `$oidc.entra.*` keys nothing ever created, and its RBAC used GitHub-style
+    # group names where Entra sends GUIDs, so there was no working login at all.
+    admin.enabled: "true"
 
     # The chart is a PUBLIC OCI artefact on ghcr.io (H-D22) — plain https.
     helm.valuesFileSchemes: >-
@@ -37,29 +26,9 @@ configs:
 
     timeout.reconciliation: 180s
 
-  rbac:
-    # §10b — "developers get read + sync on dev, read-only on prod. Production
-    # changes go through a reviewed pull request in `gitops`, not through the
-    # ArgoCD UI."
-    #
-    # A UI that can sync prod is a second path around branch protection, which
-    # would make branch protection decorative.
-    policy.default: ""
-    policy.csv: |
-      p, role:developer, applications, get, */*, allow
-      p, role:developer, applications, sync, products/*-dev, allow
-      p, role:developer, applications, action/*, products/*-dev, allow
-      p, role:developer, logs, get, */*, allow
-      p, role:developer, exec, create, */*, deny
-
-      p, role:platform-admin, applications, *, */*, allow
-      p, role:platform-admin, clusters, *, *, allow
-      p, role:platform-admin, repositories, *, *, allow
-
-      g, qnsc:developers, role:developer
-      g, qnsc:platform, role:platform-admin
-
-    scopes: "[groups, email]"
+  # No `rbac` block: the built-in admin account holds role:admin, and the group
+  # bindings that used to be here (qnsc:developers, qnsc:platform) only mean
+  # something with SSO. They come back with it (ONPREM-PLAN §9).
 
   params:
     # Cloudflare Access fronts the UI (§4b `protected`), so ArgoCD does not
@@ -68,11 +37,6 @@ configs:
 
 controller:
   replicas: 1     # a reconciler; a restart costs one reconciliation interval
-  serviceAccount:
-    annotations:
-      # Created by infra/live/cluster-prod. It is what cluster-dev grants an
-      # access entry to — the ONE non-human principal with cluster-admin on dev.
-      eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-argocd
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { memory: 1Gi }
