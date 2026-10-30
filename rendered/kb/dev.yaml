@@ -651,6 +651,24 @@ spec:
         property: ca.crt
 
 ---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-dev-graph-cert
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: kb-dev-graph-cert
+  data:
+    - secretKey: cert.pem
+      remoteRef:
+        key: kb-dev-graph-cert
+
+---
 # Source: qnsc-service/templates/slo.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
