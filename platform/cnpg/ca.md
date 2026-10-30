@@ -7,11 +7,14 @@ Nothing ever renews the CA.
 
 ```bash
 # one CA per env; 3650 days ≈ 10 years; DELETE both files after upload
-openssl req -x509 -newkey rsa:3072 -days 3650 -noenc \
+# CNPG loads ONLY an ECDSA key in SEC1 form ("EC PRIVATE KEY", pkg/certs
+# ParseECPrivateKey). RSA or PKCS#8 fails: "invalid private key PEM block type".
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -days 3650 -noenc \
   -subj "/CN=qnsc-cnpg-ca-<env>" \
   -addext "basicConstraints=critical,CA:TRUE" \
   -addext "keyUsage=critical,keyCertSign,cRLSign" \
-  -keyout ca-<env>.key -out ca-<env>.crt
+  -keyout ca-<env>.pk8 -out ca-<env>.crt
+openssl ec -in ca-<env>.pk8 -out ca-<env>.key && rm ca-<env>.pk8   # PKCS#8 -> SEC1
 
 # upload as ONE vault secret (crt then key), then remove the copies
 cat ca-<env>.crt ca-<env>.key \
@@ -31,7 +34,7 @@ kubectl -n data-<env> create secret generic <cluster>-ca \
       | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/') \
   --from-file=ca.key=<(az keyvault secret show --vault-name kv-qnsc-admin \
         --name platform-cnpg-ca-<env> --query value -o tsv \
-      | awk '/BEGIN PRIVATE KEY/,/END PRIVATE KEY/')
+      | awk '/BEGIN EC PRIVATE KEY/,/END EC PRIVATE KEY/')
 kubectl -n data-<env> create secret generic <cluster>-ca-pub \
   --from-file=ca.crt=<(az keyvault secret show --vault-name kv-qnsc-admin \
         --name platform-cnpg-ca-<env> --query value -o tsv \

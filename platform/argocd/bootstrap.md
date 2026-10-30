@@ -71,6 +71,9 @@ kubectl -n argocd rollout status deploy/argocd-server
 # 5. Hand over.
 kubectl apply -f apps/root.yaml
 kubectl -n argocd get applications -w     # wave -3 -> 2; names and health only
+#    First install (2026-10-31): platform-prometheus-crds (CRDs only) sat at Progressing
+#    and held root; one refresh cleared it:
+#    kubectl -n argocd annotate application platform-prometheus-crds argocd.argoproj.io/refresh=normal --overwrite
 ```
 
 The repo is public, so ArgoCD needs no repository credential.
