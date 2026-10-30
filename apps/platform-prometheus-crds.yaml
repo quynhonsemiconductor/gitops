@@ -1,0 +1,30 @@
+# prometheus-operator CRDs only. Every product chart renders a PrometheusRule and ArgoCD refuses to sync when
+# monitoring.coreos.com cannot be discovered (bootstrap rehearsal 2026-10-26). Delete this when k8s-monitoring
+# (PLT-H2) brings the CRDs or the chart's PrometheusRule SLOs are removed (PLT-H3).
+# Sync wave -3 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
+# each wave's Applications to be Healthy (argocd-cm Application health customization,
+# platform/argocd/values.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-prometheus-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: prometheus-operator-crds
+      targetRevision: "32.0.2"   # keep in step with versions.yaml
+      helm:
+        releaseName: prometheus-operator-crds
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

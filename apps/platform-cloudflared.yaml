@@ -1,0 +1,27 @@
+# cloudflared `qnsc-apps` — traffic arrives last (§11.2). Its ingress rules are remote (infra/live/onprem).
+# Sync wave 2 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
+# each wave's Applications to be Healthy (argocd-cm Application health customization,
+# platform/argocd/values.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-cloudflared
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/cloudflared
+      directory: { include: "deployment.yaml" }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

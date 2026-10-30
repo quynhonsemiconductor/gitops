@@ -23,65 +23,16 @@ alloy/         the host-side collector config — ONPREM-PLAN §12 replaces the
                chart (platform PR, M-2)
 clamd/         the shared antivirus daemon — §4c, task 2.7. Deployed but UNUSED
                until task 3.1 repoints qnsc-kb off its sidecar; not dead code
-argocd/        ArgoCD's Helm values (§5b) and the cluster-registration Secrets so
-               appsets/products.yaml's destination.name dev/prod resolves
+argocd/        ArgoCD's Helm values (§5b), the bootstrap procedure, and the local-admin
+               ExternalSecret
 ```
 
-## On-prem apply order (ONPREM-PLAN §14; supersedes the list below on-prem)
+## Bootstrap (ONPREM-PLAN §14)
 
-The order below is the EKS-era bootstrap. On the single k3s node the order is:
-
-```
-1  namespaces/onprem.yaml  the qnsc.vn/env labels select the ClusterSecretStores
-2  policy/                 admission.yaml THEN bindings.yaml
-3  eso/                    operator, then stores-onprem.yaml — the three Azure
-                           stores go Valid only once the hand-applied SP
-                           certificate Secrets exist (§14 step 2); cnpg-ca stays
-                           NotReady until the clusters exist, which is expected
-4  cert-manager/           before the barman plugin (its mTLS)
-5  cnpg/                   operator + plugin, then imagecatalog.yaml
-6  valkey/ + networkpolicy/  the data plane, bounded from day one
-7  argocd/                 ArgoCD itself (§14 step 3)
-8  gitops/apps/root.yaml   ArgoCD takes over; waves per §11.2
-
-The CNPG CA is NOT a chart step: it is generated once and hand-applied with the
-bootstrap Secrets (§14 step 2) — see cnpg/ca.md. There is no Reloader and no
-ca-sync: the CA is static (2026-10-23 review, plan §5.6).
-```
-
-## EKS-era apply order (superseded on-prem)
-
-```
-1  namespaces/          the labels must exist before anything selects on them
-2  policy/              admission.yaml THEN bindings.yaml — a policy with no
-                        binding enforces nothing, and nothing says so
-3  eso/                 operator
-4  alloy/               one collector; nothing resolves another tier's DNS
-                        (the gateway layer was removed 2026-10-20, ONPREM-PLAN §13)
-
-5  cloudflared/         needs the tunnel token secret (on-prem:
-                        `platform-cloudflared-qnsc-apps`, from kv-qnsc-platform,
-                        ONPREM-PLAN §7.1). Ingress rules are REMOTELY MANAGED in
-                        the Tunnel config owned by infra/live/onprem (§5.3) — the
-                        connector only runs `tunnel run`; there is no Gateway
-                        (removed 2026-10-20, ONPREM-PLAN §13) and nothing to
-                        resolve in-cluster first.
-
-6  clamd/               a plain workload, so it needs only its namespace (step 1)
-                        and a schedulable node (step 0). Placed AFTER alloy so the
-                        freshness exporter has a collector to be scraped by, and
-                        BEFORE ArgoCD's takeover because it is bootstrap plumbing,
-                        not a reconciled product. Idle until task 3.1 — see clamd/
-7  argocd/              ArgoCD's OWN install and the credentials it needs to work:
-   7a  helm install argo-cd -f argocd/values.yaml   (creates the argocd namespace)
-   7c  argocd/clusters.yaml   the dev + prod cluster Secrets. AFTER 8a, because a
-                        cluster Secret lives in the argocd namespace and ArgoCD must
-                        exist to read it, and BEFORE 8, because products.yaml's
-                        destination.name dev/prod resolves against these — install
-                        root.yaml first and every Application reports
-                        "Cluster not found" until these land
-8  gitops/apps/root.yaml   ArgoCD takes over
-```
+Hand steps and the wave order are in `argocd/bootstrap.md`. Apart from ArgoCD itself, the
+`root` Application and the hand-made Secrets (ESO service principals, CNPG CA), every directory above is synced by an
+`../apps/platform-*.yaml` Application. The CNPG CA is generated once and hand-applied
+(`cnpg/ca.md`); there is no Reloader and no `ca-sync`.
 
 ## Scheduling
 
@@ -111,20 +62,6 @@ Loki gets FOUR labels        {cluster, namespace, app, level} and nothing else.
                              High-cardinality Loki labels are the single most
                              common way a small team turns a $50 bill into a
                              four-figure one (§9d)
-```
-
-## Before this is applied
-
-Two placeholders must be replaced, and they are placeholders because §7c cannot
-derive them — Identity Center and the cluster name mangle role ARNs:
-
-```
-eso/values.yaml          qnsc-ENV-external-secrets
-argocd/clusters.yaml     DEV_CLUSTER_ENDPOINT  and  DEV_CLUSTER_CA_DATA — from
-                         infra/live/cluster-dev, NOT a sed of ENV. The endpoint is
-                         the existing `cluster_endpoint` output; the CA is NOT an
-                         output yet and MUST be added (see below). The prod Secret
-                         is in-cluster and needs no substitution.
 ```
 
 And `versions.yaml` at the repo root pins every chart version here. **Verify each

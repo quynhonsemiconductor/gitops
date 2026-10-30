@@ -1,0 +1,37 @@
+# CloudNativePG operator and the barman-cloud plugin, both in cnpg-system (§6.2/§6.3).
+# Sync wave -1 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
+# each wave's Applications to be Healthy (argocd-cm Application health customization,
+# platform/argocd/values.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-cnpg
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  sources:
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cloudnative-pg
+      targetRevision: "0.29.1"   # keep in step with versions.yaml
+      helm:
+        releaseName: cnpg
+        valueFiles: [$values/platform/cnpg/operator.yaml]
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: plugin-barman-cloud
+      targetRevision: "0.8.1"   # keep in step with versions.yaml
+      helm:
+        releaseName: plugin-barman-cloud
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

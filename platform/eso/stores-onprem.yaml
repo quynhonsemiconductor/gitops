@@ -68,6 +68,10 @@ apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: kv-qnsc-prod
+  annotations:
+    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
+    # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
+    argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
   conditions:
     - namespaceSelector:
@@ -206,6 +210,10 @@ apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: cnpg-ca-prod
+  annotations:
+    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
+    # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
+    argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
   conditions:
     - namespaceSelector:
@@ -231,6 +239,10 @@ apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: cnpg-ca-dev
+  annotations:
+    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
+    # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
+    argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
   conditions:
     - namespaceSelector:

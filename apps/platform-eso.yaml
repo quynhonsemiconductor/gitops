@@ -1,0 +1,37 @@
+# External Secrets Operator (own namespace, §6.2) and the ClusterSecretStores. The Azure stores go Valid only after
+# the hand-applied SP certificate Secrets exist (platform/argocd/bootstrap.md).
+# Sync wave -2 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
+# each wave's Applications to be Healthy (argocd-cm Application health customization,
+# platform/argocd/values.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-eso
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  sources:
+    - repoURL: https://charts.external-secrets.io
+      chart: external-secrets
+      targetRevision: "2.11.0"   # keep in step with versions.yaml
+      helm:
+        releaseName: external-secrets
+        valueFiles: [$values/platform/eso/values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/eso
+      directory: { include: "stores-onprem.yaml" }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
