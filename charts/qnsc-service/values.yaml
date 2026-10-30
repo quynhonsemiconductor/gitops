@@ -128,7 +128,9 @@ secrets:
 #   secrets:
 #     clusterSecretStore: kv-qnsc-<env>
 #     bundle: <product>-<env>-app        # Key Vault secret (JSON) -> <product>-app
-#     db: <product>-<env>-db-app         # -> <product>-migrator (DB credentials)
+#     db: <product>-<env>-db-app         # -> <product>-db-app (api + worker, envFrom; plain-string password)
+#     dbWorker: <product>-<env>-db-worker  # optional -> <product>-db-worker (worker only)
+#     dbMigrator: <product>-<env>-db-migrator  # -> <product>-migrator (PreSync Job only)
 #     serviceBundles: { api: <product>-<env>-api }   # optional per-service split
 # bundle and db default to those names when omitted. serviceBundles is on-prem
 # only: one extra ExternalSecret per named service, attached by envFrom AFTER

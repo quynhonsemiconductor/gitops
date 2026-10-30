@@ -104,6 +104,10 @@
               "type": "string",
               "description": "Postgres role the application connects as."
             },
+            "workerUser": {
+              "type": "string",
+              "description": "Postgres role the worker connects as, when the product has a separate worker role (rova: <product>_worker). Defaults to `user`. Pair it with secrets.dbWorker."
+            },
             "migratorUser": {
               "type": "string",
               "description": "Postgres role the migrator Job connects as. ONPREM-PLAN §6.3 names the managed roles <product>_app and <product>_migrator, so when `user` is <product>_app this must be set — the default (<user>_migrator) would derive <product>_app_migrator, a role nobody created."
@@ -427,11 +431,13 @@
     "secrets": {
       "type": "object",
       "additionalProperties": false,
-      "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset clusterSecretStore = AWS shape.",
+      "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db/dbWorker/dbMigrator: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset clusterSecretStore = AWS shape.",
       "properties": {
         "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
         "bundle": { "type": "string", "description": "Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app." },
-        "db": { "type": "string", "description": "Key Vault secret behind <product>-migrator (DB credentials). Default <product>-<env>-db-app." },
+        "db": { "type": "string", "description": "Key Vault secret (plain-string password) of the runtime DB role, rendered as <product>-db-app and attached by envFrom to the api (and the worker unless dbWorker is set). Default <product>-<env>-db-app." },
+        "dbWorker": { "type": "string", "description": "Key Vault secret (plain-string password) of a separate worker DB role, rendered as <product>-db-worker and attached to worker services only. Unset = the worker uses `db`. Pair it with data.postgres.workerUser." },
+        "dbMigrator": { "type": "string", "description": "Key Vault secret (plain-string password) of the migrator DB role, rendered as <product>-migrator (PreSync hook) for the migrator Job only. Default <product>-<env>-db-migrator." },
         "serviceBundles": {
           "type": "object",
           "additionalProperties": false,

@@ -265,14 +265,23 @@ kind: SecretStore
 {{- end -}}
 {{- end }}
 
-{{/* Remote key: role "app" -> secrets.bundle (<product>-<env>-app); role "migrator" ->
-     secrets.db (<product>-<env>-db-app), the credential the plan gives the DB role. */}}
+{{/* Remote key per role (ONPREM-PLAN §6.3, §7.1). "app" -> secrets.bundle
+     (<product>-<env>-app, a JSON bundle). The DB roles are one PLAIN-STRING password
+     each, so a CNPG managed role and the app that logs in as it read the same value:
+       "db"       -> secrets.db         (<product>-<env>-db-app,      api + default worker)
+       "dbWorker" -> secrets.dbWorker   (<product>-<env>-db-worker,   optional)
+       "migrator" -> secrets.dbMigrator (<product>-<env>-db-migrator, the PreSync Job only) */}}
 {{- define "qnsc.remoteKey" -}}
 {{- $root := index . 0 -}}{{- $role := index . 1 -}}
 {{- $sec := $root.Values.secrets | default dict -}}
+{{- $p := include "qnsc.product" $root -}}{{- $e := include "qnsc.env" $root -}}
 {{- if eq $role "app" -}}
-{{- $sec.bundle | default (printf "%s-%s-app" (include "qnsc.product" $root) (include "qnsc.env" $root)) -}}
+{{- $sec.bundle | default (printf "%s-%s-app" $p $e) -}}
+{{- else if eq $role "migrator" -}}
+{{- $sec.dbMigrator | default (printf "%s-%s-db-migrator" $p $e) -}}
+{{- else if eq $role "dbWorker" -}}
+{{- $sec.dbWorker | default (printf "%s-%s-db-worker" $p $e) -}}
 {{- else -}}
-{{- $sec.db | default (printf "%s-%s-db-app" (include "qnsc.product" $root) (include "qnsc.env" $root)) -}}
+{{- $sec.db | default (printf "%s-%s-db-app" $p $e) -}}
 {{- end -}}
 {{- end }}

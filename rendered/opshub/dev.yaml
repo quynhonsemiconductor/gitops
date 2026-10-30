@@ -206,6 +206,8 @@ spec:
                 name: opshub-app
             - secretRef:
                 name: opshub-api-bundle
+            - secretRef:
+                name: opshub-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -332,6 +334,8 @@ spec:
           envFrom:
             - secretRef:
                 name: opshub-app
+            - secretRef:
+                name: opshub-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -501,8 +505,27 @@ spec:
     kind: ClusterSecretStore
   target:
     name: opshub-migrator
-  dataFrom:
-    - extract:
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: opshub-dev-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
         key: opshub-dev-db-app
 
 ---
@@ -565,6 +588,24 @@ spec:
       remoteRef:
         key: pg-dev-ca-pub
         property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-dev-graph-cert
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-dev-graph-cert
+  data:
+    - secretKey: cert.pem
+      remoteRef:
+        key: opshub-dev-graph-cert
 
 ---
 # Source: qnsc-service/templates/slo.yaml

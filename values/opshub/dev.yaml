@@ -99,16 +99,17 @@ defaults:
 
 # ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
 # Setting clusterSecretStore switches the chart to the on-prem shape: no
-# per-namespace AWS SecretStore is rendered. Two ExternalSecrets extract one
-# Key Vault JSON bundle each:
+# per-namespace AWS SecretStore is rendered. ExternalSecrets read Key Vault through the ClusterSecretStore:
 #   opshub-app      <- kv-qnsc-dev/opshub-dev-app   (secrets.bundle; app env vars)
-#   opshub-migrator <- kv-qnsc-dev/opshub-dev-db-app (secrets.db; DB roles, PreSync wave -1)
+#   opshub-db-app   <- kv-qnsc-dev/opshub-dev-db-app (secrets.db; api + worker password, envFrom)
+#   opshub-migrator <- kv-qnsc-dev/opshub-dev-db-migrator (secrets.dbMigrator; PreSync wave -1)
 # plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
 # secretsReaderServiceAccount stays unset — it is the AWS shape only.
 secrets:
   clusterSecretStore: kv-qnsc-dev
   bundle: opshub-dev-app
   db: opshub-dev-db-app
+  dbMigrator: opshub-dev-db-migrator
   # The api-only split the opshub env schema DEMANDS: the worker REFUSES TO
   # START with BETTER_AUTH_SECRET / ENTRA_CLIENT_SECRET / EDGE_CLIENT_IP_SECRET
   # (+PREVIOUS), and the API refuses GRAPH_* — so those can never share the
