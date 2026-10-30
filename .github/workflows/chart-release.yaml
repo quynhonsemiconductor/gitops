@@ -1,14 +1,11 @@
 name: chart-release
 
-# Publish the chart to ECR AND to GHCR as OCI artefacts. §11c, task 1.8; the
-# GHCR push is the on-prem path (ONPREM-PLAN §11.1) and runs in parallel with
-# ECR until the AWS cutover.
+# Publish the chart to GHCR as an OCI artefact (ONPREM-PLAN §11.1). §11c, task 1.8.
 #
 # §11c requires the version to be pinned PER APPLICATION, and a pin is only
 # meaningful if the thing it points at cannot change underneath it. So this
-# publishes ONCE per version and ECR tag immutability makes a second push fail —
-# the same property §11 requires of images, applied to the artefact with more
-# reach.
+# publishes ONCE per version: GHCR has no tag-immutability setting, so the
+# fails-closed pre-push check below is the guard.
 #
 # Releasing is deliberately manual. A chart that published on every merge to main
 # would reach every Application the moment someone bumped a pin, and §11c's whole
@@ -21,15 +18,10 @@ on:
 
 permissions:
   contents: read
-  id-token: write
   packages: write   # push the chart to GHCR as a public OCI artefact (§11.1)
 
 env:
-  REGISTRY: 608983206583.dkr.ecr.ap-southeast-1.amazonaws.com
-  AWS_REGION: ap-southeast-1
-  # The on-prem registry (ONPREM-PLAN §11.1): the chart is published to BOTH
-  # registries until the AWS cutover, then the ECR push is deleted. GHCR names
-  # an OCI package by its full repository PATH, so pushing the chart
+  # GHCR names an OCI package by its full repository PATH, so pushing the chart
   # `qnsc-service` to oci://ghcr.io/quynhonsemiconductor/charts creates and
   # fills the package charts/qnsc-service; the tag is the chart version, as OCI
   # convention requires.
@@ -40,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # Nothing here pushes a git ref — the chart is published to ECR as an
+        # Nothing here pushes a git ref — the chart is published to GHCR as an
         # OCI artefact, and the tag bump happens in `ci`'s bump-gitops-tag with
         # its own token. A persisted credential would have nothing to do.
         with: { persist-credentials: false }
@@ -70,52 +62,6 @@ jobs:
             echo "::error::rendered/ is stale at this tag. The golden render is the review artefact (§11c); publishing without it defeats the gate."
             exit 1
           }
-
-      - uses: quynhonsemiconductor/ci/actions/setup-aws-oidc@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
-        id: aws
-        with:
-          # ── DERIVED, NOT CONFIGURED, AND NOT A SECRET ──────────────────────────
-          # This read `secrets.CHART_PUBLISH_ROLE_ARN`, and that secret was never
-          # created — so the workflow would have failed at this step, and six chart
-          # versions got published by hand from a laptop instead. A gate nobody can
-          # pass is a gate everybody routes around, so the fix is to leave nothing to
-          # set up.
-          #
-          # A ROLE ARN IS NOT A SECRET. The estate says so itself, in
-          # rova/infra/live/develop/variables.tf: "These are NOT secrets… a Cloudflare
-          # account id identifies the account without authorising anything." Naming a
-          # role authorises nothing; assuming it still requires a matching OIDC
-          # subject, and `infra/live/bootstrap` scopes that to
-          # `refs/tags/chart-v*` — so a branch push cannot publish a chart.
-          #
-          # The role NAME is fixed and the account id is already an org variable, so
-          # the ARN is derived and there is no third thing to keep in step.
-          role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/qnsc-chart-publish
-          region: ${{ env.AWS_REGION }}
-          ecr-login: true
-
-      # ── REFUSE A VERSION THE REGISTRY ALREADY HAS ────────────────────────────
-      # `charts/qnsc-service` is IMMUTABLE, so a duplicate push fails — but it fails
-      # inside `helm push` with a registry error that reads like a transport problem,
-      # and the obvious response is to retry it. Checking first turns that into one
-      # sentence naming the actual cause.
-      #
-      # It happens for a real reason: versions 0.2.0 to 0.7.0 were published by hand
-      # while this workflow could not authenticate, so those numbers are taken and CI
-      # can never mint them. Immutability is why that is permanent, and also why it is
-      # safe — a published chart cannot be quietly changed underneath a pinned
-      # Application.
-      - name: Version must not already be published
-        run: |
-          set -euo pipefail
-          version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
-          if aws ecr describe-images --repository-name charts/qnsc-service \
-               --image-ids imageTag="${version}" >/dev/null 2>&1; then
-            echo "::error::charts/qnsc-service:${version} is already published and this repository is IMMUTABLE."
-            echo "Bump the version in Chart.yaml and tag again — a published chart cannot be replaced (§11c)."
-            exit 1
-          fi
-          echo "::notice::${version} is free to publish"
 
       - name: Log in to GHCR
         env:
@@ -185,21 +131,7 @@ jobs:
           helm package charts/qnsc-service --destination /tmp
           version=$(grep -E '^version:' charts/qnsc-service/Chart.yaml | awk '{print $2}')
 
-          # GHCR FIRST: the on-prem registry is the one that must not be
-          # stranded. If this fails, nothing was published anywhere and the tag
-          # can simply be re-pushed.
           helm push "/tmp/qnsc-service-${version}.tgz" "oci://${GHCR_NAMESPACE}"
           echo "::notice::published oci://${GHCR_NAMESPACE}/qnsc-service:${version} (GHCR)"
-
-          # ECR second, until the AWS cutover; delete this push then (§11.1).
-          # Fails if the version already exists — ECR tag immutability is set on
-          # the chart repository for exactly this reason (§11c). Residual gap, a
-          # deliberate trade: if THIS push fails after the GHCR one succeeded,
-          # the version is now on GHCR only, and both pre-push checks refuse a
-          # re-tag — recovery is a manual
-          # `aws ecr batch-delete-image --repository-name charts/qnsc-service
-          # --image-ids imageTag=<version>` before re-tagging.
-          helm push "/tmp/qnsc-service-${version}.tgz" "oci://${REGISTRY}/charts"
-          echo "::notice::published charts/qnsc-service:${version} (ECR)"
 
           echo "::notice::bump ONE dev Application in appsets/products.yaml, soak, then the rest (§11c)"
