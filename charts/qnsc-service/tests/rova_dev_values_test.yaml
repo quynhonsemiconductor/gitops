@@ -1,0 +1,55 @@
+suite: rova dev values (per-value secrets)
+# The real values/rova/dev.yaml, no fixture overlay: what ArgoCD will render.
+templates:
+  - templates/externalsecret.yaml
+  - templates/deployment.yaml
+  - templates/job.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+
+tests:
+  - it: maps every shared secret to its own Key Vault secret and the api-only one separately
+    template: templates/externalsecret.yaml
+    asserts:
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: COOKIE_SECRET, remoteRef: { key: rova-dev-cookie-secret } }
+            - { secretKey: CSRF_SECRET, remoteRef: { key: rova-dev-csrf-secret } }
+            - { secretKey: ENTRA_CLIENT_SECRET, remoteRef: { key: rova-dev-entra-client-secret } }
+            - { secretKey: STORAGE_ACCESS_KEY_ID, remoteRef: { key: rova-dev-storage-access-key-id } }
+            - { secretKey: STORAGE_SECRET_ACCESS_KEY, remoteRef: { key: rova-dev-storage-secret-access-key } }
+        documentSelector: { path: metadata.name, value: rova-env }
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-dev-better-auth-secret } }
+            - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-dev-platform-admin-emails } }
+        documentSelector: { path: metadata.name, value: rova-env-api }
+
+  - it: renders no rova-app bundle ExternalSecret and no bundle envFrom
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: rova-app } }
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: rova-env-api } }
+
+  - it: the worker logs in as rova_worker with its own password and never sees the api-only secret
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_USER, value: rova_worker }
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: rova-db-worker } }
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: rova-env-api } }
