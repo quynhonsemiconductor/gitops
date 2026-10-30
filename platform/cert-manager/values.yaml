@@ -1,7 +1,9 @@
 # cert-manager (ONPREM-PLAN §5.1, §6.3)
 #
+# Namespace declared in ../namespaces/onprem.yaml (no --create-namespace).
+#
 # helm upgrade --install cert-manager cert-manager/cert-manager \
-#   -n cert-manager --create-namespace \
+#   -n cert-manager \
 #   -f cert-manager/values.yaml --version <versions.yaml: platform.cert-manager.version>
 #
 # Needed ONPREM for exactly one thing today: the barman plugin's mTLS (§5.1).

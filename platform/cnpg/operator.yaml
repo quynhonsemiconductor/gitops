@@ -1,8 +1,13 @@
 # ── CloudNativePG operator + barman plugin (ONPREM-PLAN §6.3) ───────────────
 #
+# Both charts install into `cnpg-system` (ONPREM-PLAN §6.2), declared in
+# ../namespaces/onprem.yaml (no --create-namespace). The data-prod NetworkPolicy
+# admits the operator only from that namespace, so an install anywhere else leaves
+# it unable to reach the instances.
+#
 # helm upgrade --install cnpg cloudnative-pg/cloudnative-pg \
-#   -n cnpg-system --create-namespace \
-#   -f cnpg/values-operator.yaml --version <versions.yaml: platform.cloudnative-pg.version>
+#   -n cnpg-system \
+#   -f cnpg/operator.yaml --version <versions.yaml: platform.cloudnative-pg.version>
 #
 # helm upgrade --install plugin-barman-cloud cloudnative-pg/plugin-barman-cloud \
 #   -n cnpg-system \

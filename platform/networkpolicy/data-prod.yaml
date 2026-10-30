@@ -13,6 +13,10 @@
 # R2, GHCR) without this file becoming a allowlist that only breaks on Fridays.
 #
 # kubectl apply -f networkpolicy/data-prod.yaml   (wave −3, after namespaces/)
+#
+# `cnpg-system` below is where the CNPG operator and the barman plugin run
+# (../namespaces/onprem.yaml, ../cnpg/operator.yaml): the selectors match its
+# kubernetes.io/metadata.name, so the operator must be installed THERE.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
