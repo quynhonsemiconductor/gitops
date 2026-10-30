@@ -60,8 +60,15 @@ spec:
                 limits:
                   memory: {{ $svc.resources.memory | default $d.resources.memory }}
               envFrom:
+                {{- if include "qnsc.perValueEnv" $ }}
+                {{- if $.Values.secrets.env }}
+                - secretRef:
+                    name: {{ include "qnsc.product" $ }}-env
+                {{- end }}
+                {{- else }}
                 - secretRef:
                     name: {{ include "qnsc.product" $ }}-app
+                {{- end }}
               {{- with $svc.env }}
               env:
                 {{- toYaml . | nindent 16 }}

@@ -327,8 +327,21 @@ spec:
                  (§8); attaching it here is what makes it reach a process. */}}
           envFrom:
             {{- if $.Values.data }}
+            {{- if include "qnsc.perValueEnv" $ }}
+            {{- /* Per-value secrets (secrets.env): one Secret for every service; the
+                   api-only one only for http services. See externalsecret.yaml. */}}
+            {{- if $.Values.secrets.env }}
+            - secretRef:
+                name: {{ include "qnsc.product" $ }}-env
+            {{- end }}
+            {{- if and $.Values.secrets.envApiOnly (eq $svc.kind "http") }}
+            - secretRef:
+                name: {{ include "qnsc.product" $ }}-env-api
+            {{- end }}
+            {{- else }}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-app
+            {{- end }}
             {{- /* Per-service bundle (secrets.serviceBundles, on-prem only): AFTER
                    the shared one, so its keys win any collision. See
                    externalsecret.yaml for why a product needs this. */}}

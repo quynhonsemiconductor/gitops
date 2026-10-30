@@ -434,7 +434,19 @@
       "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db/dbWorker/dbMigrator: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset clusterSecretStore = AWS shape.",
       "properties": {
         "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
-        "bundle": { "type": "string", "description": "Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app." },
+        "bundle": { "type": "string", "description": "DEPRECATED (use env). Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app. Cannot be combined with env / envApiOnly." },
+        "env": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "additionalProperties": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,127}$" },
+          "description": "ON-PREM: one Key Vault secret per value. Map of ENV_VAR_NAME -> Key Vault secret name (a plain string). Rendered as ExternalSecret <product>-env (one data entry per variable) and attached by envFrom to every service and cronjob, not the migrator Job. Replaces secrets.bundle."
+        },
+        "envApiOnly": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "additionalProperties": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,127}$" },
+          "description": "Same as env, rendered as <product>-env-api and attached to http services only (a secret a worker must not hold). A variable cannot be in both maps."
+        },
         "db": { "type": "string", "description": "Key Vault secret (plain-string password) of the runtime DB role, rendered as <product>-db-app and attached by envFrom to the api (and the worker unless dbWorker is set). Default <product>-<env>-db-app." },
         "dbWorker": { "type": "string", "description": "Key Vault secret (plain-string password) of a separate worker DB role, rendered as <product>-db-worker and attached to worker services only. Unset = the worker uses `db`. Pair it with data.postgres.workerUser." },
         "dbMigrator": { "type": "string", "description": "Key Vault secret (plain-string password) of the migrator DB role, rendered as <product>-migrator (PreSync hook) for the migrator Job only. Default <product>-<env>-db-migrator." },

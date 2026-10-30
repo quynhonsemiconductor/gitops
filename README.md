@@ -117,6 +117,24 @@ the appset TEMPLATE   EVERY Application at once         rare, and reviewed as su
 If the eight axes cannot express the product, **the chart gains a field**. A product
 that hand-writes a manifest is the seven-copies problem returning (§5).
 
+## App secrets on-prem: one Key Vault secret per value
+
+With `secrets.clusterSecretStore` set, a product's secret environment variables are listed in
+its values file, one Key Vault secret per value (chart 0.14.0):
+
+```yaml
+secrets:
+  clusterSecretStore: kv-qnsc-dev
+  env:         { COOKIE_SECRET: rova-dev-cookie-secret }          # every service and cronjob
+  envApiOnly:  { BETTER_AUTH_SECRET: rova-dev-better-auth-secret } # http services only
+```
+
+Each entry becomes one `data` item of the `<product>-env` (`-env-api`) ExternalSecret; the
+Key Vault secret is a plain string. Non-secret configuration stays in `defaults.env` /
+`services.<x>.env`. `secrets.bundle` (one JSON secret) is deprecated and the chart refuses to
+render it together with `env`/`envApiOnly`. The migrator Job gets neither map: it reads only the
+DB credentials (`secrets.dbMigrator`).
+
 ## Working on the chart
 
 ```bash

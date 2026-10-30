@@ -127,7 +127,9 @@ secrets:
 # secrets.clusterSecretStore; unset = the AWS shape. On-prem values:
 #   secrets:
 #     clusterSecretStore: kv-qnsc-<env>
-#     bundle: <product>-<env>-app        # Key Vault secret (JSON) -> <product>-app
+#     bundle: <product>-<env>-app        # DEPRECATED. Key Vault secret (JSON) -> <product>-app. Use env.
+#     env: { ENV_VAR: <kv-secret-name> } # one Key Vault secret per value -> <product>-env (every service)
+#     envApiOnly: { ENV_VAR: <kv-secret-name> }  # -> <product>-env-api (http services only)
 #     db: <product>-<env>-db-app         # -> <product>-db-app (api + worker, envFrom; plain-string password)
 #     dbWorker: <product>-<env>-db-worker  # optional -> <product>-db-worker (worker only)
 #     dbMigrator: <product>-<env>-db-migrator  # -> <product>-migrator (PreSync Job only)
