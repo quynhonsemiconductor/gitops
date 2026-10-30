@@ -1,0 +1,139 @@
+# ── pg-dev: the dev Postgres, rova's part only (ONPREM-PLAN §6.3, §5.7) ──────
+#
+# ONE cluster for all dev products (`pg-dev` in `data-dev`, databases rova / opshub /
+# kb); this PR adds the rova database and roles, opshub and kb join with their moves.
+# values/rova/dev.yaml already points at pg-dev-rw.data-dev.svc.
+#
+# Roles are CNPG MANAGED roles whose passwords are plain-string Key Vault secrets
+# (<product>-dev-db-*), synced here as kubernetes.io/basic-auth Secrets. The chart
+# reads the SAME Key Vault secrets (secrets.db / dbWorker / dbMigrator), so a role and
+# the app that logs in as it cannot disagree, and a rebuilt cluster gets the same
+# passwords. rova_migrator owns the database (initdb), as the data-move runbook expects.
+#
+# TLS: provided-CA mode (cnpg/ca.md). The static CA Secret `pg-dev-ca` is hand-applied
+# into data-dev BEFORE this syncs; CNPG issues and renews the server certificate itself.
+#
+# Dev is dump-only (§6.3: "pg_dump only, no WAL archiving"), so there is deliberately
+# NO barman plugin / ObjectStore here. The nightly pg_dump CronJob is PLT-B7.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-dev
+  namespace: data-dev
+spec:
+  instances: 1
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: postgresql
+    major: 18
+  storage:
+    size: 30Gi
+  walStorage:
+    size: 10Gi
+  resources:
+    # §5.7: 500m / 2 Gi, memory limit = request, no CPU limit.
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 2Gi }
+  postgresql:
+    parameters:
+      timezone: UTC
+      max_connections: "100"
+      shared_buffers: 512MB
+      work_mem: 8MB
+      maintenance_work_mem: 256MB   # pgvector HNSW builds (kb)
+  certificates:
+    serverCASecret: pg-dev-ca
+  bootstrap:
+    initdb:
+      database: rova
+      owner: rova_migrator
+      secret:
+        name: pg-dev-rova-migrator
+  managed:
+    roles:
+      - name: rova_app
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-rova-app
+      - name: rova_worker
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-rova-worker
+      - name: rova_migrator
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-rova-migrator
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-rova-app
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-rova-app
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_app
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-dev-db-app
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-rova-worker
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-rova-worker
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_worker
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-dev-db-worker
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-rova-migrator
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-rova-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-dev-db-migrator
