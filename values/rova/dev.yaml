@@ -100,15 +100,15 @@ defaults:
     - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova-dev@qnsc.vn" }
     - { name: MAIL_GRAPH_CLIENT_ID, value: "ba917ac2-3580-43ef-a8c1-c8cb6288651a" }
-    # §6.5 — the renamed dev buckets (rova-develop-* → rova-dev-*; created and
-    # seeded in the same cutover apply, old bucket read-only for two weeks). R2
+    # The existing rova-develop-* buckets (infra live/storage-dev), kept under
+    # their physical names (owner decision 2026-10-31: no rename/copy). R2
     # credentials are NOT here — they are secrets.env (rova-dev-storage-*).
-    - { name: S3_ATTACHMENTS_BUCKET, value: "rova-dev-attachments" }
-    - { name: S3_PUBLIC_ASSETS_BUCKET, value: "rova-dev-public-assets" }
+    - { name: S3_ATTACHMENTS_BUCKET, value: "rova-develop-attachments" }
+    - { name: S3_PUBLIC_ASSETS_BUCKET, value: "rova-develop-public-assets" }
     - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
     - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
-    # The public-assets custom domain moves to the new bucket in the same
-    # live/edge apply (§6.5); it is a CDN base URL, not a credential.
+    # The public-assets custom domain is already on rova-develop-public-assets
+    # (live/storage-dev); it is a CDN base URL, not a credential.
     - { name: CDN_PUBLIC_ASSETS_BASE_URL, value: "https://rova-assets-dev.qnsc.vn" }
 
 # ── ON-PREM SECRET SHAPE (chart 0.14.0, ONPREM-PLAN §5.6) ────────────────────

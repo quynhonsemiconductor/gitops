@@ -198,9 +198,9 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: ba917ac2-3580-43ef-a8c1-c8cb6288651a
             - name: S3_ATTACHMENTS_BUCKET
-              value: rova-dev-attachments
+              value: rova-develop-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
-              value: rova-dev-public-assets
+              value: rova-develop-public-assets
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
@@ -344,9 +344,9 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: ba917ac2-3580-43ef-a8c1-c8cb6288651a
             - name: S3_ATTACHMENTS_BUCKET
-              value: rova-dev-attachments
+              value: rova-develop-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
-              value: rova-dev-public-assets
+              value: rova-develop-public-assets
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
@@ -496,9 +496,9 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: ba917ac2-3580-43ef-a8c1-c8cb6288651a
             - name: S3_ATTACHMENTS_BUCKET
-              value: rova-dev-attachments
+              value: rova-develop-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
-              value: rova-dev-public-assets
+              value: rova-develop-public-assets
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
