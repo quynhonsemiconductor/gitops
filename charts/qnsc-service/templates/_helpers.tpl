@@ -285,3 +285,25 @@ kind: SecretStore
 {{- $sec.db | default (printf "%s-%s-db-app" $p $e) -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+PER-VALUE APP SECRETS (ON-PREM, chart 0.14.0). `secrets.env` and `secrets.envApiOnly` are maps
+ENV_VAR_NAME: <Key Vault secret name>, one Key Vault secret per VALUE (the JSON `secrets.bundle`
+is deprecated). Returns "true" when either map is non-empty, and fails the render on the
+combinations that cannot work:
+  - no secrets.clusterSecretStore (per-value secrets are the on-prem shape only)
+  - secrets.bundle set at the same time: a bundle's keys are opaque to the chart, so it cannot tell
+    whether the two overlap; a product uses ONE mechanism
+  - the same variable in secrets.env and secrets.envApiOnly
+*/}}
+{{- define "qnsc.perValueEnv" -}}
+{{- $sec := .Values.secrets | default dict -}}
+{{- $env := $sec.env | default dict -}}
+{{- $api := $sec.envApiOnly | default dict -}}
+{{- if or $env $api -}}
+{{- if not (include "qnsc.onpremStore" .) -}}{{- fail "secrets.env / secrets.envApiOnly require secrets.clusterSecretStore (the on-prem secret shape)" -}}{{- end -}}
+{{- if $sec.bundle -}}{{- fail "secrets.bundle is deprecated and cannot be combined with secrets.env / secrets.envApiOnly: move every key of the bundle to secrets.env (one Key Vault secret per value) and remove secrets.bundle" -}}{{- end -}}
+{{- range $k, $_ := $api -}}{{- if hasKey $env $k -}}{{- fail (printf "%s is set in both secrets.env and secrets.envApiOnly" $k) -}}{{- end -}}{{- end -}}
+true
+{{- end -}}
+{{- end }}
