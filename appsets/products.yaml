@@ -39,16 +39,11 @@ spec:
     # ── dev ──────────────────────────────────────────────────────────────────
     - list:
         elements:
-          # qnsc-kb migrates FIRST (§17 step 2). Production has no state file, so
-          # dev is genuinely low-risk — and it proves more of the chart than
-          # anything else: PgBouncer, the migrator role, the worker kind, a 1.5 GB
-          # model needing a startupProbe, and the clamav sidecar.
-          # chartVersion 0.11.2, NOT 0.11.1: 0.11.1 has the PreSync deadlock (the
-          # migrator hook runs before its ServiceAccount exists on a first deploy).
-          # Fixed in 0.11.2 (gitops#45) — never pin 0.11.1.
-          - { product: kb,     env: dev, chartVersion: "0.12.1" }
-          - { product: opshub, env: dev, chartVersion: "0.12.1" }
-          - { product: rova,   env: dev, chartVersion: "0.12.1" }
+          # rova dev only until each other product moves (kb and opshub rows return with
+          # their dev moves; today they would sit Degraded). Chart 0.13.0 is the on-prem
+          # secrets shape (db-migrator / db-worker passwords, graph cert ExternalSecret).
+          # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
+          - { product: rova,   env: dev, chartVersion: "0.13.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is

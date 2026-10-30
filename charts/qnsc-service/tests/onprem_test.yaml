@@ -203,7 +203,7 @@ tests:
       secrets.workerOnly.graphCert: ""
     asserts:
       - hasDocuments:
-          count: 3        # rova-app, rova-migrator, rova-db-app and nothing for the cert
+          count: 4        # rova-app, rova-migrator, rova-db-app, rova-db-worker and nothing for the cert
 
   - it: renders nothing when secrets.workerOnly.graphCert is unset
     # Empty strings, because rova's dev values now wire the on-prem graph
@@ -259,7 +259,7 @@ tests:
       data.postgres.caFile: ""   # the fixture carries the on-prem caFile; this test counts only the bundle ExternalSecrets
     asserts:
       - hasDocuments:
-          count: 4          # rova-app + rova-migrator + rova-db-app + rova-dev-graph-cert (+ no SecretStore)
+          count: 5          # rova-app + rova-migrator + rova-db-app + rova-db-worker + rova-dev-graph-cert (+ no SecretStore)
       - equal:
           path: spec.secretStoreRef
           value: { name: kv-qnsc-dev, kind: ClusterSecretStore }
@@ -368,9 +368,9 @@ tests:
       # count 4 IS the "no worker bundle, no SecretStore" assertion:
       # helm-unittest fails a documentSelector that matches nothing, so absence
       # of rova-worker-bundle can only be asserted through the count.
-      # (rova-app, rova-migrator, rova-db-app, rova-dev-graph-cert, rova-api-bundle)
+      # (rova-app, rova-migrator, rova-db-app, rova-db-worker, rova-dev-graph-cert, rova-api-bundle)
       - hasDocuments:
-          count: 5
+          count: 6
 
   - it: attaches the per-service bundle AFTER the shared one on its service only (later envFrom wins)
     template: templates/deployment.yaml
@@ -399,7 +399,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           value:
             - secretRef: { name: rova-app }
-            - secretRef: { name: rova-db-app }
+            - secretRef: { name: rova-db-worker }
 
   - it: gives the worker its own DB password and role when the product has a worker role
     template: templates/deployment.yaml
