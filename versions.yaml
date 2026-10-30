@@ -78,6 +78,10 @@ platform:
     chart: plugin-barman-cloud
     repo: https://cloudnative-pg.github.io/charts
     version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
+  prometheus-operator-crds:
+    chart: prometheus-operator-crds
+    repo: https://prometheus-community.github.io/helm-charts
+    version: "32.0.2"          # CRDs only (apps/platform-prometheus-crds.yaml); goes when k8s-monitoring lands
   postgresql:
     # ImageCatalog pin (§6.3) — `standard` = the flavour carrying pgvector
     # (pg-dev's `kb` database needs it). Digest verified 2026-10-20 against

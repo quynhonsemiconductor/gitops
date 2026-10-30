@@ -13,6 +13,8 @@ kind: AppProject
 metadata:
   name: products
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"   # before the ApplicationSet (wave 1) that references it
 spec:
   description: Product workloads. One Application per (product, environment).
 

@@ -1,15 +1,12 @@
-# The app-of-apps. The ONE thing installed by hand; everything else follows.
+# The app-of-apps. The ONE manifest applied by hand after ArgoCD is installed
+# (platform/argocd/bootstrap.md); everything else follows, in sync-wave order
+# (ONPREM-PLAN §11.2): the AppProject, the platform-* Applications under apps/, and
+# the ApplicationSet under appsets/ (wave 1, so products come after the platform).
 #
-# §13 lists "ArgoCD's own bootstrap — the chicken-and-egg: who installs the
-# installer" as a known unknown. This is the answer: OpenTofu creates the cluster
-# and installs ArgoCD from the version pinned in versions.yaml, then applies this
-# single Application. From that point ArgoCD manages the AppProject, both
-# ApplicationSets, and — through them — every product.
-#
-# Which means the rebuild rehearsal §13 demands has a defined path: recreate the
-# cluster, install ArgoCD, apply this file, wait. Time it, and write the number
-# into §13. Until that has been done, the RTO figures there are estimates and the
-# document says so.
+# appsets/ is a second source of THIS Application. The earlier comment excluded it to
+# avoid "a cycle nobody enjoys debugging at 2am", but nothing here cycles: the
+# ApplicationSet generates product Applications, never this one, and leaving it out
+# meant a hand-applied object that no pin or review ever touched (PLT-H1).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,16 +16,19 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://github.com/quynhonsemiconductor/gitops
-    targetRevision: main
-    path: apps
-    directory:
-      recurse: false
-      # appsets/ is deliberately excluded from this path and picked up by the
-      # ApplicationSet controller directly — an app-of-apps that also manages the
-      # generators that manage it is a cycle nobody enjoys debugging at 2am.
-      include: "*.yaml"
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: apps
+      directory:
+        recurse: false
+        include: "*.yaml"
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: appsets
+      directory:
+        recurse: false
+        include: "*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

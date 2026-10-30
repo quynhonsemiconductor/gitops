@@ -1,236 +1,98 @@
 # Bootstrap — who installs the installer
 
-§13 lists this as an unresolved unknown: *"ArgoCD's own bootstrap — the
-chicken-and-egg: who installs the installer."* This is the answer, and it exists
-so §13's rebuild rehearsal has a path to follow and time.
+ONPREM-PLAN §14. Git holds everything except a few hand-made things: ArgoCD itself, the
+`root` Application, the ESO service-principal Secrets and the static CNPG CA. Every
+platform component (ESO, cert-manager, CNPG + barman plugin, Valkey, cloudflared, the
+admission policies, the namespaces) is an Application under `../../apps/platform-*.yaml`,
+ordered by sync wave (§11.2) and managed by `root`.
 
-**Rehearsed 2026-10-26** on a local k3s (k3d, k3s 1.33, arm64 Mac) following
-exactly these steps. What the rehearsal found, and where each fix landed:
+Never put a secret value in argv or Git. Every secret below goes in through stdin.
 
-```
-products.yaml was not appliable   per-generator templates failed CRD
-                                  validation; chart pins named a version that
-                                  does not exist      → gitops PR #39 (fixed)
-PreSync hook deadlock             the migrator Job hook ran before the chart's
-                                  ServiceAccounts existed — into an empty
-                                  namespace the hook can never start
-                                                      → chart fix, gitops PR #45
-                                                        (chart v0.11.2): only the
-                                                        `migrator` ServiceAccount
-                                                        and the Job's other
-                                                        prerequisites (SecretStore,
-                                                        migrator + db-ca
-                                                        ExternalSecrets) are
-                                                        PreSync hooks on wave -1;
-                                                        api/worker accounts stay
-                                                        normal — a hooked account
-                                                        is recreated every sync
-                                                        and invalidates running
-                                                        pods' tokens
-Alloy could not be applied        HOSTNAME duplicated the chart's default env;
-                                  SSA rejects duplicates → gitops PR #41 (fixed)
-Alloy could not schedule          platform namespace PSS restricted rejects the
-                                  agent (hostPath /varlog, ebpf caps)
-                                                      → gitops PR #43 (fixed)
-CNPG ImageCatalog reference       `imageName: postgresql/18` is rejected by
-                                  operator 1.30.1; use imageCatalogRef
-                                                      → gitops PR #46 (fixed)
-ESO stores had no namespace       stores-onprem.yaml applies into
-                                  `external-secrets`, which nothing created
-                                                      → gitops PR #47 (fixed)
-monitoring CRDs are bootstrap     the chart renders PrometheusRule; without the
-                                  prometheus-operator CRDs (k8s-monitoring, M-2)
-                                  every product sync fails at discovery
-                                                      → gap, see step 7
-```
+## Before you start (Key Vault, owner)
 
-Timings are at the bottom. This document now describes the ON-PREM bootstrap
-(ONPREM-PLAN §14; the EKS-era procedure it replaces is at the bottom).
+Names and shapes the Applications read. Create each with
+`... | az keyvault secret set --vault-name <vault> --name <name> --file /dev/stdin --expires <date> --tags owner=<who> rotate-by=<date> -o none`
+and verify by name only.
+
+| Vault | Secret | Shape | Read by |
+|---|---|---|---|
+| `kv-qnsc-platform` | `platform-cloudflared-qnsc-apps` | plain string (tunnel token) | `platform/secrets` -> `cloudflared` |
+| `kv-qnsc-platform` | `platform-grafana-alloy` | JSON with the seven `GRAFANA_*` keys | `platform/secrets` -> `grafana-cloud` |
+| `kv-qnsc-platform` | `platform-argocd-admin-bcrypt` | plain string (bcrypt hash) | `platform/argocd/externalsecret.yaml` |
+| `kv-qnsc-dev` | `rova-dev-app` | JSON bundle | chart `rova-app` |
+| `kv-qnsc-dev` | `rova-dev-db-app`, `rova-dev-db-migrator`, `rova-dev-db-worker` | plain-string passwords | the CNPG managed roles AND the chart |
+| `kv-qnsc-dev` | `rova-dev-graph-cert` | one combined PEM (key + cert) | chart worker volume `cert.pem` |
+
+ArgoCD admin hash (from the plaintext kept in `kv-qnsc-admin`; stdin end to end):
 
 ```bash
-# 0. prerequisites — one k3s node per env (runbooks/server-setup.md), then:
-
-# 1. namespaces + policy
-kubectl apply -f ../namespaces/            # includes namespaces/onprem.yaml and
-                                           # the external-secrets namespace
-                                           # the stores below need (PR #47)
-kubectl apply -f ../policy/admission.yaml
-kubectl apply -f ../policy/bindings.yaml   # a policy with no binding enforces
-                                           # nothing, and nothing says so
-
-# 2. ESO — the operator, then the stores
-helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n platform -f ../eso/values.yaml --version "$ESO_VERSION"
-kubectl apply -f ../eso/stores-onprem.yaml # (needs step 1's external-secrets
-                                           # namespace, PR #47) the four ClusterSecretStores. The
-                                           # Azure stores go Valid only once the
-                                           # hand-applied SP certificate Secrets
-                                           # exist (§14 step 2 — see
-                                           # stores-onprem.yaml's header for the
-                                           # exact kubectl commands); cnpg-ca
-                                           # stays NotReady until the clusters
-                                           # exist, which is expected
-
-# 3. cert-manager (before the barman plugin — its mTLS), then CNPG
-helm upgrade --install cert-manager cert-manager/cert-manager \
-  -n cert-manager --create-namespace \
-  -f ../cert-manager/values.yaml --version "$CERT_MANAGER_VERSION"
-helm upgrade --install cnpg cnpg/cloudnative-pg \
-  -n platform -f ../cnpg/operator.yaml --version "$CNPG_VERSION"
-kubectl apply -f ../cnpg/imagecatalog.yaml # data-prod and data-dev catalogs
-#   ...and the first clusters themselves are NOT in git yet: the Cluster
-#   manifests (pg-rova, pg-dev) are step §14-2's hand-applied Secrets' first
-#   consumers and land with the dev cutover PR. The rehearsal used a minimal
-#   dev Cluster with imageCatalogRef: {apiGroup: postgresql.cnpg.io,
-#   kind: ImageCatalog, name: postgresql, major: 18}.
-
-# 4. the data plane
-kubectl apply -f ../valkey/
-kubectl apply -f ../networkpolicy/
-
-# 5. collectors + ingress connector
-helm upgrade --install alloy-agent grafana/alloy \
-  -n platform -f ../alloy/values-agent.yaml \
-  --set-file alloy.configMap.content=../alloy/agent.alloy
-#   REQUIRES step 1's platform namespace to be PSS-privileged (PR #43): the
-#   agent mounts /var/log and needs the ebpf capabilities. The platform's own
-#   credentials (../secrets/) must exist first — "Alloy CrashLoopBackOffs
-#   without them, and cloudflared connects to nothing while the cluster looks
-#   healthy":
-sed -i "s/ENV/${ENV}/g" ../secrets/*.yaml   # .yaml ONLY — the directory also
-                                            # carries this file's neighbours'
-                                            # READMEs
-kubectl apply -f ../secrets/
-kubectl apply -f ../cloudflared/deployment.yaml   # the tunnel token is synced
-                                                  # by ESO (§8) from the
-                                                  # platform vault; until the
-                                                  # store is Valid the pods sit
-                                                  # in CreateContainerConfigError
-
-# 6. ArgoCD — the last thing installed by hand
-helm upgrade --install argocd argo/argo-cd \
-  -n argocd --create-namespace -f values.yaml --version "$ARGOCD_VERSION"
-
-# 7. cluster registration + monitoring CRDs — ArgoCD's dependencies, in its
-#    namespace but applied by hand (see argocd/clusters.yaml for the dev/prod
-#    Secrets; the dev endpoint and CA come from infra outputs, NOT a sed):
-kubectl apply -f clusters.yaml
-#   THE REHEARSAL GAP: nothing in git yet brings the prometheus-operator CRDs.
-#   Every chart Application renders a PrometheusRule, and ArgoCD refuses to
-#   sync when the API group cannot be discovered:
-#     failed to discover server resources for group version
-#     monitoring.coreos.com/v1: the server could not find the requested resource
-#   On the EKS side these arrived with the metrics stack; on-prem they are
-#   k8s-monitoring's (ONPREM-PLAN §12, M-2). Until M-2 lands, bootstrap needs
-#   `prometheus-community/prometheus-operator-crds` installed at this step —
-#   add it to THIS file when M-2 defines the real owner.
-
-# 8. hand over. THE LAST MANUAL COMMANDS:
-kubectl apply -f ../../appsets/products.yaml   # the generator. apps/root.yaml
-                                               # DELIBERATELY excludes appsets/
-                                               # (see root.yaml's comment), so
-                                               # nothing else ever installs it
-kubectl apply -f ../../apps/root.yaml          # the app of apps
+az keyvault secret show --vault-name kv-qnsc-admin --name <argocd-admin-password-secret> --query value -o tsv \
+  | tr -d '\n' | htpasswd -niBC 10 x | cut -d: -f2 | sed 's/^\$2y/$2a/' | tr -d '\n' \
+  | az keyvault secret set --vault-name kv-qnsc-platform --name platform-argocd-admin-bcrypt \
+      --file /dev/stdin --expires <date> --tags owner=platform rotate-by=<date> -o none
 ```
 
-From step 8 onward ArgoCD manages the AppProject, both ApplicationSets, every
-product — and its own upgrades. (The ApplicationSet object itself is
-hand-owned, like root: an app-of-apps that also manages the generators that
-manage it is a cycle nobody enjoys debugging at 2am. Re-apply products.yaml by
-hand after editing it.)
-
-## What the rehearsal could NOT verify locally
-
-```
-Azure Key Vault stores   the SP certificate Secrets are operator stdin, and the
-                         vaults exist only in the real tenant. The rehearsal
-                         proved the ESO sync path with the provider's Fake
-                         backend instead; the store shapes themselves are
-                         validated against the CRDs only
-remote telemetry         Alloy was installed with a local file sink and
-                         cloudflared was dry-run validated, never started — a
-                         rehearsal must not open a real tunnel or write to the
-                         shared Grafana
-rova/prod                a single node played both clusters; the prod generator
-                         rows were created but never exercised
-```
-
-## Then time it, and write the number down
-
-§13: *"**delete the dev cluster and rebuild it from git. Time it. Write the
-number in this document.**"*
-
-Rehearsal timing, 2026-10-26 (local k3d, images already cached — the real
-figure is pull-bound and will be higher):
-
-```
-namespaces + policy                 instant
-ESO + stores                        <1 min to Running
-cert-manager + CNPG operator        ~2 min (webhook certs via cert-manager)
-pg-dev Cluster to Ready             ~4 min (initdb on local-path storage)
-valkey-dev                          <1 min
-alloy                               <1 min after the PSS fix
-argocd                              ~1 min to all pods Running
-first product sync                  blocked by the hook deadlock until the
-                                    ServiceAccounts existed; healthy path after
-                                    the chart fix is hook (3s) + rollout (<2 min)
-```
-
-Until the rebuild has been done on the real node, §13's RTO figures remain
-estimates and the document says so. The rehearsal also found what is NOT in git
-— the list from §13, updated:
-
-```
-ArgoCD's own bootstrap     steps above, now rehearsed. Two of them failed as
-                           written (appsets validation, chart pins) — fixes in
-                           gitops PR #39
-Secrets                    ESO first is what makes the ordering in steps 1-2
-                           non-negotiable; the rehearsal confirmed ESO syncs
-                           end-to-end once a store is Valid
-cluster-scoped resources   CRDs, admission policies — and now KNOWN to include
-                           the prometheus-operator CRDs (step 7, M-2 gap) and
-                           cert-manager's CRDs (chart-managed, kept on
-                           uninstall)
-PersistentVolumeClaims     none in the chart; CNPG clusters DO create PVCs
-                           (storage.size) — §13's "no PVCs anywhere" refers to
-                           the app chart; pg backups/restore stay with the
-                           barman plugin
-```
-
-## The ordering that is not arbitrary
-
-```
-namespaces before policy    the bindings select on qnsc.vn/tenant
-policy before workloads     a workload admitted before the policy exists is not
-                            re-checked when it appears
-ESO before everything       ArgoCD's own OIDC secret is synced by ESO, and the
-                            cloudflared token and grafana-cloud credentials are
-                            ExternalSecrets — nothing that envFrom's a Secret
-                            may start before a store is Valid
-cert-manager before CNPG    the barman plugin's mTLS certificates
-clusters.yaml before root   products.yaml's destination.name dev/prod resolves
-                            against those Secrets; root first and every
-                            Application reports "Cluster not found"
-products.yaml before root   the generator must exist before the app-of-apps
-                            reconciles, or the first reconcile finds an empty
-                            project; both are one kubectl command apart
-```
-
----
-
-## The EKS-era procedure (superseded, kept for the AWS-exit window)
-
-Replaced by everything above. Recorded so the AWS-exit PRs
-([aws-exit track]) can delete the last references knowingly:
+## Steps (SA, in order, after review)
 
 ```bash
-# infra/live/runtime-{dev,prod}   subnets /20 + prefix delegation
-# infra/live/cluster-prod         FIRST, it outputs argocd_role_arn
-# infra/live/cluster-dev          consumes it
-argocd cluster add <dev-context> --name dev   # replaced by argocd/clusters.yaml
+export KUBECONFIG=~/.kube/onprem.yaml     # over WARP
+
+# 1. The two namespaces the Secrets below live in (labels first, so Helm adopts argocd).
+kubectl apply -f platform/namespaces/external-secrets.yaml -f platform/namespaces/argocd.yaml
+
+# 2. ESO service-principal Secrets, one per store, from kv-qnsc-admin through stdin.
+#    Keys are what stores-onprem.yaml reads: tls.pem (combined PEM) and client-id
+#    (the SP application id, an identifier, not a secret). platform + dev are enough for
+#    rova-dev; prod joins with the prod move.
+for e in platform dev; do
+  az keyvault secret show --vault-name kv-qnsc-admin --name platform-eso-$e-cert --query value -o tsv \
+    | kubectl -n external-secrets create secret generic qnsc-eso-$e-cert \
+        --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO ${e} application id>
+done
+
+# 3. The static pg-dev CA (platform/cnpg/ca.md, data-dev): pg-dev-ca (crt+key) and
+#    pg-dev-ca-pub (crt only). The data-dev namespace must exist first:
+kubectl apply -f platform/namespaces/onprem.yaml   # idempotent; declares every namespace
+#    ...then the two `kubectl create secret` commands of platform/cnpg/ca.md.
+
+# 4. ArgoCD (the last Helm install by hand; version from versions.yaml)
+helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
+helm install argocd argo/argo-cd -n argocd --version "$(yq '.platform.argo-cd.version' versions.yaml)" \
+  -f platform/argocd/values.yaml
+kubectl -n argocd rollout status deploy/argocd-server
+
+# 5. Hand over.
+kubectl apply -f apps/root.yaml
+kubectl -n argocd get applications -w     # wave -3 -> 2; names and health only
 ```
 
-The IRSA annotations in `../eso/values.yaml`, `../secrets/` and
-`../argocd/values.yaml` (the `qnsc-ENV-external-secrets` and `qnsc-prod-argocd`
-roles) are inert on-prem — they are annotations nothing honours without the EKS
-OIDC provider, and they come out with the identity PRs.
+The repo is public, so ArgoCD needs no repository credential.
+
+## What root does, in wave order
+
+```
+-3  platform-base            namespaces (labels), admission policies + bindings, data-prod NetworkPolicy
+-3  platform-prometheus-crds monitoring CRDs (every product chart renders a PrometheusRule)
+-3  products (AppProject)
+-2  platform-eso             operator in `external-secrets` + the ClusterSecretStores
+-2  platform-cert-manager
+-1  platform-secrets         grafana-cloud, cloudflared, argocd admin hash (kv-qnsc-platform)
+-1  platform-cnpg            operator + barman plugin in `cnpg-system`
+ 0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs
+ 1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
+ 2  platform-cloudflared     traffic arrives last
+```
+
+`platform-base`, `platform-prometheus-crds` and `platform-data` have `prune: false`
+(a pruned Namespace or PVC deletes data). A failed wave holds the next one:
+`platform-secrets` stays Degraded until the stores from step 2 are Valid, and that is the
+signal, not a bug. The CNPG `Cluster` for dev is not part of this wave list yet (PLT-B7).
+
+## Not in git yet
+
+| Missing | Tracked as |
+|---|---|
+| CNPG Clusters, managed roles, ObjectStore, backups, PriorityClasses, ResourceQuotas | PLT-B7 |
+| k8s-monitoring / OTLP receiver (replaces the host-side Alloy values here) | PLT-H2 |
+| Prod Applications and values | PLT-B2 |
+| `ghcr-pull` imagePullSecret (`platform-<env>-ghcr-pull`, ONPREM-PLAN §7.1) | not started; needed if a product image is private |

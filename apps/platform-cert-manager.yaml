@@ -1,0 +1,32 @@
+# cert-manager — required by the barman plugin's mTLS (§5.1).
+# Sync wave -2 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
+# each wave's Applications to be Healthy (argocd-cm Application health customization,
+# platform/argocd/values.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  sources:
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: "v1.21.2"   # keep in step with versions.yaml
+      helm:
+        releaseName: cert-manager
+        valueFiles: [$values/platform/cert-manager/values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

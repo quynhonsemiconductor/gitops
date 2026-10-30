@@ -23,6 +23,9 @@ kind: ApplicationSet
 metadata:
   name: products
   namespace: argocd
+  annotations:
+    # Wave 1 (ONPREM-PLAN §11.2): apps come after the platform (waves -3..0).
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
