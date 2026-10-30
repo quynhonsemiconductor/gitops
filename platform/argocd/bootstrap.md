@@ -10,23 +10,26 @@ Never put a secret value in argv or Git. Every secret below goes in through stdi
 
 ## Before you start (Key Vault, owner)
 
-Names and shapes the Applications read. Create each with
+Everything the platform reads, by store. Key Vault secrets are created with
 `... | az keyvault secret set --vault-name <vault> --name <name> --file /dev/stdin --expires <date> --tags owner=<who> rotate-by=<date> -o none`
-and verify by name only.
+and verified by name only.
 
-| Vault | Secret | Shape | Read by |
+| Where | Item | Shape | Needed by |
 |---|---|---|---|
-| `kv-qnsc-platform` | `platform-cloudflared-qnsc-apps` | plain string (tunnel token) | `platform/secrets` -> `cloudflared` |
-| `kv-qnsc-platform` | `platform-grafana-alloy` | JSON with the seven `GRAFANA_*` keys | `platform/secrets` -> `grafana-cloud` |
-| `kv-qnsc-platform` | `platform-argocd-admin-bcrypt` | plain string (bcrypt hash) | `platform/argocd/externalsecret.yaml` |
+| `kv-qnsc-platform` | `platform-cloudflared-qnsc-apps` | plain string (tunnel token) | wave -1 `platform-secrets` -> `cloudflared`; wave 2 cloudflared |
+| `kv-qnsc-platform` | `platform-grafana-alloy` | **required at wave -1** (else `platform-secrets` stays Degraded and blocks wave 0). JSON object whose keys are Alloy's env names: `{"GRAFANA_TOKEN":"...","GRAFANA_PROM_URL":"...","GRAFANA_PROM_USER":"...","GRAFANA_LOKI_URL":"...","GRAFANA_LOKI_USER":"...","GRAFANA_PYROSCOPE_URL":"...","GRAFANA_PYROSCOPE_USER":"..."}` | `grafana-cloud` Secret |
+| `kv-qnsc-platform` | `platform-argocd-admin-bcrypt` | plain string (bcrypt hash, made below) | wave -1 -> `argocd-secret` |
 | `kv-qnsc-dev` | `rova-dev-app` | JSON bundle | chart `rova-app` |
 | `kv-qnsc-dev` | `rova-dev-db-app`, `rova-dev-db-migrator`, `rova-dev-db-worker` | plain-string passwords | the CNPG managed roles AND the chart |
 | `kv-qnsc-dev` | `rova-dev-graph-cert` | one combined PEM (key + cert) | chart worker volume `cert.pem` |
+| `kv-qnsc-admin` | `platform-cnpg-ca-dev` | crt + key (platform/cnpg/ca.md) | step 3, hand-applied |
+| `kv-qnsc-admin` | `admin-argocd-password` | plaintext admin password | source of the bcrypt hash only; nothing reads it automatically |
+| 1Password `QNSC` | `eso-platform-combined-pem`, `eso-dev-combined-pem` (Document items; item ids below) | combined PEM file | step 2, hand-applied |
 
-ArgoCD admin hash (from the plaintext kept in `kv-qnsc-admin`; stdin end to end):
+ArgoCD admin hash (plaintext from `kv-qnsc-admin/admin-argocd-password`; stdin end to end):
 
 ```bash
-az keyvault secret show --vault-name kv-qnsc-admin --name <argocd-admin-password-secret> --query value -o tsv \
+az keyvault secret show --vault-name kv-qnsc-admin --name admin-argocd-password --query value -o tsv \
   | tr -d '\n' | htpasswd -niBC 10 x | cut -d: -f2 | sed 's/^\$2y/$2a/' | tr -d '\n' \
   | az keyvault secret set --vault-name kv-qnsc-platform --name platform-argocd-admin-bcrypt \
       --file /dev/stdin --expires <date> --tags owner=platform rotate-by=<date> -o none
@@ -40,24 +43,28 @@ export KUBECONFIG=~/.kube/onprem.yaml     # over WARP
 # 1. The two namespaces the Secrets below live in (labels first, so Helm adopts argocd).
 kubectl apply -f platform/namespaces/external-secrets.yaml -f platform/namespaces/argocd.yaml
 
-# 2. ESO service-principal Secrets, one per store, from kv-qnsc-admin through stdin.
+# 2. ESO service-principal Secrets, one per store, from 1Password QNSC through stdin
+#    (Document items; refs use item ids because the titles contain en-dashes).
 #    Keys are what stores-onprem.yaml reads: tls.pem (combined PEM) and client-id
-#    (the SP application id, an identifier, not a secret). platform + dev are enough for
-#    rova-dev; prod joins with the prod move.
-for e in platform dev; do
-  az keyvault secret show --vault-name kv-qnsc-admin --name platform-eso-$e-cert --query value -o tsv \
-    | kubectl -n external-secrets create secret generic qnsc-eso-$e-cert \
-        --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO ${e} application id>
-done
+#    (the SP application id from the infra live/identity Terraform output; an
+#    identifier, not a secret). platform + dev are enough for rova-dev.
+op read 'op://QNSC/ht2edzbfxdbwc4jlvejcmg56we/eso-platform-combined.pem' \
+  | kubectl -n external-secrets create secret generic qnsc-eso-platform-cert \
+      --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO Platform application id>
+op read 'op://QNSC/n3cpmxcojjck6xqcvcpvnvtxeq/eso-dev-combined.pem' \
+  | kubectl -n external-secrets create secret generic qnsc-eso-dev-cert \
+      --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO Dev application id>
+#    (prod: item eso-prod-combined-pem joins with the prod move)
 
 # 3. The static pg-dev CA (platform/cnpg/ca.md, data-dev): pg-dev-ca (crt+key) and
 #    pg-dev-ca-pub (crt only). The data-dev namespace must exist first:
 kubectl apply -f platform/namespaces/onprem.yaml   # idempotent; declares every namespace
-#    ...then the two `kubectl create secret` commands of platform/cnpg/ca.md.
+#    ...then the two `kubectl create secret` commands of platform/cnpg/ca.md
+#    (they read kv-qnsc-admin/platform-cnpg-ca-dev).
 
 # 4. ArgoCD (the last Helm install by hand; version from versions.yaml)
 helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
-helm install argocd argo/argo-cd -n argocd --version "$(yq '.platform.argo-cd.version' versions.yaml)" \
+helm install argocd argo/argo-cd -n argocd --version "$(yq '.platform["argo-cd"].version' versions.yaml)" \
   -f platform/argocd/values.yaml
 kubectl -n argocd rollout status deploy/argocd-server
 

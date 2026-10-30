@@ -103,7 +103,7 @@ redis-ha:
   enabled: false     # §5d — no self-hosted stateful systems for three engineers
 
 dex:
-  enabled: false     # Entra directly, no broker in between
+  enabled: false     # no SSO yet, so no broker (ONPREM-PLAN §9: SSO waits for its trigger)
 
 notifications:
   enabled: false     # §9e renders the alerts. ArgoCD notifying separately would

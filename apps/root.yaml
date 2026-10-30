@@ -23,6 +23,7 @@ spec:
       directory:
         recurse: false
         include: "*.yaml"
+        exclude: root.yaml   # root is hand-applied and does not manage itself
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: appsets
