@@ -1,4 +1,4 @@
-# Data plane: the two dev Valkey StatefulSets and the Postgres ImageCatalogs. valkey-rova.yaml joins with the
+# Data plane: the two dev Valkey StatefulSets, the Postgres ImageCatalogs and the dev Cluster (pg-dev). valkey-rova.yaml joins with the
 # rova prod move (PLT-B2). prune: false — these own PVCs.
 # Sync wave 0 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
 # each wave's Applications to be Healthy (argocd-cm Application health customization,
@@ -23,7 +23,7 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: platform/cnpg
-      directory: { include: "imagecatalog.yaml" }
+      directory: { include: "{imagecatalog,pg-dev}.yaml" }
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]

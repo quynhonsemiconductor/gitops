@@ -85,7 +85,7 @@ The repo is public, so ArgoCD needs no repository credential.
 -2  platform-cert-manager
 -1  platform-secrets         grafana-cloud, cloudflared, argocd admin hash (kv-qnsc-platform)
 -1  platform-cnpg            operator + barman plugin in `cnpg-system`
- 0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs
+ 0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs, pg-dev (+ rova managed roles)
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
  2  platform-cloudflared     traffic arrives last
 ```
@@ -93,13 +93,14 @@ The repo is public, so ArgoCD needs no repository credential.
 `platform-base`, `platform-prometheus-crds` and `platform-data` have `prune: false`
 (a pruned Namespace or PVC deletes data). A failed wave holds the next one:
 `platform-secrets` stays Degraded until the stores from step 2 are Valid, and that is the
-signal, not a bug. The CNPG `Cluster` for dev is not part of this wave list yet (PLT-B7).
+signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` Secret (step 3) and the three
+`rova-dev-db-*` Key Vault secrets before wave 0.
 
 ## Not in git yet
 
 | Missing | Tracked as |
 |---|---|
-| CNPG Clusters, managed roles, ObjectStore, backups, PriorityClasses, ResourceQuotas | PLT-B7 |
+| `pg-rova`, opshub/kb roles in `pg-dev`, ObjectStore/backups, dump CronJobs, restore test, PriorityClasses, ResourceQuotas | PLT-B7 |
 | k8s-monitoring / OTLP receiver (replaces the host-side Alloy values here) | PLT-H2 |
 | Prod Applications and values | PLT-B2 |
 | `ghcr-pull` imagePullSecret (`platform-<env>-ghcr-pull`, ONPREM-PLAN §7.1) | not started; needed if a product image is private |
