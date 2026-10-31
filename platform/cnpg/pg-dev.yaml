@@ -241,16 +241,31 @@ spec:
         key: opshub-dev-db-migrator
 ---
 # ── Role timeouts ───────────────────────────────────────────────────────────
-# CNPG 1.30 has no per-role GUC field: `Cluster.managed.roles` and `DatabaseRole`
-# carry ensure/login/passwordSecret and nothing else, and this repository had no
-# other mechanism — rova's 0073 timeouts (rally_app 30s/60s, rally_worker
-# 300s/300s) were NOT applied on-prem at all. This Job applies both products'
-# values under their on-prem role names.
+# CNPG 1.30 has no per-role GUC field — `Cluster.managed.roles` carries only
+# ensure/login/passwordSecret, and the `DatabaseRole` CRD has no `parameters` at
+# all (checked against the v1.30.1 CRDs; there is no 1.31 to wait for). So the
+# settings must be applied by SQL, and rova's 0073 timeouts had never been
+# applied on-prem at all.
 #
-# Smallest thing that works: one psql call as the cluster superuser, run as a
-# PostSync hook so every sync re-applies it. ALTER ROLE … SET is idempotent, and
-# the DO block fails loudly if the managed roles do not exist yet, so the hook
-# retries through the operator's reconcile instead of silently doing nothing.
+# PostgreSQL decides this: a role may `ALTER ROLE <itself> SET …` with no
+# CREATEROLE (verified: a LOGIN role with rolcreaterole=false altered its own
+# rolconfig; the same statement against ANOTHER role fails with "Only roles with
+# the CREATEROLE attribute and the ADMIN option …"). So each role applies its own
+# timeouts, connecting with the password ESO already syncs for it.
+#
+# WHY NOT the alternatives:
+#   - superuser (`enableSuperuserAccess: true`) would put a `postgres` credential
+#     in data-dev for a two-line change. Not worth it when self-alter works.
+#   - cluster-wide `postgresql.parameters` would also bind the migrators, whose
+#     DDL must be allowed to run longer than 30 s — the exact reason rova's 0073
+#     exempts them.
+#   - connection-level `options` (node-postgres 8.22.0 does send them:
+#     pg/lib/connection-parameters.js:83,151) needs a code change in opshub and
+#     rova because their pools are built in code; not this repository's.
+#
+# One Job, one container per role, re-run on every sync (PostSync): ALTER ROLE …
+# SET is idempotent, and a missing role or a stale password fails the hook loudly
+# instead of silently doing nothing.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -274,45 +289,77 @@ spec:
         runAsGroup: 26
         seccompProfile: { type: RuntimeDefault }
       containers:
-        - name: psql
+        - name: rova-app
           image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
           env:
             - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
             - { name: PGDATABASE, value: postgres }
             - name: PGUSER
-              valueFrom: { secretKeyRef: { name: pg-dev-superuser, key: username } }
+              valueFrom: { secretKeyRef: { name: pg-dev-rova-app, key: username } }
             - name: PGPASSWORD
-              valueFrom: { secretKeyRef: { name: pg-dev-superuser, key: password } }
+              valueFrom: { secretKeyRef: { name: pg-dev-rova-app, key: password } }
           command: ["psql"]
           args:
             - "-v"
             - "ON_ERROR_STOP=1"
             - "-c"
-            - |
-              DO $$
-              BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rova_app')
-                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rova_worker')
-                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opshub_app')
-                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opshub_worker') THEN
-                  RAISE EXCEPTION 'managed roles not created yet';
-                END IF;
-              END
-              $$;
-              ALTER ROLE rova_app      SET statement_timeout = '30s';
-              ALTER ROLE rova_app      SET idle_in_transaction_session_timeout = '60s';
-              ALTER ROLE rova_worker   SET statement_timeout = '300s';
-              ALTER ROLE rova_worker   SET idle_in_transaction_session_timeout = '300s';
-              ALTER ROLE opshub_app    SET statement_timeout = '30s';
-              ALTER ROLE opshub_app    SET idle_in_transaction_session_timeout = '60s';
-              ALTER ROLE opshub_worker SET statement_timeout = '120s';
-              ALTER ROLE opshub_worker SET idle_in_transaction_session_timeout = '180s';
-          volumeMounts:
-            - { name: tmp, mountPath: /tmp }
-          securityContext:
+            - "ALTER ROLE rova_app SET statement_timeout = '30s'; ALTER ROLE rova_app SET idle_in_transaction_session_timeout = '60s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: &restricted
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
+        - name: rova-worker
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-dev-rova-worker, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-dev-rova-worker, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE rova_worker SET statement_timeout = '300s'; ALTER ROLE rova_worker SET idle_in_transaction_session_timeout = '300s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: *restricted
+        - name: opshub-app
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-dev-opshub-app, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-dev-opshub-app, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE opshub_app SET statement_timeout = '30s'; ALTER ROLE opshub_app SET idle_in_transaction_session_timeout = '60s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: *restricted
+        - name: opshub-worker
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-dev-opshub-worker, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-dev-opshub-worker, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE opshub_worker SET statement_timeout = '120s'; ALTER ROLE opshub_worker SET idle_in_transaction_session_timeout = '180s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: *restricted
       volumes:
         - name: tmp
           emptyDir: { sizeLimit: 16Mi }
