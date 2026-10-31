@@ -124,7 +124,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-fb0922c1a98e
+          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-a171bb29c5ee
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -154,7 +154,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-fb0922c1a98e
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a171bb29c5ee
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -267,7 +267,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-fb0922c1a98e
+          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-a171bb29c5ee
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -286,7 +286,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-fb0922c1a98e
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a171bb29c5ee
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -364,7 +364,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-fb0922c1a98e
+  name: migrator-sha-a171bb29c5ee
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -403,7 +403,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-fb0922c1a98e
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-a171bb29c5ee
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -12,10 +12,10 @@
 services:
   api:
     image:
-      tag: sha-fb0922c1a98e
+      tag: sha-a171bb29c5ee
   migrator:
     image:
-      tag: sha-fb0922c1a98e
+      tag: sha-a171bb29c5ee
   worker:
     image:
-      tag: sha-fb0922c1a98e
+      tag: sha-a171bb29c5ee
