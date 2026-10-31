@@ -83,12 +83,14 @@ Then it waits wave by wave. A wave is done when every Application in it is
   case: the Application synced, nothing reports unhealthy, and ArgoCD never
   re-evaluates. The script refreshes such an app — at most twice, 90 s apart, and
   only when every resource that has a health check reports `Healthy`.
-- **`--until-wave N`** stops the *waiting* after wave N. It does not stop ArgoCD:
-  root's waves gate on health, so a later wave can be created while this script is
-  still waiting. `--stop-after` (implied below wave 2) then makes root manual and
-  terminates its operation. Later-wave Applications are switched to manual sync as
-  they appear, and `cloudflared` is scaled to zero if it ever starts — the stop
-  point does not depend on health timing.
+- **`--until-wave N`** stops the *waiting* after wave N; it cannot stop ArgoCD.
+  Root's wave order lives inside one sync operation, which runs to completion
+  whether or not root itself is automated — the rehearsal proved that by creating
+  `platform-cloudflared` 48 s after the script had returned. So `--stop-after`
+  (implied below wave 2) does not claim to stop it: it **guards** until root
+  reports a terminal phase — every Application above the cutoff is switched to
+  manual sync as it appears, `root`'s selfHeal is off so those holds stick, and
+  `cloudflared` is scaled to zero — then prints what exists.
 
 Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
 `--eso-source op|none`, `--rehearsal`, `--stop-after`, `--keep-running`,
