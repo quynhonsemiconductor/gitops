@@ -261,11 +261,16 @@ cnpg_ca() {
       say "  = $ns/$PG_CLUSTER-ca-pub exists, kept"
     else
       # only the public mirror drifted: rebuild it FROM the CA that is already there
-      "${KUBECTL[@]}" -n "$ns" get secret "$PG_CLUSTER-ca" -o jsonpath='{.data.ca\.crt}' \
-        | openssl base64 -d \
+      local src dst
+      src=$("${KUBECTL[@]}" -n "$ns" get secret "$PG_CLUSTER-ca" -o jsonpath='{.data.ca\.crt}')
+      [[ -n $src ]] || { echo "  ! $ns/$PG_CLUSTER-ca has an empty ca.crt" >&2; exit 1; }
+      printf '%s' "$src" | base64 -d \
         | "${KUBECTL[@]}" -n "$ns" create secret generic "$PG_CLUSTER-ca-pub" \
             --from-file=ca.crt=/dev/stdin --dry-run=client -o yaml \
         | "${KUBECTL[@]}" apply -f - >/dev/null
+      dst=$("${KUBECTL[@]}" -n "$ns" get secret "$PG_CLUSTER-ca-pub" -o jsonpath='{.data.ca\.crt}')
+      [[ $dst == "$src" ]] \
+        || { echo "  ! the rebuilt $PG_CLUSTER-ca-pub does not match $PG_CLUSTER-ca" >&2; exit 1; }
       say "  + $ns/$PG_CLUSTER-ca-pub rebuilt from $PG_CLUSTER-ca"
     fi
     expect_keys "$ns" "$PG_CLUSTER-ca" "ca.crt ca.key"
