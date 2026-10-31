@@ -20,13 +20,22 @@ useDefault = true
 # the rule does not flag, and the previous placeholder was `sha-0000000`. The two
 # pipelines producing different tag lengths for the same commit is what surfaced it.
 #
-# THE PATTERN IS DELIBERATELY NARROW. It anchors on the ECR registry host and an
-# explicit `sha-` prefix, so it cannot excuse a credential that merely happens to sit
-# nearby. A bare hex string anywhere else in this repository is still a finding.
+# The on-prem pipeline produces the same shape on GHCR (H-D22):
+#
+#     ghcr.io/quynhonsemiconductor/opshub-api:sha-fb0922c1a98e
+#
+# which surfaced when opshub became the second product pinned by tag.
+#
+# THE PATTERN IS DELIBERATELY NARROW. It anchors on a registry host and an explicit
+# `sha-` prefix, so it cannot excuse a credential that merely happens to sit nearby.
+# The GHCR entry is narrower still: this organisation's registry, and exactly the
+# 12-hex tag the pipeline writes. A bare hex string anywhere else in this repository
+# is still a finding.
 [[rules]]
 id = "generic-api-key"
   [rules.allowlist]
   regexTarget = "line"
   regexes = [
     '''\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9._/-]+:sha-[0-9a-f]{7,40}''',
+    '''ghcr\.io/quynhonsemiconductor/[a-z0-9._-]+:sha-[0-9a-f]{12}''',
   ]
