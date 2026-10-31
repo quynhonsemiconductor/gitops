@@ -310,12 +310,23 @@ cfargotunnel.com:53 {
   say "  ok coredns: argotunnel.com and cfargotunnel.com answer NXDOMAIN"
 }
 
+# Values a fake store serves. Everything is the same dummy string except the one
+# Key Vault secret whose real value is a JSON OBJECT (platform-grafana-alloy):
+# `dataFrom.extract` JSON-unmarshals it, so a plain string fails there.
+GRAFANA_JSON='{"GRAFANA_TOKEN":"rehearsal-dummy","GRAFANA_PROM_URL":"http://dummy.invalid","GRAFANA_PROM_USER":"dummy","GRAFANA_LOKI_URL":"http://dummy.invalid","GRAFANA_LOKI_USER":"dummy","GRAFANA_PYROSCOPE_URL":"http://dummy.invalid","GRAFANA_PYROSCOPE_USER":"dummy"}'
+
 seed_fake_store() {  # STORE "KEY KEY ..."
-  local store=$1 data
+  local store=$1 k v data=""
   set -- $2
-  data=$(printf '%s\n' "$@" | jq -R -s 'split("\n") | map(select(length > 0)) | map({key: ., value: "rehearsal-dummy"})')
+  for k in "$@"; do
+    case $k in
+      platform-grafana-alloy) v=$GRAFANA_JSON ;;
+      *)                      v=rehearsal-dummy ;;
+    esac
+    data="$data$(jq -cn --arg k "$k" --arg v "$v" '{key: $k, value: $v}'),"
+  done
   "${KUBECTL[@]}" patch clustersecretstore "$store" --type json \
-    -p "[{\"op\":\"replace\",\"path\":\"/spec/provider\",\"value\":{\"fake\":{\"data\":$data}}}]" >/dev/null
+    -p "[{\"op\":\"replace\",\"path\":\"/spec/provider\",\"value\":{\"fake\":{\"data\":[${data%,}]}}}]" >/dev/null
 }
 
 store_keys() {  # STORE
@@ -327,17 +338,27 @@ store_keys() {  # STORE
   esac
 }
 
+# Hold an Application at manual sync, VERIFYING it took: a patch that silently
+# failed is the difference between a rehearsal that stops and one that deploys
+# the next wave.
+hold_app() {  # NAME REASON
+  local name=$1 reason=$2 pol
+  pol=$("${KUBECTL[@]}" -n argocd get application "$name" -o jsonpath='{.spec.syncPolicy}' 2>/dev/null) || return 0
+  [[ -z $pol ]] && return 0
+  "${KUBECTL[@]}" -n argocd patch application "$name" --type merge \
+    -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || return 0
+  if [[ -z $("${KUBECTL[@]}" -n argocd get application "$name" -o jsonpath='{.spec.syncPolicy}' 2>/dev/null) ]]; then
+    say "  hold $name: $reason"
+  fi
+}
+
 seed_rehearsal_stores() {
   [[ -e $TMP/stores-seeded ]] && return 0
   "${KUBECTL[@]}" get clustersecretstore kv-qnsc-platform >/dev/null 2>&1 || return 0
   # platform-eso has applied the Azure stores; hold it, then replace the provider.
   # The patch goes through ESO's validating webhook, which is not up the moment
   # the store object appears — a failed attempt is retried on the next poll.
-  local a
-  for a in platform-eso platform-secrets; do
-    "${KUBECTL[@]}" -n argocd patch application "$a" --type merge \
-      -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || true
-  done
+  hold_app platform-eso "its stores are swapped for the fake provider"
   local s keys
   for s in platform "$ENV"; do
     keys=$(store_keys "$s")
@@ -356,29 +377,6 @@ seed_rehearsal_stores() {
   done
 }
 
-# ESO's fake provider has no GetSecretMap, so `dataFrom.extract` cannot work in a
-# rehearsal (the real Azure store returns the JSON object). Rewrite such an
-# ExternalSecret to one plain data entry; its consumer is stubbed anyway.
-rewrite_extract_es() {
-  [[ -e $TMP/stores-seeded ]] || return 0
-  local ns name key
-  for ns in platform argocd "rova-$ENV"; do
-    while IFS=$'\t' read -r name key; do
-      [[ -n $name ]] || continue
-      [[ -e $TMP/held/es-$ns-$name ]] && continue
-      "${KUBECTL[@]}" -n "$ns" patch externalsecret "$name" --type json -p "[
-        {\"op\":\"remove\",\"path\":\"/spec/dataFrom\"},
-        {\"op\":\"add\",\"path\":\"/spec/data\",\"value\":[{\"secretKey\":\"$key\",\"remoteRef\":{\"key\":\"$key\"}}]}
-      ]" >/dev/null 2>&1 || continue
-      "${KUBECTL[@]}" -n "$ns" annotate externalsecret "$name" force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
-      touch "$TMP/held/es-$ns-$name"
-      say "  rehearsal: $ns/$name reads a fake value instead of extracting JSON"
-    done < <("${KUBECTL[@]}" -n "$ns" get externalsecret -o json 2>/dev/null | jq -r '
-        .items[] | select(.spec.dataFrom != null)
-        | [.metadata.name, (.spec.dataFrom[0].extract.key // .spec.dataFrom[0].find.name // "")] | @tsv')
-  done
-}
-
 held_names() { "${KUBECTL[@]}" -n argocd get applications -o json; }
 
 # Any Application above the cutoff becomes manual as soon as it appears, so the
@@ -386,21 +384,17 @@ held_names() { "${KUBECTL[@]}" -n argocd get applications -o json; }
 # scaled to zero if it ever starts.
 guard_later_waves() {
   local name
-  # root's own selfHeal would undo the child patches below; make root manual once
-  # its first children exist (the in-flight operation keeps running).
-  if [[ ! -e $TMP/root-manual ]] \
-     && [[ -n $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null | grep -v 'application.argoproj.io/root$' | head -1) ]]; then
-    "${KUBECTL[@]}" -n argocd patch application root --type merge \
-      -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || true
-    touch "$TMP/root-manual"
-    say "  hold root: selfHeal off, so the holds below stick"
+  # root's own selfHeal would undo the child holds below. Hold it once the first
+  # child exists (the in-flight operation keeps running either way).
+  if [[ -n $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null \
+             | grep -v 'application.argoproj.io/root$' | head -1) ]]; then
+    hold_app root "selfHeal off, so the holds below stick"
   fi
+  (( REHEARSAL )) && hold_app platform-eso "its stores are swapped for the fake provider"
   while read -r name; do
     [[ -e $TMP/held/$name ]] && continue
-    "${KUBECTL[@]}" -n argocd patch application "$name" --type merge \
-      -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || continue
+    hold_app "$name" "above wave $UNTIL_WAVE, switched to manual sync" || continue
     touch "$TMP/held/$name"
-    say "  hold $name: above wave $UNTIL_WAVE, switched to manual sync"
   done < <(held_names | jq -r --argjson cut "$UNTIL_WAVE" '
       .items[] | select(.metadata.name != "root")
       | select(((.metadata.annotations["argocd.argoproj.io/sync-wave"] // "0") | tonumber) > $cut)
@@ -471,7 +465,6 @@ wait_wave() {
   while :; do
     if (( REHEARSAL )); then
       seed_rehearsal_stores || true
-      rewrite_extract_es || true
     fi
     guard_later_waves || true
     rows=$(wave_rows "$wave")
