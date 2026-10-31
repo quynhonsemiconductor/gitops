@@ -330,20 +330,52 @@ store_keys() {  # STORE
 seed_rehearsal_stores() {
   [[ -e $TMP/stores-seeded ]] && return 0
   "${KUBECTL[@]}" get clustersecretstore kv-qnsc-platform >/dev/null 2>&1 || return 0
-  # platform-eso has applied the Azure stores; hold it, then replace the provider
-  "${KUBECTL[@]}" -n argocd patch application platform-eso --type merge \
-    -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || true
+  # platform-eso has applied the Azure stores; hold it, then replace the provider.
+  # The patch goes through ESO's validating webhook, which is not up the moment
+  # the store object appears — a failed attempt is retried on the next poll.
+  local a
+  for a in platform-eso platform-secrets; do
+    "${KUBECTL[@]}" -n argocd patch application "$a" --type merge \
+      -p '{"spec":{"syncPolicy":null}}' >/dev/null 2>&1 || true
+  done
   local s keys
   for s in platform "$ENV"; do
     keys=$(store_keys "$s")
     [[ -n $keys ]] || continue
-    seed_fake_store "kv-qnsc-$s" "$keys"
+    if ! seed_fake_store "kv-qnsc-$s" "$keys" 2>/dev/null; then
+      say "  rehearsal: waiting for the ESO webhook before swapping kv-qnsc-$s"
+      return 0
+    fi
     say "  rehearsal: kv-qnsc-$s now serves $(echo "$keys" | wc -w | tr -d ' ') dummy values"
   done
   touch "$TMP/stores-seeded"
-  # anything that already failed against the Azure store retries now
+  # Anything already created against the Azure store re-reads it now.
   for ns in platform argocd "rova-$ENV"; do
-    "${KUBECTL[@]}" -n "$ns" annotate externalsecret --all force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
+    "${KUBECTL[@]}" -n "$ns" annotate externalsecret --all \
+      force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
+  done
+}
+
+# ESO's fake provider has no GetSecretMap, so `dataFrom.extract` cannot work in a
+# rehearsal (the real Azure store returns the JSON object). Rewrite such an
+# ExternalSecret to one plain data entry; its consumer is stubbed anyway.
+rewrite_extract_es() {
+  [[ -e $TMP/stores-seeded ]] || return 0
+  local ns name key
+  for ns in platform argocd "rova-$ENV"; do
+    while IFS=$'\t' read -r name key; do
+      [[ -n $name ]] || continue
+      [[ -e $TMP/held/es-$ns-$name ]] && continue
+      "${KUBECTL[@]}" -n "$ns" patch externalsecret "$name" --type json -p "[
+        {\"op\":\"remove\",\"path\":\"/spec/dataFrom\"},
+        {\"op\":\"add\",\"path\":\"/spec/data\",\"value\":[{\"secretKey\":\"$key\",\"remoteRef\":{\"key\":\"$key\"}}]}
+      ]" >/dev/null 2>&1 || continue
+      "${KUBECTL[@]}" -n "$ns" annotate externalsecret "$name" force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
+      touch "$TMP/held/es-$ns-$name"
+      say "  rehearsal: $ns/$name reads a fake value instead of extracting JSON"
+    done < <("${KUBECTL[@]}" -n "$ns" get externalsecret -o json 2>/dev/null | jq -r '
+        .items[] | select(.spec.dataFrom != null)
+        | [.metadata.name, (.spec.dataFrom[0].extract.key // .spec.dataFrom[0].find.name // "")] | @tsv')
   done
 }
 
@@ -434,10 +466,14 @@ refresh_app() {
 
 wait_wave() {
   local wave=$1 deadline=$((SECONDS + WAVE_TIMEOUT))
-  local rows name sync health bad now first
+  local rows name sync health bad now first sync_ok
   say "wave $wave: waiting (timeout ${WAVE_TIMEOUT}s)"
   while :; do
-    (( REHEARSAL )) && { seed_rehearsal_stores || true; guard_later_waves || true; }
+    if (( REHEARSAL )); then
+      seed_rehearsal_stores || true
+      rewrite_extract_es || true
+    fi
+    guard_later_waves || true
     rows=$(wave_rows "$wave")
     if [[ -z $rows ]]; then
       (( SECONDS < deadline )) || { say "wave $wave: no Applications appeared in ${WAVE_TIMEOUT}s"; return 1; }
@@ -446,7 +482,12 @@ wait_wave() {
     fi
     bad=0
     while IFS=$'\t' read -r name sync health; do
-      if [[ $sync != Synced || $health != Healthy ]]; then
+      # A rehearsal deliberately diverges from git (the stores are fake), so an
+      # OutOfSync app that is Healthy counts: the divergence is the point.
+      sync_ok=0
+      [[ $sync == Synced ]] && sync_ok=1
+      if (( REHEARSAL )) && [[ -e $TMP/stores-seeded && $sync == OutOfSync ]]; then sync_ok=1; fi
+      if (( ! sync_ok )) || [[ $health != Healthy ]]; then
         bad=1
         if [[ $health == Progressing && $sync == Synced ]] && resources_all_healthy "$name"; then
           now=$(date +%s)

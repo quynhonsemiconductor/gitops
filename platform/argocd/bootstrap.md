@@ -103,7 +103,10 @@ A rehearsal must prove the mechanics without holding real credentials:
 no op, no az, no kv-qnsc-*        the CNPG CA is generated and thrown away
 ESO fake provider                 the Azure ClusterSecretStores are patched to
                                   provider.fake with dummy values, so the tunnel
-                                  token is a dummy and cloudflared cannot connect
+                                  token is a dummy and cloudflared cannot connect.
+                                  The fake provider has no GetSecretMap, so a
+                                  `dataFrom.extract` ExternalSecret (grafana-cloud)
+                                  is rewritten to one plain data entry.
 CoreDNS                           region1/2.v2.argotunnel.com resolve to 0.0.0.0
 later waves                       held (manual sync), cloudflared scaled to 0
 ```
