@@ -1,0 +1,39 @@
+# ── tei-rerank — the shared reranker (ONPREM-PLAN §9.1) ─────────────────────
+#
+# Wave 1 with the other AI service. The Deployment is replicas 0: KB has no
+# reranker client yet, and an idle GPU pod would hold a time-slice and VRAM.
+# Enabling it is a replica change (and a seed Job), not a new manifest.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-ai-rerank
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/ai
+      directory:
+        include:
+          - tei-rerank.yaml
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true, RespectIgnoreDifferences=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+  ignoreDifferences:
+    - group: batch
+      kind: Job
+      jqPathExpressions: [".spec.suspend"]
+    # Scaling to 1 to enable the reranker is an operator decision; ArgoCD must
+    # not fight it.
+    - group: apps
+      kind: Deployment
+      jqPathExpressions: [".spec.replicas"]
