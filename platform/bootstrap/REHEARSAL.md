@@ -45,7 +45,7 @@ CNPG operator, the admission policies, and the `root` app-of-apps.
 | Exit | 0 — "bootstrap complete through wave 0" |
 | Waves | -3, -2, -1, 0 all Synced + Healthy |
 | cloudflared | never started: ReplicaSet desired 0, **no pod ever ran**, token was a dummy anyway |
-| Re-run on the same cluster | **did not pass** — see below |
+| Re-run (twice, and once after drift) | passes; the second run changes nothing — see below |
 
 Wave state at the end:
 
@@ -95,17 +95,52 @@ anywhere.
 8. **A title is not an identifier.** Resolving 1Password items by title broke on
    item titles containing spaces (and the titles had already been renamed once).
 
-## Idempotency: steps yes, wave wait no
+## Re-run: bootstrap, bootstrap again, then once after drift
 
-Every step is idempotent (namespaces, ESO secrets, the CA Secrets, `helm
-upgrade --install`, the root apply). What is NOT demonstrated is a second
-bootstrap of an already-bootstrapped cluster: re-running the rehearsal over the
-cluster it had just built failed its wave-0 wait, with `platform-data` reporting
-health `Unknown` after `root` was re-applied from git (automated) over the
-Applications the rehearsal had held at manual sync. A refresh did not clear it.
-Whether a re-run against a cluster that was NOT deliberately diverged behaves
-differently is unverified — the next rehearsal should start from a fresh cluster
-and re-run once, or the real k3s-01 cluster can answer it.
+A second run must change nothing; a run after drift must restore exactly the
+drifted object. Measured on the same rehearsal cluster, all three runs exit 0.
+
+| Run | Action | Wall time | Result |
+|---|---|---|---|
+| A | from an empty k3d cluster | **4 min 15 s** | waves -3..0 Synced/Healthy |
+| B | `cluster.sh` again, unchanged cluster | **7 s** | snapshot before == after |
+| C | delete `data-dev/pg-dev-ca-pub`, then run | **7 s** | snapshot == post-B, mirror restored byte-identical |
+
+The snapshot compares, across `platform`, `argocd`, `external-secrets` and
+`data-dev`: every Secret's data hash, every Application's `generation` and spec
+hash, the Helm release revision, and the `argocd-server` Deployment generation.
+Run B changed none of them; run C changed only `pg-dev-ca-pub`, whose `ca.crt`
+now hashes exactly as before the deletion.
+
+What made a re-run a mutation before this (each fixed at the cause):
+
+1. **The CNPG CA was regenerated every run** and replaced `pg-dev-ca` under a
+   running `pg-dev` — observed: fingerprint `B4:21..` → `38:B7..`. The CA is now
+   created once; `--force pg-dev-ca` is the only way to replace it, and a drifted
+   `-pub` mirror is rebuilt FROM the CA that is already there and compared byte
+   for byte.
+2. **ESO credential Secrets were re-read and re-applied** every run. They are kept
+   when both keys are present, unless `--force qnsc-eso-<store>-cert`.
+3. **ArgoCD was `helm upgrade`d regardless of version.** Now the release is named
+   and left alone when it is already at the `versions.yaml` pin.
+4. **Every ExternalSecret was force-synced** even when the stores were already
+   fake, rewriting three Secrets. Seeding now only touches a store that is not
+   already `provider.fake`.
+5. **root was re-applied** (automated) and then held again. A rehearsal leaves an
+   existing root exactly as the cluster has it.
+
+A `--revision` that ArgoCD cannot fetch now fails in ~45 s with the comparison
+error, instead of spending a wave timeout on "no Applications appeared".
+
+### The `Unknown` health that started this
+
+The original failure (`platform-data` health `Unknown` on a re-run) did **not**
+reproduce on a fresh cluster with the same code — the same re-run passed in 27 s.
+What was reproduced is the CA replacement above, which is the plausible trigger:
+CNPG reissues server certificates when the CA changes under it. The wait now does
+what the prometheus-crds case needed — a bounded refresh for `Unknown` whose every
+resource reports healthy, then a note and it stops holding the wave — and the
+mutation that could cause it no longer happens.
 
 ## Not proven by this rehearsal
 
