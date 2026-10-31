@@ -480,23 +480,17 @@ if (( REHEARSAL )); then
   step "rehearsal guards"
   block_argotunnel
 fi
-if (( REHEARSAL )); then
-  # root's committed syncPolicy is automated; a rehearsal holds root at manual, so
-  # apply the same shape the cluster already has (syncPolicy is root.yaml's last block).
-  # A manual root starts nothing, so on a FRESH cluster ask for the one operation
-  # by hand. On a re-run children already exist and no operation is requested.
-  sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml \
-    | awk '/^  syncPolicy:/{exit} {print}' | "${KUBECTL[@]}" apply -f - >/dev/null
-  if [[ -z $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null \
-             | grep -v 'application.argoproj.io/root$' | head -1) ]]; then
-    "${KUBECTL[@]}" -n argocd patch application root --type merge \
-      -p '{"operation":{"initiatedBy":{"username":"cluster.sh"},"sync":{}}}' >/dev/null
-    say "  i root is manual in a rehearsal: requested its one sync"
-  fi
+# `root` is applied once. A rehearsal holds it at manual sync on purpose, so
+# re-applying the committed (automated) version would re-arm everything the
+# rehearsal is holding; on a re-run it is left exactly as the cluster has it.
+# A real re-run applies it again — that is a no-op when nothing changed.
+if (( REHEARSAL )) \
+   && "${KUBECTL[@]}" -n argocd get application root >/dev/null 2>&1; then
+  say "  = application root exists, kept (a rehearsal does not re-arm it)"
 else
   sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml | "${KUBECTL[@]}" apply -f - >/dev/null
+  say "  ok application root applied"
 fi
-say "  ok application root applied"
 
 # A --revision that does not exist on the remote (a branch never pushed, a typo)
 # shows up as a ComparisonError on root, and then as "no Applications appeared"
