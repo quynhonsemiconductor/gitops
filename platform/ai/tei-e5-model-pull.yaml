@@ -1,0 +1,177 @@
+# ── Model pre-pull for tei-e5 (ONPREM-PLAN §9.1) ─────────────────────────────
+#
+# Two SUSPENDED Jobs, one per variant. Run one by hand before the matching
+# Deployment is scaled up for the first time; afterwards leave it suspended.
+#
+# ── WHY A JOB AND NOT "LET TEI DOWNLOAD IT" ─────────────────────────────────
+# The TEI pods run with an egress policy that allows DNS only, so the embedding
+# service has no route to the internet at steady state. The model pull is the
+# single operation that needs outbound HTTPS, so it is a separate pod with its
+# own NetworkPolicy — one short-lived allowlist instead of a permanent hole.
+#
+# That egress is 443 to anywhere, not just Hugging Face: a NetworkPolicy cannot
+# match DNS names, and the Hugging Face CDN addresses move. The Job installs
+# `huggingface_hub` from PyPI and pulls the model from huggingface.co; it is
+# suspended when not in use, so the allowlist only exists while an operator
+# deliberately resumes it.
+#
+# ── WHY python:3.13-slim AND NOT THE TEI IMAGE ──────────────────────────────
+# The TEI image is a Rust router (no Python, no hub client). The pull needs the
+# official hub client; a pinned slim Python is the smallest thing that has it.
+# Digest verified on Docker Hub 2026-10-31.
+#
+# The cache layout is the Hugging Face hub layout under /data/hub:
+#   /data/hub/models--intfloat--multilingual-e5-large-instruct/
+#            snapshots/274baa43…/{config.json,model.safetensors,tokenizer.json,…}
+# which is exactly what `--huggingface-hub-cache=/data/hub` and
+# HF_HUB_OFFLINE=1 expect at runtime.
+---
+# GPU variant: runs on the AI node, fills tei-e5-model-cache.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tei-e5-model-pull
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5-model-pull
+    app.kubernetes.io/part-of: ai
+spec:
+  suspend: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-e5-model-pull
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        qnsc.vn/pool: ai
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      priorityClassName: ai
+      containers:
+        - name: pull
+          image: python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet huggingface_hub==2.2.0
+              python - <<'PY'
+              from huggingface_hub import snapshot_download
+              path = snapshot_download(
+                  repo_id="intfloat/multilingual-e5-large-instruct",
+                  revision="274baa43b0e13e37fafa6428dbc7938e62e5c439",
+                  cache_dir="/data/hub",
+              )
+              print("cached at", path)
+              PY
+          env:
+            - { name: HF_HUB_DISABLE_TELEMETRY, value: "1" }
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - { name: model-cache, mountPath: /data }
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: tei-e5-model-cache
+---
+# CPU variant: runs off the AI pool, fills tei-e5-model-cache-cpu.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tei-e5-cpu-model-pull
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5-model-pull
+    app.kubernetes.io/part-of: ai
+spec:
+  suspend: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-e5-model-pull
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: qnsc.vn/pool
+                    operator: DoesNotExist
+              - matchExpressions:
+                  - key: qnsc.vn/pool
+                    operator: NotIn
+                    values: [ai]
+      # No priorityClassName: the model pull must not preempt anything on
+      # the CPU node, and `dev` is not a class that exists in git yet.
+      containers:
+        - name: pull
+          image: python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet huggingface_hub==2.2.0
+              python - <<'PY'
+              from huggingface_hub import snapshot_download
+              path = snapshot_download(
+                  repo_id="intfloat/multilingual-e5-large-instruct",
+                  revision="274baa43b0e13e37fafa6428dbc7938e62e5c439",
+                  cache_dir="/data/hub",
+              )
+              print("cached at", path)
+              PY
+          env:
+            - { name: HF_HUB_DISABLE_TELEMETRY, value: "1" }
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - { name: model-cache, mountPath: /data }
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: tei-e5-model-cache-cpu
+---
+# ── Egress: only these Jobs may reach the internet (443 + DNS) ──────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-e5-model-pull-egress
+  namespace: ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5-model-pull
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # HTTPS anywhere: huggingface.co + its CDN (moves) and PyPI for the hub
+    # client. Scoped to these pods by podSelector; nothing else in `ai` can do
+    # this.
+    - ports:
+        - { protocol: TCP, port: 443 }
