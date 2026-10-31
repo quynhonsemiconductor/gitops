@@ -61,6 +61,7 @@ ESO_CLIENT_ID_PLATFORM=""
 ESO_CLIENT_ID_DEV=""
 ESO_CLIENT_ID_PROD=""
 STOP_AFTER=""
+FORCE=()
 
 usage() {
   awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
@@ -90,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     --eso-client-id-prod) ESO_CLIENT_ID_PROD=${2:?}; shift 2 ;;
     --stop-after) STOP_AFTER=1; shift ;;
     --keep-running) STOP_AFTER=0; shift ;;
+    --force) FORCE+=("${2:?--force needs a Secret name}"); shift 2 ;;
     -h|--help) usage 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -166,6 +168,23 @@ expect_keys() {  # NAMESPACE NAME "k1 k2"
   say "  ok $1/$2 keys:$(echo "$got" | sed 's/ *$//;s/^/ /')"
 }
 
+# --force NAME: replace exactly that Secret even though it exists.
+is_forced() {
+  local n
+  for n in ${FORCE[@]+"${FORCE[@]}"}; do [[ $n == "$1" ]] && return 0; done
+  return 1
+}
+
+# A Secret that already has all the keys it should have is LEFT ALONE. This is
+# what makes a re-run a no-op: re-reading a vault and re-applying would replace
+# a Secret whose value someone rotated on purpose.
+secret_has() {  # NAMESPACE NAME "keys"
+  local got k
+  got=$(secret_keys "$1" "$2")
+  [[ -n $got ]] || return 1
+  for k in $3; do [[ $got == *"$k"* ]] || return 1; done
+}
+
 # ══ 1. namespaces ═══════════════════════════════════════════════════════════
 # external-secrets and argocd first: their LABELS must exist before the charts
 # adopt them (Helm does not manage a pre-existing namespace's labels). onprem.yaml
@@ -197,6 +216,10 @@ eso_credentials() {
     store=${stores[$i]} item=${items[$i]} cid=${cids[$i]}
     [[ -n $cid ]] || { echo "  ! --eso-client-id-$store is required with --eso-source op (the $store SP's Entra application id)" >&2; exit 1; }
     name="qnsc-eso-$store-cert"
+    if secret_has external-secrets "$name" "tls.pem client-id" && ! is_forced "$name"; then
+      say "  = external-secrets/$name exists, kept (--force $name to replace)"
+      continue
+    fi
     id=$item
     file=$(op item get "$id" --vault "$OP_VAULT" --format json | jq -r '.files[0].name')
     [[ -n $file && $file != null ]] || { echo "  ! 1Password item $id has no attached file" >&2; exit 1; }
@@ -228,7 +251,28 @@ fi
 # pipe already consumed). The CA is ECDSA P-256 in SEC1 form; CNPG rejects
 # anything else with "invalid private key PEM block type" (#68).
 cnpg_ca() {
-  local combined="$TMP/ca-combined" crt="$TMP/ca.crt" key="$TMP/ca.key"
+  local ns="data-$ENV" combined="$TMP/ca-combined" crt="$TMP/ca.crt" key="$TMP/ca.key"
+  # ONCE IT EXISTS, `-ca` IS THE SOURCE OF TRUTH. A re-run must not replace it:
+  # in a rehearsal the CA is generated, so regenerating would swap the CA under a
+  # running pg-dev (observed: the fingerprint changed and CNPG reissued certs).
+  if secret_has "$ns" "$PG_CLUSTER-ca" "ca.crt ca.key" && ! is_forced "$PG_CLUSTER-ca"; then
+    say "  = $ns/$PG_CLUSTER-ca exists, kept (--force $PG_CLUSTER-ca to replace)"
+    if secret_has "$ns" "$PG_CLUSTER-ca-pub" "ca.crt" && ! is_forced "$PG_CLUSTER-ca-pub"; then
+      say "  = $ns/$PG_CLUSTER-ca-pub exists, kept"
+    else
+      # only the public mirror drifted: rebuild it FROM the CA that is already there
+      "${KUBECTL[@]}" -n "$ns" get secret "$PG_CLUSTER-ca" -o jsonpath='{.data.ca\.crt}' \
+        | openssl base64 -d \
+        | "${KUBECTL[@]}" -n "$ns" create secret generic "$PG_CLUSTER-ca-pub" \
+            --from-file=ca.crt=/dev/stdin --dry-run=client -o yaml \
+        | "${KUBECTL[@]}" apply -f - >/dev/null
+      say "  + $ns/$PG_CLUSTER-ca-pub rebuilt from $PG_CLUSTER-ca"
+    fi
+    expect_keys "$ns" "$PG_CLUSTER-ca" "ca.crt ca.key"
+    expect_keys "$ns" "$PG_CLUSTER-ca-pub" "ca.crt"
+    return 0
+  fi
+
   if (( REHEARSAL )); then
     # Never the vault, not even read-only: a throwaway CA of the same shape.
     say "  rehearsal: generating a throwaway CA (the vault is not read)"
@@ -254,15 +298,16 @@ cnpg_ca() {
   [[ $(head -1 "$key") == "-----BEGIN EC PRIVATE KEY-----" ]] \
     || { echo "  ! the CA key is not SEC1 ('BEGIN EC PRIVATE KEY'); CNPG cannot load it (#68)" >&2; exit 1; }
 
-  "${KUBECTL[@]}" -n "data-$ENV" create secret generic "$PG_CLUSTER-ca" \
+  "${KUBECTL[@]}" -n "$ns" create secret generic "$PG_CLUSTER-ca" \
     --from-file=ca.crt="$crt" --from-file=ca.key="$key" \
     --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f - >/dev/null
-  "${KUBECTL[@]}" -n "data-$ENV" create secret generic "$PG_CLUSTER-ca-pub" \
+  "${KUBECTL[@]}" -n "$ns" create secret generic "$PG_CLUSTER-ca-pub" \
     --from-file=ca.crt="$crt" \
     --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f - >/dev/null
   rm -f "$key"
-  expect_keys "data-$ENV" "$PG_CLUSTER-ca" "ca.crt ca.key"
-  expect_keys "data-$ENV" "$PG_CLUSTER-ca-pub" "ca.crt"
+  say "  + $ns/$PG_CLUSTER-ca and $PG_CLUSTER-ca-pub created"
+  expect_keys "$ns" "$PG_CLUSTER-ca" "ca.crt ca.key"
+  expect_keys "$ns" "$PG_CLUSTER-ca-pub" "ca.crt"
 }
 
 step "CNPG CA ($ENV)"
@@ -272,11 +317,19 @@ cnpg_ca
 # The last Helm install by hand. Version pinned in versions.yaml, not here.
 step "ArgoCD"
 ARGO_VERSION=$(argo_cd_version)
-say "  version $ARGO_VERSION (versions.yaml)"
-helm repo list 2>/dev/null | grep -q '^argo[[:space:]]' || helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
-helm repo update argo >/dev/null
-helm upgrade --install argocd argo/argo-cd -n argocd --version "$ARGO_VERSION" \
-  -f platform/argocd/values.yaml --wait --timeout 10m >/dev/null
+HELM=(helm)
+[[ -n $CONTEXT ]] && HELM+=(--kube-context "$CONTEXT")
+installed=$("${HELM[@]}" list -n argocd --filter '^argocd$' -o json 2>/dev/null \
+  | jq -r '.[0].chart // empty' | sed 's/^argo-cd-//')
+if [[ $installed == "$ARGO_VERSION" ]]; then
+  say "  = argocd $ARGO_VERSION already installed, no upgrade"
+else
+  say "  i argocd ${installed:-not installed} -> $ARGO_VERSION"
+  helm repo list 2>/dev/null | grep -q '^argo[[:space:]]' || helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
+  helm repo update argo >/dev/null
+  "${HELM[@]}" upgrade --install argocd argo/argo-cd -n argocd --version "$ARGO_VERSION" \
+    -f platform/argocd/values.yaml --wait --timeout 10m >/dev/null
+fi
 "${KUBECTL[@]}" -n argocd rollout status deploy/argocd-server --timeout=300s >/dev/null
 say "  ok argocd $ARGO_VERSION: server rolled out"
 
@@ -420,6 +473,24 @@ if (( REHEARSAL )); then
 fi
 sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml | "${KUBECTL[@]}" apply -f - >/dev/null
 say "  ok application root applied"
+
+# A --revision that does not exist on the remote (a branch never pushed, a typo)
+# shows up as a ComparisonError on root, and then as "no Applications appeared"
+# a wave timeout later. On a cluster with no children yet, fail in 45s instead.
+if [[ -z $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null \
+           | grep -v 'application.argoproj.io/root$' | head -1) ]]; then
+  for _ in 1 2 3 4 5 6 7 8 9; do
+    msg=$("${KUBECTL[@]}" -n argocd get application root -o json 2>/dev/null \
+      | jq -r '[.status.conditions[]? | select(.type == "ComparisonError") | .message] | first // empty')
+    if [[ -n $msg ]]; then
+      echo "  ! ArgoCD cannot compare root at revision '$REVISION':" >&2
+      echo "    $msg" >&2
+      echo "    push that revision first, or use --revision main" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+fi
 guard_later_waves || true
 
 apps_json() { "${KUBECTL[@]}" -n argocd get applications -o json; }
@@ -450,22 +521,29 @@ resources_all_healthy() {
     | all(. == "Healthy" or . == "Suspended")' >/dev/null 2>&1
 }
 
-refresh_app() {
-  local app=$1 count
-  count=$(cat "$TMP/refreshes/$app" 2>/dev/null || echo 0)
+refresh_count() { cat "$TMP/refreshes/$1" 2>/dev/null || echo 0; }
+
+# One bounded, spaced refresh for an Application whose SYNC is fine and whose
+# resources all report healthy, but whose aggregate is stuck (Progressing) or
+# cannot be assessed (Unknown). The prometheus-crds case was Progressing; a
+# re-run over an existing cluster can also land on Unknown, which ArgoCD will
+# not re-evaluate on its own either.
+refresh_app() {  # APP REASON
+  local app=$1 reason=$2 count
+  count=$(refresh_count "$app")
   (( count < MAX_REFRESH )) || return 1
   count=$((count + 1))
   echo "$count" >"$TMP/refreshes/$app"
   "${KUBECTL[@]}" -n argocd annotate application "$app" \
     argocd.argoproj.io/refresh=normal --overwrite >/dev/null
-  say "  refresh $app (stuck Progressing, all resources Healthy; attempt $count/$MAX_REFRESH)"
+  say "  refresh $app ($reason, all resources healthy; attempt $count/$MAX_REFRESH)"
   date +%s >"$TMP/stuck/$app"
   return 0
 }
 
 wait_wave() {
   local wave=$1 deadline=$((SECONDS + WAVE_TIMEOUT))
-  local rows name sync health bad now first sync_ok
+  local rows name sync health bad now first sync_ok app_ok reason
   say "wave $wave: waiting (timeout ${WAVE_TIMEOUT}s)"
   while :; do
     if (( REHEARSAL )); then
@@ -485,19 +563,31 @@ wait_wave() {
       sync_ok=0
       [[ $sync == Synced ]] && sync_ok=1
       if (( REHEARSAL )) && [[ -e $TMP/stores-seeded && $sync == OutOfSync ]]; then sync_ok=1; fi
-      if (( ! sync_ok )) || [[ $health != Healthy ]]; then
-        bad=1
-        if [[ $health == Progressing && $sync == Synced ]] && resources_all_healthy "$name"; then
+      app_ok=$sync_ok
+      if [[ $health != Healthy ]]; then
+        reason=""
+        case $health in
+          Progressing) reason="stuck Progressing" ;;
+          Unknown)     reason="health Unknown" ;;
+        esac
+        if [[ -n $reason && $sync == Synced ]] && resources_all_healthy "$name"; then
           now=$(date +%s)
           first=$(cat "$TMP/stuck/$name" 2>/dev/null || echo "$now")
           [[ -e $TMP/stuck/$name ]] || echo "$now" >"$TMP/stuck/$name"
           if (( now - first >= REFRESH_AFTER )); then
-            refresh_app "$name" || true
+            refresh_app "$name" "$reason" || true
+          fi
+          # Bounded: after MAX_REFRESH refreshes that changed nothing, an Unknown
+          # whose every resource reports healthy stops holding the wave. Say it.
+          if [[ $health == Unknown ]] && (( $(refresh_count "$name") >= MAX_REFRESH )); then
+            say "  note $name: health Unknown after $(refresh_count "$name") refreshes, every resource healthy — going on"
+            app_ok=1
           fi
         else
           rm -f "$TMP/stuck/$name"
         fi
       fi
+      if (( ! app_ok )); then bad=1; fi
     done <<<"$rows"
     if (( bad == 0 )); then
       while IFS=$'\t' read -r name sync health; do
