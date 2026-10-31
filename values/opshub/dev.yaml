@@ -4,7 +4,7 @@
 # whole on-prem delta: CNPG, the shared dev Valkey, the same-origin host, and
 # the non-secret env the ECS task definition used to own (opshub
 # infra/modules/stack/main.tf, develop — transcribed, not invented). The SECRET
-# half arrives through the opshub-app bundle from kv-qnsc-dev (§7.1):
+# half arrives from kv-qnsc-dev, one secret per value (§7.1):
 # cookie/csrf/better-auth secrets, entra-client-secret, storage credentials,
 # and the Graph certificate — which is NOT env at all, it is the worker-only
 # mounted file wired at the bottom of this file.
@@ -26,7 +26,7 @@ data:
     mode: cnpg
     cluster: pg-dev
     namespace: data-dev
-    auth: password     # CNPG managed role; the credential comes from the app secret bundle
+    auth: password     # CNPG managed role; the credential is the secrets.db* Key Vault value
     pooling: none      # §6.3 — no pooler; the worker holds a session-level LISTEN connection
     name: opshub
     user: opshub_app
@@ -66,7 +66,7 @@ services:
 
 # ── Product-wide, because api AND worker share one env validator ─────────────
 # Non-secret configuration only. Anything a leaked value would enable lives in
-# the kv-qnsc-dev bundle, never here.
+# a kv-qnsc-dev secret, never here.
 defaults:
   env:
     - { name: NODE_ENV, value: "production" }
@@ -92,34 +92,40 @@ defaults:
     # §6.5 — storage: R2 stays the object store; the renamed dev bucket and the
     # path-style R2 S3 endpoint are plain env. The CREDENTIALS
     # (STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY) are keys of the
-    # opshub-dev-app bundle — never values here.
-    - { name: S3_FILES_BUCKET, value: "opshub-dev-attachments" }
+    # opshub-dev-storage-* Key Vault secrets — never values here.
+    - { name: S3_FILES_BUCKET, value: "opshub-develop-attachments" }
     - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
     - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
 
-# ── ON-PREM SECRET SHAPE (chart 0.12.0, ONPREM-PLAN §5.6 / gitops#48) ────────
-# Setting clusterSecretStore switches the chart to the on-prem shape: no
-# per-namespace AWS SecretStore is rendered. ExternalSecrets read Key Vault through the ClusterSecretStore:
-#   opshub-app      <- kv-qnsc-dev/opshub-dev-app   (secrets.bundle; app env vars)
-#   opshub-db-app   <- kv-qnsc-dev/opshub-dev-db-app (secrets.db; api + worker password, envFrom)
-#   opshub-migrator <- kv-qnsc-dev/opshub-dev-db-migrator (secrets.dbMigrator; PreSync wave -1)
-# plus the CA hop (<product>-db-ca, cnpg-ca-dev). The AWS-era
-# secretsReaderServiceAccount stays unset — it is the AWS shape only.
+# ── ON-PREM SECRET SHAPE (chart 0.14.0, ONPREM-PLAN §5.6) ────────────────────
+# ONE Key Vault secret PER VALUE, listed with its class and generation rule in
+# values/opshub/dev.secrets.yaml:
+#   opshub-env        <- secrets.env         every service
+#   opshub-env-api    <- secrets.envApiOnly  api only: the worker REFUSES these
+#   opshub-db-app / -db-worker / -db-migrator <- the CNPG managed role passwords
+# plus the CA hop (<product>-db-ca, cnpg-ca-dev) and the worker-only Graph cert.
+# The deprecated JSON bundle (opshub-dev-app) is gone with chart 0.14.0.
 secrets:
   clusterSecretStore: kv-qnsc-dev
-  bundle: opshub-dev-app
+  env:
+    # api AND worker validate the same schema (libs/platform/src/config/env.schema.ts).
+    COOKIE_SECRET: opshub-dev-cookie-secret
+    CSRF_SECRET: opshub-dev-csrf-secret
+    # R2 S3 credentials (:107-108). Optional in the schema, required in practice
+    # for attachments; the bucket name is plain env above.
+    STORAGE_ACCESS_KEY_ID: opshub-dev-storage-access-key-id
+    STORAGE_SECRET_ACCESS_KEY: opshub-dev-storage-secret-access-key
+  envApiOnly:
+    # API-only by the schema's own split (:64, :443): the worker refuses
+    # BETTER_AUTH_SECRET / ENTRA_CLIENT_SECRET, and the API refuses GRAPH_*.
+    BETTER_AUTH_SECRET: opshub-dev-better-auth-secret
+    ENTRA_CLIENT_SECRET: opshub-dev-entra-client-secret
   db: opshub-dev-db-app
+  dbWorker: opshub-dev-db-worker
   dbMigrator: opshub-dev-db-migrator
-  # The api-only split the opshub env schema DEMANDS: the worker REFUSES TO
-  # START with BETTER_AUTH_SECRET / ENTRA_CLIENT_SECRET / EDGE_CLIENT_IP_SECRET
-  # (+PREVIOUS), and the API refuses GRAPH_* — so those can never share the
-  # bundle. opshub-dev-api holds the API-only secrets (chart 0.12.1
-  # serviceBundles); the worker needs no bundle of its own — it shares
-  # opshub-dev-app and gets GRAPH_CLIENT_ID from plain env above.
-  serviceBundles:
-    api: opshub-dev-api
-  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a
-  # FILE into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH.
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a FILE
+  # into the worker only, read through AZURE_CLIENT_CERTIFICATE_PATH. Already in
+  # kv-qnsc-dev from the AWS-exit copy-out; the worker's GRAPH_CLIENT_ID is env.
   workerOnly:
     graphCert: opshub-dev-graph-cert
     path: /etc/qnsc/graph/cert.pem

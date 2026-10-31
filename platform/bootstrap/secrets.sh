@@ -160,9 +160,11 @@ if (( CHECK_ONLY )); then
   p="$PRODUCT-$ENV"
   for n in "$p-db-app" "$p-db-worker" "$p-db-migrator" "$p-cookie-secret" "$p-csrf-secret" \
            "$p-better-auth-secret" "$p-entra-client-secret" "$p-storage-access-key-id" \
-           "$p-storage-secret-access-key" "$p-platform-admin-emails"; do
+           "$p-storage-secret-access-key"; do
     echo "  $VAULT_APP/$n"
   done
+  grep -q "$p-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null \
+    && echo "  $VAULT_APP/$p-platform-admin-emails"
   if (( DO_SITE )); then
     echo "  $VAULT_ADMIN/admin-argocd-password"
     echo "  $VAULT_PLATFORM/platform-argocd-admin-bcrypt"
@@ -195,8 +197,11 @@ ask "$VAULT_APP" "$PRODUCT-$ENV-storage-access-key-id" "$EXP_1Y" \
   'R2 API token Access Key ID (attachments + public-assets, object read/write)'
 ask "$VAULT_APP" "$PRODUCT-$ENV-storage-secret-access-key" "$EXP_1Y" \
   'R2 API token Secret Access Key'
-ask "$VAULT_APP" "$PRODUCT-$ENV-platform-admin-emails" "$EXP_1Y" \
-  'PLATFORM_ADMIN_EMAILS (comma-separated, no spaces; staff roster stays out of the public repo)'
+# Only the products whose schema HAS a roster: opshub has none.
+if grep -q "$PRODUCT-$ENV-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  ask "$VAULT_APP" "$PRODUCT-$ENV-platform-admin-emails" "$EXP_1Y" \
+    'PLATFORM_ADMIN_EMAILS (comma-separated, no spaces; staff roster stays out of the public repo)'
+fi
 
 if (( DO_SITE )); then
   # ── generated + asked: the platform's own credentials ─────────────────────
