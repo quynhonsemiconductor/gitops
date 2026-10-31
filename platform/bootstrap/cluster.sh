@@ -522,18 +522,39 @@ for w in -3 -2 -1 0 1 2; do
   wait_wave "$w" || { failed=1; break; }
 done
 
-# Stop the multi-wave operation so the waves we did not wait for are never
-# created (a rehearsal must not deploy a second connector into a live tunnel).
-if (( STOP_AFTER )) && (( failed == 0 )); then
+# Wave order lives inside ONE root operation, which keeps running whatever we do
+# to root's spec. So after the last wave we do not "stop" it: we GUARD until it
+# finishes, holding everything above the cutoff and keeping the tunnel down. A
+# rehearsal must never leave a second connector attached to a live tunnel.
+settle_guard() {
+  local deadline=$((SECONDS + 240)) phase
+  say "settle: holding every wave above $UNTIL_WAVE until root's operation ends"
+  while :; do
+    hold_app root "selfHeal off, so the holds below stick"
+    guard_later_waves || true
+    phase=$("${KUBECTL[@]}" -n argocd get application root \
+      -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)
+    case $phase in
+      Succeeded|Failed|Error)
+        # one more pass after the operation ends: its last wave was applied
+        # between our poll and this line
+        guard_later_waves || true
+        say "  ok root operation: $phase; later waves are held"
+        return 0
+        ;;
+    esac
+    if (( SECONDS >= deadline )); then
+      say "  ! root's operation is still '$phase' after 240s; holds are in place,"
+      say "    but re-run this script or check the cluster before leaving it."
+      return 0
+    fi
+    sleep 5
+  done
+}
+
+if (( failed == 0 )); then
   step "stop after wave $UNTIL_WAVE"
-  "${KUBECTL[@]}" -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":null}}' >/dev/null
-  if command -v argocd >/dev/null && argocd --core -n argocd app terminate-op root >/dev/null 2>&1; then
-    say "  ok root operation terminated; root is manual"
-  else
-    say "  ! could not terminate root's operation (argocd CLI missing or failed)."
-    say "    Waves after $UNTIL_WAVE may still be created; the later-wave guard"
-    say "    switches them to manual, but check before leaving this cluster."
-  fi
+  settle_guard
 fi
 
 step "applications (names, sync, health only)"
