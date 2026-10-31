@@ -94,8 +94,27 @@ Then it waits wave by wave. A wave is done when every Application in it is
 
 Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
 `--eso-source op|none`, `--rehearsal`, `--stop-after`, `--keep-running`,
-`--vault-admin`, `--ca-secret`, `--pg-cluster`, `--op-vault`, `--eso-item-*`,
-`--eso-client-id-*`.
+`--force NAME`, `--vault-admin`, `--ca-secret`, `--pg-cluster`, `--op-vault`,
+`--eso-item-*`, `--eso-client-id-*`.
+
+## Re-running it on a cluster that already exists
+
+The next real use is a re-run: k3s-01, after the ESO workload-identity change.
+So every step is a no-op when its target is already there.
+
+```
+namespaces        kubectl apply — same object, no change
+ESO credentials   kept when both keys exist; --force qnsc-eso-<store>-cert replaces
+CNPG CA           created ONCE. A re-run never regenerates it, and a missing
+                  -ca-pub mirror is rebuilt FROM the CA that is already there,
+                  then compared byte for byte. --force pg-dev-ca replaces it
+ArgoCD            installed or upgraded ONLY when the pinned version differs
+root              applied; a rehearsal leaves an existing root as the cluster has it
+```
+
+Why the CA matters: in a rehearsal the CA is generated, so regenerating it would
+swap the CA under a running `pg-dev` (observed: the fingerprint changed and CNPG
+reissued certificates). The measured re-run result is in `bootstrap/REHEARSAL.md`.
 
 ## `--rehearsal`: a cluster that cannot act as production
 
