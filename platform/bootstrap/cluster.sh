@@ -589,6 +589,9 @@ wait_wave() {
       if (( REHEARSAL )) && [[ -e $TMP/stores-seeded && $sync == OutOfSync ]]; then sync_ok=1; fi
       app_ok=$sync_ok
       if [[ $health != Healthy ]]; then
+        # Not healthy is not ok. The ONLY exception is the bounded-refresh case
+        # below, and only for Progressing/Unknown with every resource healthy.
+        app_ok=0
         reason=""
         case $health in
           Progressing) reason="stuck Progressing" ;;
