@@ -483,8 +483,16 @@ fi
 if (( REHEARSAL )); then
   # root's committed syncPolicy is automated; a rehearsal holds root at manual, so
   # apply the same shape the cluster already has (syncPolicy is root.yaml's last block).
+  # A manual root starts nothing, so on a FRESH cluster ask for the one operation
+  # by hand. On a re-run children already exist and no operation is requested.
   sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml \
     | awk '/^  syncPolicy:/{exit} {print}' | "${KUBECTL[@]}" apply -f - >/dev/null
+  if [[ -z $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null \
+             | grep -v 'application.argoproj.io/root$' | head -1) ]]; then
+    "${KUBECTL[@]}" -n argocd patch application root --type merge \
+      -p '{"operation":{"initiatedBy":{"username":"cluster.sh"},"sync":{}}}' >/dev/null
+    say "  i root is manual in a rehearsal: requested its one sync"
+  fi
 else
   sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml | "${KUBECTL[@]}" apply -f - >/dev/null
 fi
