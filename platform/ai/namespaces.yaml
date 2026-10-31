@@ -1,0 +1,45 @@
+# ── The AI namespaces (ONPREM-PLAN §6.2, §9.1) ──────────────────────────────
+#
+# `ai` runs the shared AI services on the GPU agent node; `ai-lab` is the team's
+# experiment space on the same node, at the LOWEST priority so the shared
+# services preempt it.
+#
+# ── WHY THEY ARE DECLARED HERE AND NOT IN ../namespaces/onprem.yaml ─────────
+# The namespace labels are load-bearing (../namespaces/README.md): a missing
+# label fails silently. Declaring them beside the workloads that depend on them
+# keeps the AI lane one reviewable directory, and the platform-ai Application
+# (§11.2 wave −3) creates them before anything in this namespace is scheduled.
+#
+# `qnsc.vn/env: ai` is the plan's label (§6.2) and keeps the AI services out of
+# the ESO ClusterSecretStore selections for prod/dev — nothing here reads a
+# product vault, and no ExternalSecret is created in this lane (the AI services
+# hold no secrets; their only secret-shaped input is the model revision, which
+# is pinned in git).
+#
+# `qnsc.vn/tenant: product` is deliberately ABSENT: the admission policies in
+# ../policy bind on it, and these are upstream vendor images (TEI, the NVIDIA
+# device plugin), the same reason `platform` is exempt. Pod Security is
+# `baseline` enforced and `restricted` audited — the same trade as the operator
+# namespaces: a vendor image we do not build is not held to `restricted`.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    qnsc.vn/env: ai
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-lab
+  labels:
+    qnsc.vn/env: ai
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,42 @@
+# ── PriorityClasses for the AI node (ONPREM-PLAN §5.7, §9.1) ─────────────────
+#
+# The plan's order is `platform` > `prod` > `ai` > `dev` > `batch`, with `ai-lab`
+# lowest of all. Only the two AI classes are defined here: the other four belong
+# to the platform lane and are not yet in git. The numbers below are spaced so
+# the missing four slot in without renumbering:
+#
+#   platform 1000000 · prod 100000 · ai 50000 · dev 10000 · batch 1000 · ai-lab 0
+#
+# `ai` sits BELOW prod on purpose: an OOM or a burst on the GPU node must never
+# preempt a product that happens to be scheduled there. `ai-lab` is the lowest
+# class in the cluster so a team experiment is preempted by everything,
+# including the shared AI services (§9.1 "preempted by the shared `ai` services").
+#
+# The classes are inert until a workload names them (`priorityClassName`): no
+# Deployment in the estate sets one yet, so this PR does not change the
+# behaviour of anything already running.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ai
+value: 50000
+# false: the scheduler does not inject a class into pods that omit one. A pod
+# without a class keeps priority 0 — the same level as ai-lab, below ai — so an
+# accidental pod cannot outrank the shared services.
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  Shared AI services on the GPU node (§9.1). Below prod, above dev. ONPREM-PLAN §5.7.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ai-lab
+value: 0
+globalDefault: false
+# Nothing in the cluster ranks below ai-lab, so it has nothing to preempt.
+preemptionPolicy: Never
+description: >-
+  Team AI experiments (ai-lab namespace). The lowest class in the cluster; the
+  shared ai services preempt it (ONPREM-PLAN §9.1).
