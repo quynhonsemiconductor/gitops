@@ -412,22 +412,31 @@ seed_rehearsal_stores() {
   # The patch goes through ESO's validating webhook, which is not up the moment
   # the store object appears — a failed attempt is retried on the next poll.
   hold_app platform-eso "its stores are swapped for the fake provider"
-  local s keys
+  local s keys changed=0
   for s in platform "$ENV"; do
     keys=$(store_keys "$s")
     [[ -n $keys ]] || continue
+    if "${KUBECTL[@]}" get clustersecretstore "kv-qnsc-$s" -o json 2>/dev/null \
+         | jq -e '.spec.provider.fake != null' >/dev/null 2>&1; then
+      say "  = kv-qnsc-$s already serves fake data, kept"
+      continue
+    fi
     if ! seed_fake_store "kv-qnsc-$s" "$keys" 2>/dev/null; then
       say "  rehearsal: waiting for the ESO webhook before swapping kv-qnsc-$s"
       return 0
     fi
+    changed=1
     say "  rehearsal: kv-qnsc-$s now serves $(echo "$keys" | wc -w | tr -d ' ') dummy values"
   done
   touch "$TMP/stores-seeded"
-  # Anything already created against the Azure store re-reads it now.
-  for ns in platform argocd "rova-$ENV"; do
-    "${KUBECTL[@]}" -n "$ns" annotate externalsecret --all \
-      force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
-  done
+  # Only a store that just changed needs the ExternalSecrets re-read; doing it on
+  # every run would rewrite three Secrets for nothing.
+  if (( changed )); then
+    for ns in platform argocd "rova-$ENV"; do
+      "${KUBECTL[@]}" -n "$ns" annotate externalsecret --all \
+        force-sync="$(date +%s)" --overwrite >/dev/null 2>&1 || true
+    done
+  fi
 }
 
 held_names() { "${KUBECTL[@]}" -n argocd get applications -o json; }
@@ -471,7 +480,14 @@ if (( REHEARSAL )); then
   step "rehearsal guards"
   block_argotunnel
 fi
-sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml | "${KUBECTL[@]}" apply -f - >/dev/null
+if (( REHEARSAL )); then
+  # root's committed syncPolicy is automated; a rehearsal holds root at manual, so
+  # apply the same shape the cluster already has (syncPolicy is root.yaml's last block).
+  sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml \
+    | awk '/^  syncPolicy:/{exit} {print}' | "${KUBECTL[@]}" apply -f - >/dev/null
+else
+  sed "s|targetRevision: main|targetRevision: $REVISION|g" apps/root.yaml | "${KUBECTL[@]}" apply -f - >/dev/null
+fi
 say "  ok application root applied"
 
 # A --revision that does not exist on the remote (a branch never pushed, a typo)
