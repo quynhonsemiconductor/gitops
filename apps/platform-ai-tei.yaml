@@ -1,0 +1,49 @@
+# ── tei-e5 — the shared embedding service (ONPREM-PLAN §9.1) ────────────────
+#
+# Wave 1, with the product applications: this is a service workloads CALL, it
+# depends on nothing in the data plane, and its namespace/PVC prerequisites come
+# from the wave −3 platform-ai Application. Sync order inside wave 1 does not
+# matter — KB reaches TEI at request time, never at sync time.
+#
+# Plain manifests, not the product chart: TEI has no repository of ours, no SLO
+# per endpoint, no tunnel route, and promoting it through §11 would model it as
+# revenue code (the same reasoning as platform/clamd).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-ai-tei
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/ai
+      directory:
+        include:
+          - tei-e5.yaml
+          - tei-e5-model-pull.yaml
+          - tei-e5-parity.yaml
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    # Suspend flags and paused Jobs must not be fought by selfHeal: the
+    # `suspend` field on the two Jobs is OPERATOR STATE (resume to pull/parity,
+    # suspend after), so ArgoCD ignores it like the dev deploys ignore replicas.
+    syncOptions: [ServerSideApply=true, RespectIgnoreDifferences=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+  ignoreDifferences:
+    - group: batch
+      kind: Job
+      jqPathExpressions: [".spec.suspend"]
+    # tei-e5-cpu is scaled by hand for the phase-A fallback; replicas on both
+    # deployments are operational state, not desired state.
+    - group: apps
+      kind: Deployment
+      jqPathExpressions: [".spec.replicas"]
