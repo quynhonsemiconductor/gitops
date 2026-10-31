@@ -287,25 +287,27 @@ say "  ok argocd $ARGO_VERSION: server rolled out"
 #     tunnel token is a dummy and cloudflared cannot connect
 #   - argotunnel name resolution is blackholed in CoreDNS
 block_argotunnel() {
-  local cm
-  cm=$("${KUBECTL[@]}" -n kube-system get configmap coredns -o json)
-  if echo "$cm" | grep -q "argotunnel"; then
-    say "  ok coredns already blackholes argotunnel"
-    return 0
-  fi
-  echo "$cm" | jq -r '.data.Corefile' >"$TMP/Corefile"
-  awk '{ print }
-       /^[[:space:]]*hosts \{/ && !done {
-         print "        0.0.0.0 region1.v2.argotunnel.com region2.v2.argotunnel.com"
-         done = 1
-       }' "$TMP/Corefile" >"$TMP/Corefile.new"
-  [[ $(grep -c argotunnel "$TMP/Corefile.new") == 1 ]] || { echo "  ! could not patch the Corefile" >&2; return 1; }
-  "${KUBECTL[@]}" -n kube-system create configmap coredns \
-    --from-file=Corefile="$TMP/Corefile.new" --dry-run=client -o yaml \
+  # k3s CoreDNS imports /etc/coredns/custom/*.override inside its server block,
+  # which is where k3s expects customisations (the main Corefile is k3s's).
+  # A separate server block, not an .override: the hosts plugin may appear only
+  # once per server block, and the main one already has it.
+  local body
+  body='argotunnel.com:53 {
+    template ANY ANY {
+        rcode NXDOMAIN
+    }
+}
+cfargotunnel.com:53 {
+    template ANY ANY {
+        rcode NXDOMAIN
+    }
+}'
+  "${KUBECTL[@]}" -n kube-system create configmap coredns-custom \
+    --from-literal=argotunnel.server="$body" --dry-run=client -o yaml \
     | "${KUBECTL[@]}" apply -f - >/dev/null
   "${KUBECTL[@]}" -n kube-system rollout restart deploy/coredns >/dev/null
   "${KUBECTL[@]}" -n kube-system rollout status deploy/coredns --timeout=120s >/dev/null
-  say "  ok coredns blackholes region1/2.v2.argotunnel.com"
+  say "  ok coredns: argotunnel.com and cfargotunnel.com answer NXDOMAIN"
 }
 
 seed_fake_store() {  # STORE "KEY KEY ..."

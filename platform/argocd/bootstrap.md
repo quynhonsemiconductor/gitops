@@ -64,10 +64,10 @@ by the identity lane, not a plain secret.
                         labels first: Helm adopts a pre-existing namespace and never
                         fixes its labels
 2  ESO credentials      one function (eso_credentials) reads each SP's combined PEM
-                        from 1Password (item given by title, resolved to an id at
-                        run time) and pairs it with the client id passed in. THE SEAM
-                        for agent F's workload identity: replacing that one function
-                        is the whole change.
+                        from 1Password BY ITEM ID (titles change; ids do not) and
+                        pairs it with the client id passed in. THE SEAM for agent F's
+                        workload identity: replacing that one function is the whole
+                        change.
 3  CNPG CA              ONE `az keyvault secret show` -> ca.crt + the SEC1
                         `EC PRIVATE KEY` block -> pg-<env>-ca and pg-<env>-ca-pub.
                         A PKCS#8 or RSA key is refused here, with the reason (#68)
@@ -83,13 +83,40 @@ Then it waits wave by wave. A wave is done when every Application in it is
   case: the Application synced, nothing reports unhealthy, and ArgoCD never
   re-evaluates. The script refreshes such an app — at most twice, 90 s apart, and
   only when every resource that has a health check reports `Healthy`.
-- **`--until-wave N`** stops the run after wave N and terminates root's operation,
-  so later waves are never created. This is what a rehearsal uses: a throwaway
-  cluster must not deploy a second connector into a live tunnel.
+- **`--until-wave N`** stops the *waiting* after wave N. It does not stop ArgoCD:
+  root's waves gate on health, so a later wave can be created while this script is
+  still waiting. `--stop-after` (implied below wave 2) then makes root manual and
+  terminates its operation. Later-wave Applications are switched to manual sync as
+  they appear, and `cloudflared` is scaled to zero if it ever starts — the stop
+  point does not depend on health timing.
 
 Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
-`--eso-source op|none`, `--stop-after`, `--keep-running`, `--vault-admin`,
-`--ca-secret`, `--pg-cluster`.
+`--eso-source op|none`, `--rehearsal`, `--stop-after`, `--keep-running`,
+`--vault-admin`, `--ca-secret`, `--pg-cluster`, `--op-vault`, `--eso-item-*`,
+`--eso-client-id-*`.
+
+## `--rehearsal`: a cluster that cannot act as production
+
+A rehearsal must prove the mechanics without holding real credentials:
+
+```
+no op, no az, no kv-qnsc-*        the CNPG CA is generated and thrown away
+ESO fake provider                 the Azure ClusterSecretStores are patched to
+                                  provider.fake with dummy values, so the tunnel
+                                  token is a dummy and cloudflared cannot connect
+CoreDNS                           region1/2.v2.argotunnel.com resolve to 0.0.0.0
+later waves                       held (manual sync), cloudflared scaled to 0
+```
+
+What a rehearsal therefore does NOT prove: that the real ESO stores authenticate,
+that the real CNPG CA is readable, and anything a product does with real
+credentials. Wave 0 (the platform's data plane) is fully exercised.
+
+```bash
+k3d cluster create qnsc-rehearsal --wait
+platform/bootstrap/cluster.sh --rehearsal --context k3d-qnsc-rehearsal \
+  --revision <branch> --until-wave 0 --stop-after
+```
 
 ## Before you start: the Key Vault items
 
@@ -103,11 +130,10 @@ their formats are `values/<product>/<env>.secrets.yaml`; the vaults are:
 | `kv-qnsc-admin` | `platform-cnpg-ca-<env>` (crt + SEC1 key), `admin-argocd-password` | `secrets.sh` |
 | 1Password | `eso-{platform,dev,prod}-combined-pem` Document items | identity lane |
 
-The 1Password vault, the item titles and the SP client ids are all flags on
-`cluster.sh` (`--op-vault`, `--eso-item-<store>`, `--eso-client-id-<store>`); the
-item title is resolved to an id at run time, so nothing site-specific is committed.
-Rotate the ESO certificates if their material has ever been printed — the
-2026-10-31 incident is why.
+`cluster.sh` reads those items by ID (the titles were renamed once already) and
+takes the SP client id as a flag (`--eso-client-id-<store>`); `--eso-item-<store>`
+overrides the id for another site. Rotate the ESO certificates if their material
+has ever been printed — the 2026-10-31 incident is why.
 
 ## What root does, in wave order
 
