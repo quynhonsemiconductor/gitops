@@ -1,82 +1,113 @@
 # Bootstrap — who installs the installer
 
-ONPREM-PLAN §14. Git holds everything except a few hand-made things: ArgoCD itself, the
-`root` Application, the ESO service-principal Secrets and the static CNPG CA. Every
-platform component (ESO, cert-manager, CNPG + barman plugin, Valkey, cloudflared, the
-admission policies, the namespaces) is an Application under `../../apps/platform-*.yaml`,
-ordered by sync wave (§11.2) and managed by `root`.
+ONPREM-PLAN §14. Git holds everything except the handful of things a cluster cannot
+create for itself: its namespaces' labels, the ESO service-principal Secrets, the
+static CNPG CA, ArgoCD, and the `root` Application. Everything after `root` — the
+platform operators, the databases, the products — is Applications in `apps/` and
+`appsets/`, ordered by sync wave (§11.2).
 
-Never put a secret value in argv or Git. Every secret below goes in through stdin.
-
-## Before you start (Key Vault, owner)
-
-Everything the platform reads, by store. Key Vault secrets are created with
-`... | az keyvault secret set --vault-name <vault> --name <name> --file /dev/stdin --expires <date> --tags owner=<who> rotate-by=<date> -o none`
-and verified by name only.
-
-| Where | Item | Shape | Needed by |
-|---|---|---|---|
-| `kv-qnsc-platform` | `platform-cloudflared-qnsc-apps` | plain string (tunnel token) | wave -1 `platform-secrets` -> `cloudflared`; wave 2 cloudflared |
-| `kv-qnsc-platform` | `platform-grafana-alloy` | **required at wave -1** (else `platform-secrets` stays Degraded and blocks wave 0). JSON object whose keys are Alloy's env names: `{"GRAFANA_TOKEN":"...","GRAFANA_PROM_URL":"...","GRAFANA_PROM_USER":"...","GRAFANA_LOKI_URL":"...","GRAFANA_LOKI_USER":"...","GRAFANA_PYROSCOPE_URL":"...","GRAFANA_PYROSCOPE_USER":"..."}` | `grafana-cloud` Secret |
-| `kv-qnsc-platform` | `platform-argocd-admin-bcrypt` | plain string (bcrypt hash, made below) | wave -1 -> `argocd-secret` |
-| `kv-qnsc-dev` | `rova-dev-app` | JSON bundle | chart `rova-app` |
-| `kv-qnsc-dev` | `rova-dev-db-app`, `rova-dev-db-migrator`, `rova-dev-db-worker` | plain-string passwords | the CNPG managed roles AND the chart |
-| `kv-qnsc-dev` | `rova-dev-graph-cert` | one combined PEM (key + cert) | chart worker volume `cert.pem` |
-| `kv-qnsc-admin` | `platform-cnpg-ca-dev` | crt + key (platform/cnpg/ca.md) | step 3, hand-applied |
-| `kv-qnsc-admin` | `admin-argocd-password` | plaintext admin password | source of the bcrypt hash only; nothing reads it automatically |
-| 1Password `QNSC` | `eso-platform-combined-pem`, `eso-dev-combined-pem` (Document items; item ids below) | combined PEM file | step 2, hand-applied |
-
-ArgoCD admin hash (plaintext from `kv-qnsc-admin/admin-argocd-password`; stdin end to end):
+Two scripts do all of it. They are the runbook; this page is the why and the map.
 
 ```bash
-az keyvault secret show --vault-name kv-qnsc-admin --name admin-argocd-password --query value -o tsv \
-  | tr -d '\n' | htpasswd -niBC 10 x | cut -d: -f2 | sed 's/^\$2y/$2a/' | tr -d '\n' \
-  | az keyvault secret set --vault-name kv-qnsc-platform --name platform-argocd-admin-bcrypt \
-      --file /dev/stdin --expires <date> --tags owner=platform rotate-by=<date> -o none
+# 1. the owner, once per site (or per env): creates the Key Vault inputs
+platform/bootstrap/secrets.sh --env dev
+
+# 2. the SA, on the cluster: steps 1-5, then waits wave by wave
+platform/bootstrap/cluster.sh --env dev
 ```
 
-## Steps (SA, in order, after review)
+Both are idempotent and safe to re-run. Both print NAMES, sync and health only —
+never Secret data. Secrets are verified by their key names (`go-template` over
+`.data`), not by reading them.
+
+## secrets.sh — what it generates and what it asks
+
+Generated here, because this estate can generate it:
+
+```
+DB role passwords          <product>-<env>-db-{app,worker,migrator}   hex 48
+app secrets                -cookie-secret, -csrf-secret (hex 64), -better-auth-secret (base64 64)
+ArgoCD admin               password in <admin vault>, bcrypt hash in <platform vault>
+CNPG CA                    platform-cnpg-ca-<env>: ECDSA P-256, SEC1, 10 years
+```
+
+Asked for, because only a vendor or the owner has it:
+
+```
+Entra client secret        the sign-in app's VALUE, <= 6 months
+R2 key pair                access key id + secret access key
+PLATFORM_ADMIN_EMAILS      a staff roster; therefore never in this public repo
+tunnel token               platform-cloudflared-<site>-apps
+Grafana Alloy              the seven values the Alloy env reads (Enter = empty placeholder)
+```
+
+Vault names and env are flags, so a second site or prod is an argument, not an edit:
 
 ```bash
-export KUBECONFIG=~/.kube/onprem.yaml     # over WARP
-
-# 1. The two namespaces the Secrets below live in (labels first, so Helm adopts argocd).
-kubectl apply -f platform/namespaces/external-secrets.yaml -f platform/namespaces/argocd.yaml
-
-# 2. ESO service-principal Secrets, one per store, from 1Password QNSC through stdin
-#    (Document items; refs use item ids because the titles contain en-dashes).
-#    Keys are what stores-onprem.yaml reads: tls.pem (combined PEM) and client-id
-#    (the SP application id from the infra live/identity Terraform output; an
-#    identifier, not a secret). platform + dev are enough for rova-dev.
-op read 'op://QNSC/ht2edzbfxdbwc4jlvejcmg56we/eso-platform-combined.pem' \
-  | kubectl -n external-secrets create secret generic qnsc-eso-platform-cert \
-      --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO Platform application id>
-op read 'op://QNSC/n3cpmxcojjck6xqcvcpvnvtxeq/eso-dev-combined.pem' \
-  | kubectl -n external-secrets create secret generic qnsc-eso-dev-cert \
-      --from-file=tls.pem=/dev/stdin --from-literal=client-id=<QNSC ESO Dev application id>
-#    (prod: item eso-prod-combined-pem joins with the prod move)
-
-# 3. The static pg-dev CA (platform/cnpg/ca.md, data-dev): pg-dev-ca (crt+key) and
-#    pg-dev-ca-pub (crt only). The data-dev namespace must exist first:
-kubectl apply -f platform/namespaces/onprem.yaml   # idempotent; declares every namespace
-#    ...then the two `kubectl create secret` commands of platform/cnpg/ca.md
-#    (they read kv-qnsc-admin/platform-cnpg-ca-dev).
-
-# 4. ArgoCD (the last Helm install by hand; version from versions.yaml)
-helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
-helm install argocd argo/argo-cd -n argocd --version "$(yq '.platform["argo-cd"].version' versions.yaml)" \
-  -f platform/argocd/values.yaml
-kubectl -n argocd rollout status deploy/argocd-server
-
-# 5. Hand over.
-kubectl apply -f apps/root.yaml
-kubectl -n argocd get applications -w     # wave -3 -> 2; names and health only
-#    First install (2026-10-31): platform-prometheus-crds (CRDs only) sat at Progressing
-#    and held root; one refresh cleared it:
-#    kubectl -n argocd annotate application platform-prometheus-crds argocd.argoproj.io/refresh=normal --overwrite
+--env dev|prod  --product rova  --vault-app kv-qnsc-dev --vault-platform kv-qnsc-platform
+--vault-admin kv-qnsc-admin --site qnsc --skip-site --force NAME --check
 ```
 
-The repo is public, so ArgoCD needs no repository credential.
+`--check` verifies the tooling and checks this script against
+`values/<product>/<env>.secrets.yaml`, which stays the source of truth for WHICH
+Key Vault secrets a product reads. A secret added there without a rule here fails
+the check instead of silently never existing.
+
+The one name this script deliberately does not create is `<product>-<env>-graph-cert`:
+it is a Key Vault CERTIFICATE (`az keyvault certificate create`, auto-renew), owned
+by the identity lane, not a plain secret.
+
+## cluster.sh — steps 1-5, then the waves
+
+```
+1  namespaces           platform/namespaces/{external-secrets,argocd,onprem}.yaml
+                        labels first: Helm adopts a pre-existing namespace and never
+                        fixes its labels
+2  ESO credentials      one function (eso_credentials) reads each SP's combined PEM
+                        from 1Password (item given by title, resolved to an id at
+                        run time) and pairs it with the client id passed in. THE SEAM
+                        for agent F's workload identity: replacing that one function
+                        is the whole change.
+3  CNPG CA              ONE `az keyvault secret show` -> ca.crt + the SEC1
+                        `EC PRIVATE KEY` block -> pg-<env>-ca and pg-<env>-ca-pub.
+                        A PKCS#8 or RSA key is refused here, with the reason (#68)
+4  ArgoCD               helm upgrade --install, version from versions.yaml.
+                        No yq: one awk reads `platform.argo-cd.version`
+5  root                 apps/root.yaml applied with --revision substituted
+```
+
+Then it waits wave by wave. A wave is done when every Application in it is
+`Synced` + `Healthy`. Two behaviours worth knowing:
+
+- **stuck Progressing, resources all Healthy** is the `platform-prometheus-crds`
+  case: the Application synced, nothing reports unhealthy, and ArgoCD never
+  re-evaluates. The script refreshes such an app — at most twice, 90 s apart, and
+  only when every resource that has a health check reports `Healthy`.
+- **`--until-wave N`** stops the run after wave N and terminates root's operation,
+  so later waves are never created. This is what a rehearsal uses: a throwaway
+  cluster must not deploy a second connector into a live tunnel.
+
+Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
+`--eso-source op|none`, `--stop-after`, `--keep-running`, `--vault-admin`,
+`--ca-secret`, `--pg-cluster`.
+
+## Before you start: the Key Vault items
+
+Key Vault secrets are created through stdin and verified by name. The names and
+their formats are `values/<product>/<env>.secrets.yaml`; the vaults are:
+
+| Where | What | Written by |
+|---|---|---|
+| `kv-qnsc-dev` | one secret per rova-dev value (cookie/csrf/better-auth, entra, R2 pair, admin roster, db-app/worker/migrator) | `secrets.sh` |
+| `kv-qnsc-platform` | `platform-cloudflared-<site>-apps`, `platform-grafana-alloy` (JSON, keys ARE Alloy's env names), `platform-argocd-admin-bcrypt` | `secrets.sh` |
+| `kv-qnsc-admin` | `platform-cnpg-ca-<env>` (crt + SEC1 key), `admin-argocd-password` | `secrets.sh` |
+| 1Password | `eso-{platform,dev,prod}-combined-pem` Document items | identity lane |
+
+The 1Password vault, the item titles and the SP client ids are all flags on
+`cluster.sh` (`--op-vault`, `--eso-item-<store>`, `--eso-client-id-<store>`); the
+item title is resolved to an id at run time, so nothing site-specific is committed.
+Rotate the ESO certificates if their material has ever been printed — the
+2026-10-31 incident is why.
 
 ## What root does, in wave order
 
@@ -95,9 +126,9 @@ The repo is public, so ArgoCD needs no repository credential.
 
 `platform-base`, `platform-prometheus-crds` and `platform-data` have `prune: false`
 (a pruned Namespace or PVC deletes data). A failed wave holds the next one:
-`platform-secrets` stays Degraded until the stores from step 2 are Valid, and that is the
-signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` Secret (step 3) and the three
-`rova-dev-db-*` Key Vault secrets before wave 0.
+`platform-secrets` stays Degraded until the ESO stores are Valid, and that is the
+signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` secret (step 3) and
+the three `rova-dev-db-*` Key Vault secrets before wave 0.
 
 ## Not in git yet
 
@@ -107,3 +138,14 @@ signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` Secret (step 3) a
 | k8s-monitoring / OTLP receiver (replaces the host-side Alloy values here) | PLT-H2 |
 | Prod Applications and values | PLT-B2 |
 | `ghcr-pull` imagePullSecret (`platform-<env>-ghcr-pull`, ONPREM-PLAN §7.1) | not started; needed if a product image is private |
+| ESO workload identity (replaces the 1Password SP path) | agent F |
+
+## From zero
+
+The first real bootstrap (k3s-01, 2026-10-31) ran this by hand and found three
+defects, each fixed at its cause rather than in the runbook: the CNPG CA had to be
+ECDSA SEC1 (#68), an image pin named a tag that did not exist (#69), and
+`platform-prometheus-crds` needed one refresh (now automatic in `cluster.sh`).
+
+The rehearsal record — cluster, wall time, stubs, manual interventions — is in
+`platform/bootstrap/REHEARSAL.md`.
