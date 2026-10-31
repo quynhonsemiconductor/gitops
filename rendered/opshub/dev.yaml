@@ -124,7 +124,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-fb0922c1a98e
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -154,7 +154,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-0000000
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-fb0922c1a98e
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -186,7 +186,7 @@ spec:
             - name: REDIS_KEY_PREFIX
               value: 'opshub:'
             - name: S3_FILES_BUCKET
-              value: opshub-dev-attachments
+              value: opshub-develop-attachments
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
@@ -203,9 +203,9 @@ spec:
               value: https://opshub-dev.qnsc.vn
           envFrom:
             - secretRef:
-                name: opshub-app
+                name: opshub-env
             - secretRef:
-                name: opshub-api-bundle
+                name: opshub-env-api
             - secretRef:
                 name: opshub-db-app
           volumeMounts:
@@ -267,7 +267,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-fb0922c1a98e
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -286,7 +286,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-0000000
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-fb0922c1a98e
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -320,7 +320,7 @@ spec:
             - name: REDIS_KEY_PREFIX
               value: 'opshub:'
             - name: S3_FILES_BUCKET
-              value: opshub-dev-attachments
+              value: opshub-develop-attachments
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
@@ -333,9 +333,9 @@ spec:
               value: 328bac47-4848-42b5-9464-bb4ba7b0cb56
           envFrom:
             - secretRef:
-                name: opshub-app
+                name: opshub-env
             - secretRef:
-                name: opshub-db-app
+                name: opshub-db-worker
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -364,7 +364,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-0000000
+  name: migrator-sha-fb0922c1a98e
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -403,7 +403,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-fb0922c1a98e
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -458,7 +458,7 @@ spec:
             - name: REDIS_KEY_PREFIX
               value: 'opshub:'
             - name: S3_FILES_BUCKET
-              value: opshub-dev-attachments
+              value: opshub-develop-attachments
             - name: STORAGE_ENDPOINT
               value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
             - name: STORAGE_FORCE_PATH_STYLE
@@ -470,23 +470,6 @@ spec:
           secret:
             secretName: opshub-migrator-db-ca
             items: [{ key: ca.crt, path: ca.crt }]
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: opshub-app
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: kv-qnsc-dev
-    kind: ClusterSecretStore
-  target:
-    name: opshub-app
-  dataFrom:
-    - extract:
-        key: opshub-dev-app
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -533,17 +516,18 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: opshub-api-bundle
+  name: opshub-db-worker
 spec:
   refreshInterval: 1h
   secretStoreRef:
     name: kv-qnsc-dev
     kind: ClusterSecretStore
   target:
-    name: opshub-api-bundle
-  dataFrom:
-    - extract:
-        key: opshub-dev-api
+    name: opshub-db-worker
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: opshub-dev-db-worker
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -606,6 +590,54 @@ spec:
     - secretKey: cert.pem
       remoteRef:
         key: opshub-dev-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-env
+  data:
+    - secretKey: COOKIE_SECRET
+      remoteRef:
+        key: opshub-dev-cookie-secret
+    - secretKey: CSRF_SECRET
+      remoteRef:
+        key: opshub-dev-csrf-secret
+    - secretKey: STORAGE_ACCESS_KEY_ID
+      remoteRef:
+        key: opshub-dev-storage-access-key-id
+    - secretKey: STORAGE_SECRET_ACCESS_KEY
+      remoteRef:
+        key: opshub-dev-storage-secret-access-key
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-env-api
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: opshub-env-api
+  data:
+    - secretKey: BETTER_AUTH_SECRET
+      remoteRef:
+        key: opshub-dev-better-auth-secret
+    - secretKey: ENTRA_CLIENT_SECRET
+      remoteRef:
+        key: opshub-dev-entra-client-secret
 
 ---
 # Source: qnsc-service/templates/slo.yaml

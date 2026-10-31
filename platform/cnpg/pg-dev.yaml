@@ -68,6 +68,23 @@ spec:
         login: true
         passwordSecret:
           name: pg-dev-rova-migrator
+      # opshub joins with its dev move (the same three-role shape as rova: app and
+      # worker are runtime, the migrator owns the database and holds DDL).
+      - name: opshub_app
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-opshub-app
+      - name: opshub_worker
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-opshub-worker
+      - name: opshub_migrator
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-opshub-migrator
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -137,3 +154,165 @@ spec:
     - secretKey: password
       remoteRef:
         key: rova-dev-db-migrator
+---
+# opshub's database. `Database` is a CNPG resource (operator 1.30): the cluster's
+# initdb creates only rova, so every other product gets its database here, owned by
+# its migrator — the same ownership rova has from initdb.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: opshub
+  namespace: data-dev
+spec:
+  cluster:
+    name: pg-dev
+  name: opshub
+  owner: opshub_migrator
+  ensure: present
+  databaseReclaimPolicy: retain   # a pruned Database must never drop product data
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-opshub-app
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-opshub-app
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: opshub_app
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: opshub-dev-db-app
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-opshub-worker
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-opshub-worker
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: opshub_worker
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: opshub-dev-db-worker
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-opshub-migrator
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-opshub-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: opshub_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: opshub-dev-db-migrator
+---
+# ── Role timeouts ───────────────────────────────────────────────────────────
+# CNPG 1.30 has no per-role GUC field: `Cluster.managed.roles` and `DatabaseRole`
+# carry ensure/login/passwordSecret and nothing else, and this repository had no
+# other mechanism — rova's 0073 timeouts (rally_app 30s/60s, rally_worker
+# 300s/300s) were NOT applied on-prem at all. This Job applies both products'
+# values under their on-prem role names.
+#
+# Smallest thing that works: one psql call as the cluster superuser, run as a
+# PostSync hook so every sync re-applies it. ALTER ROLE … SET is idempotent, and
+# the DO block fails loudly if the managed roles do not exist yet, so the hook
+# retries through the operator's reconcile instead of silently doing nothing.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-dev-role-timeouts
+  namespace: data-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pg-dev-role-timeouts
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 26          # postgres, the image's user
+        runAsGroup: 26
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: psql
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-dev-superuser, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-dev-superuser, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rova_app')
+                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rova_worker')
+                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opshub_app')
+                   OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opshub_worker') THEN
+                  RAISE EXCEPTION 'managed roles not created yet';
+                END IF;
+              END
+              $$;
+              ALTER ROLE rova_app      SET statement_timeout = '30s';
+              ALTER ROLE rova_app      SET idle_in_transaction_session_timeout = '60s';
+              ALTER ROLE rova_worker   SET statement_timeout = '300s';
+              ALTER ROLE rova_worker   SET idle_in_transaction_session_timeout = '300s';
+              ALTER ROLE opshub_app    SET statement_timeout = '30s';
+              ALTER ROLE opshub_app    SET idle_in_transaction_session_timeout = '60s';
+              ALTER ROLE opshub_worker SET statement_timeout = '120s';
+              ALTER ROLE opshub_worker SET idle_in_transaction_session_timeout = '180s';
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
