@@ -1,0 +1,32 @@
+# ── ai-lab ResourceQuota (ONPREM-PLAN §9.1) ─────────────────────────────────
+#
+# Team experiments share the GPU node with the shared AI services, at the lowest
+# PriorityClass. The quota is the second half of that protection: priority only
+# decides who wins contention, the quota decides how much contention an
+# experiment can create at all.
+#
+# Start values from §9.1: 6–8 GB RAM and one GPU time-slice (the device plugin
+# advertises 4). CPU is capped because ai-01 has 20 GB of RAM for the whole node
+# and a runaway training loop would starve TEI of CPU before it starves it of
+# VRAM — time-slicing shares the GPU but does not divide it.
+#
+# `limits.memory` is in the quota because the estate's rule is memory limit ==
+# request (§5.7): without it a tenant could request 1Gi and set no limit, leaving
+# bin-packing blind.
+#
+# This quota grows only when the right-sizing loop frees memory (§9.1).
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ai-lab
+  namespace: ai-lab
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.memory: 8Gi
+    requests.nvidia.com/gpu: "1"
+    pods: "10"
+    persistentvolumeclaims: "4"
+    requests.storage: 40Gi

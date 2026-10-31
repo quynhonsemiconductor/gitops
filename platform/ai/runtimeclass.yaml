@@ -1,0 +1,22 @@
+# ── RuntimeClass `nvidia` (ONPREM-PLAN §9.1) ─────────────────────────────────
+#
+# The GPU workloads in `ai` (TEI e5, the reranker) name this class so containerd
+# injects the NVIDIA devices into the container. `handler: nvidia` is the
+# runC-compatible runtime name the NVIDIA container toolkit registers in
+# containerd — on the ai-01 node, from the runbook's `nvidia-ctk runtime
+# configure --runtime=containerd` step. That config is NODE state and lives in
+# the agent's build, not here: this object only names the handler the node
+# already provides.
+#
+# If the handler is missing on the node, a pod naming this class fails to create
+# with `no runtime for "nvidia" is configured` — which is the intended failure
+# mode (visible, immediate) rather than a pod that starts without a GPU.
+#
+# No scheduler field: GPU placement is the node taint/toleration + nodeSelector
+# on the workloads, not the RuntimeClass.
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia

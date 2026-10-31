@@ -1,0 +1,59 @@
+# ── GPU plumbing for the AI agent node (ONPREM-PLAN §9.1, §11.2) ─────────────
+#
+# Wave −3, the same wave as namespaces and PriorityClasses in the plan's table:
+# everything here is a prerequisite other Applications may select on, and the
+# namespace must exist before any pod in it is created.
+#
+# ── DESTINATION kube-system ─────────────────────────────────────────────────
+# The device plugin is a node agent and runs in kube-system (its reasoning is in
+# platform/ai/device-plugin.values.yaml). Every other object in this Application
+# is either cluster-scoped (namespaces, PriorityClasses, RuntimeClass) or
+# carries its own `namespace:`, so the destination namespace only selects where
+# the HELM release lands.
+#
+# `SkipDryRunOnMissingResource` is not needed: nothing here references a CRD.
+# `prune: false`: pruning a Namespace deletes everything in it — removals in
+# this lane are manual, the same rule platform-base follows.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-ai
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  sources:
+    # The device plugin, pinned to the chart version in versions.yaml. The chart
+    # brings its own DaemonSet, ConfigMap (time-slicing), ServiceAccount and
+    # ClusterRole.
+    - repoURL: https://nvidia.github.io/k8s-device-plugin
+      chart: nvidia-device-plugin
+      targetRevision: "0.20.1"   # keep in step with versions.yaml
+      helm:
+        releaseName: nvidia-device-plugin
+        valueFiles: [$values/platform/ai/device-plugin.values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+    # Namespaces, priority classes, the RuntimeClass and the ai-lab quota. The
+    # include list is explicit because device-plugin.values.yaml lives in the
+    # same directory and is NOT a manifest.
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/ai
+      directory:
+        include:
+          - namespaces.yaml
+          - priorityclasses.yaml
+          - runtimeclass.yaml
+          - ai-lab-quota.yaml
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

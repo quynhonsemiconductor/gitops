@@ -1,0 +1,98 @@
+# ── NVIDIA k8s device plugin, time-sliced (ONPREM-PLAN §9.1, H-D25) ──────────
+#
+# Chart: nvidia-device-plugin 0.20.1, pinned in versions.yaml. The chart's
+# appVersion is 0.20.1, so the image tag is left to the chart — the CHART pin is
+# the version pin here, and the image lives on nvcr.io (public).
+#
+# ── WHERE IT RUNS ───────────────────────────────────────────────────────────
+# kube-system, not `ai`: the plugin is node plumbing that must be able to run
+# before any application namespace, and its ClusterRole/`nodes` reads are the
+# kind of cluster-wide grant that reads normally next to the other node agents.
+# `prune: false` on the Application keeps a chart uninstall from deleting it
+# silently.
+#
+# ── SCHEDULING: THE TOLERATION IS THE WHOLE POINT ───────────────────────────
+# ai-01 carries taint `qnsc.vn/pool=ai:NoSchedule`, so NOTHING runs there
+# without a matching toleration. The chart's default affinity uses the NFD
+# PCI-vendor label, but NFD is NOT installed (gfd/nfd are off below), so the
+# affinity would leave the DaemonSet with zero nodes forever. It is replaced by
+# the pool nodeSelector, and the pool taint is tolerated explicitly.
+#
+# `affinity: null` is deliberate, and must stay `null`: Helm's coalesce MERGES
+# maps, so `affinity: {}` leaves the chart's requiredDuringScheduling block in
+# place (the merged map is not empty). Only `null` deletes the key.
+
+image:
+  pullPolicy: IfNotPresent
+
+nodeSelector:
+  qnsc.vn/pool: ai
+
+tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+  # Kept from the chart default: the plugin must survive a GPU-tainted node even
+  # if someone adds the older `nvidia.com/gpu` taint.
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: qnsc.vn/pool
+    operator: Equal
+    value: ai
+    effect: NoSchedule
+
+affinity: null
+
+# The node registers the `nvidia` handler (RuntimeClass above); the plugin runs
+# under it so it sees the devices through the same path as the workloads.
+runtimeClassName: nvidia
+
+# `system-node-critical` (the chart default) is above `ai` in the priority
+# ladder on purpose: losing the device plugin un-registers the GPU resource and
+# every GPU pod becomes unschedulable after a restart.
+priorityClassName: system-node-critical
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 50Mi
+  limits:
+    memory: 50Mi
+
+devicePlugin:
+  enabled: true
+
+gfd:
+  enabled: false
+
+# MPS (multi-process service) is NOT used: the GPU is shared by time-slicing,
+# not by MPS. The chart has no switch for the mps-control-daemon DaemonSet (it
+# renders whenever devicePlugin.enabled), so it is kept but kept small: an idle
+# daemon on both pool nodes. hostPID is turned OFF because nothing here uses
+# MPS; the chart's one privileged init container (mount-shm) is upstream fixed
+# code and stays until a chart release makes it conditional.
+mps:
+  enableHostPID: false
+
+# ── TIME-SLICING (§9.1: "GPU shared by time-slicing; contention is the signal
+#    to upgrade hardware") ────────────────────────────────────────────────────
+# One physical RTX 5060 Ti appears as 4 `nvidia.com/gpu` units. Time-slicing
+# gives FAIR SHARING OF TIME, NOT VRAM ISOLATION: each process may allocate the
+# whole 16 GB, so the VRAM budget (§9.1) is enforced by pod sizing and
+# monitoring, not by the device plugin. 4 replicas = TEI e5 (1),
+# reranker when enabled (1), whisper (1), one free for ai-lab.
+#
+# Changing `replicas` re-registers the resource; running GPU pods keep their
+# allocation until restarted.
+config:
+  default: default
+  map:
+    default: |-
+      version: v1
+      flags:
+        migStrategy: none
+      sharing:
+        timeSlicing:
+          resources:
+            - name: nvidia.com/gpu
+              replicas: 4
