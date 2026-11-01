@@ -7,7 +7,7 @@
 #   - the CA is `pg-rova-ca`, hand-applied from kv-qnsc-admin/platform-cnpg-ca-prod
 #     BEFORE this syncs (cnpg/ca.md);
 #   - a fourth role, rova_readonly, for the owner's ad-hoc queries;
-#   - backup to R2 is a separate file (pg-rova-backup.yaml), added by its own PR.
+#   - backup to R2: pg-rova-backup.yaml (ObjectStore, ScheduledBackup, credential).
 #
 # SIZING (one node, a few GB of data, a few requests a day): 1 instance,
 # 500m / 2 Gi (memory limit = request, no CPU limit, §5.7), shared_buffers 512MB,
@@ -47,6 +47,16 @@ spec:
       maintenance_work_mem: 256MB
   certificates:
     serverCASecret: pg-rova-ca
+  # WAL archiving through the barman-cloud plugin (ObjectStore in pg-rova-backup.yaml).
+  # serverName is the archive's generation: g1 at the first build; after a recovery
+  # into a rebuilt cluster, bump it (g2, ...) so a new timeline never writes into
+  # the old archive (ONPREM-PLAN §6.3). Objects land under pg-rova/pg-rova-g1/.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pg-rova-r2
+        serverName: pg-rova-g1
   bootstrap:
     initdb:
       database: rova
