@@ -1,0 +1,135 @@
+# ── pg-rova nightly logical dump -> R2 qnsc-backups/dumps/ (ONPREM-PLAN §10.2) ──
+#
+# The second, independent copy next to barman: a plain `pg_dump -Fc` that restores into any
+# Postgres, with no dependency on the barman plugin, the WAL archive or CNPG.
+#
+#   dumps/daily/    every night       lifecycle 15 d   (infra live/onprem/backups.tf)
+#   dumps/weekly/   Sundays           lifecycle 35 d
+#   dumps/monthly/  the 1st           lifecycle 100 d
+# Bucket lock: dumps/ is locked 14 d, so an object name can be written ONCE (an overwrite is
+# refused). Names are dated (pg-rova-YYYY-MM-DD.dump) and the uploader skips a key that
+# already exists, so a retried Job or a manual re-run the same day is a logged no-op.
+#
+# Two containers, one emptyDir: the init container dumps (pg_dump 18 from the CNPG image,
+# as rova_readonly: pg_read_all_data is enough to dump everything), the main container
+# uploads (aws-cli with the R2 checksum variables, the same credential barman uses:
+# Secret pg-rova-r2-backup). Success is two log lines: `DUMP-READY ...` and `DUMP-OK <key> ...`.
+#
+# rova_readonly has statement_timeout 30 s as a role setting (the ad-hoc-query guard in
+# pg-rova.yaml); the dump overrides it for ITS session with PGOPTIONS, which a role may do.
+# TLS is verified against the pg-rova-ca-pub mirror. The pod waits for pg_isready first:
+# data-prod-admit admits a new pod a few seconds after it starts (#91).
+#
+# Run on demand:  kubectl -n data-prod create job --from=cronjob/pg-rova-dump pg-rova-dump-manual-1
+# Restore:        pg_restore -d <empty db> --no-owner <file>   (after download with any S3 client)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-rova-dump
+  namespace: data-prod
+spec:
+  schedule: "0 20 * * *"          # 20:00 UTC = 03:00 ICT, an hour after the base backup (19:00 UTC)
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 2400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pg-rova-dump
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26
+            runAsGroup: 26
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            - name: dump
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+              env:
+                - { name: PGHOST, value: pg-rova-rw.data-prod.svc }
+                - { name: PGDATABASE, value: rova }
+                - { name: PGSSLMODE, value: verify-full }
+                - { name: PGSSLROOTCERT, value: /etc/pg-ca/ca.crt }
+                - { name: PGOPTIONS, value: "-c statement_timeout=0 -c idle_in_transaction_session_timeout=0" }
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: password } }
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done
+                  pg_isready -q -t 2 || { echo "DUMP-FAIL server not ready"; exit 1; }
+                  pg_dump -Fc -f /work/pg-rova.dump
+                  pg_restore --list /work/pg-rova.dump >/dev/null || { echo "DUMP-FAIL dump is not readable"; exit 1; }
+                  echo "DUMP-READY bytes=$(wc -c </work/pg-rova.dump) sha256=$(sha256sum /work/pg-rova.dump | cut -d' ' -f1)"
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: pg-ca, mountPath: /etc/pg-ca, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: &restricted
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.38.5@sha256:c8156a0e74e13929a42d7e60f0d4e14e7d28d980cd21822505d4bff80e5460c1
+              env:
+                - { name: HOME, value: /tmp }
+                - { name: AWS_DEFAULT_REGION, value: auto }
+                - { name: AWS_ENDPOINT_URL, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+                - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+                - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: pg-rova-r2-backup, key: ACCESS_KEY_ID } }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: pg-rova-r2-backup, key: ACCESS_SECRET_KEY } }
+              command:
+                - bash
+                - -c
+                - |
+                  set -eu
+                  f=/work/pg-rova.dump
+                  size=$(wc -c <"$f")
+                  name="pg-rova-$(date -u +%F).dump"
+                  prefixes="daily"
+                  [ "$(date -u +%u)" = 7 ] && prefixes="$prefixes weekly"
+                  [ "$(date -u +%d)" = 01 ] && prefixes="$prefixes monthly"
+                  for p in $prefixes; do
+                    key="dumps/$p/$name"
+                    # write-once: the bucket lock refuses an overwrite, so never try one
+                    if aws s3api head-object --bucket qnsc-backups --key "$key" >/dev/null 2>&1; then
+                      echo "DUMP-SKIP $key already exists"
+                      continue
+                    fi
+                    aws s3 cp --only-show-errors "$f" "s3://qnsc-backups/$key"
+                    got=$(aws s3api head-object --bucket qnsc-backups --key "$key" --query ContentLength --output text)
+                    [ "$got" = "$size" ] || { echo "DUMP-FAIL $key uploaded $got bytes, expected $size"; exit 1; }
+                    echo "DUMP-OK $key bytes=$size"
+                  done
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: *restricted
+          volumes:
+            - name: work
+              emptyDir: { sizeLimit: 8Gi }
+            - name: tmp
+              emptyDir: { sizeLimit: 64Mi }
+            - name: pg-ca
+              secret: { secretName: pg-rova-ca-pub }
