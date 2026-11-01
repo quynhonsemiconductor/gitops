@@ -56,7 +56,7 @@ destinations:
     # node rules read deployment_environment_name/service_namespace/route/
     # method/status_class/le/instance, none of which are listed here.
     metricProcessingRules: |
-      rule {
+      write_relabel_config {
         regex  = "http_method|http_status_code|http_flavor|http_scheme|net_host_name|net_host_port|service_version|service_instance_id"
         action = "labeldrop"
       }
