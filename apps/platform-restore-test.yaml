@@ -1,0 +1,26 @@
+# G1 restore test: the on-demand pg-rova restore runner in `restore-test`
+# (platform/restore-test/restore-test.yaml). Synced last (wave 3) because it reads
+# kv-qnsc-prod through ESO, like platform-data-prod. The CronJob is suspended; the
+# throwaway Cluster is created by the Job, not by git. prune: false.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-restore-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: restore-test
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/restore-test
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

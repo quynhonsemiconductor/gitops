@@ -40,6 +40,7 @@ spec:
     - { server: https://kubernetes.default.svc, namespace: cnpg-system }
     - { server: https://kubernetes.default.svc, namespace: cert-manager }
     - { server: https://kubernetes.default.svc, namespace: data-dev }
+    - { server: https://kubernetes.default.svc, namespace: restore-test }
     # platform-base owns the one NetworkPolicy that matters in data-prod
     # (networkpolicy/data-prod.yaml): the data namespaces are platform's, unlike
     # the product namespaces, which this project cannot target.

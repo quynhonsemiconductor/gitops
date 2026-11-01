@@ -1,0 +1,261 @@
+# ── G1: the pg-rova restore test (ONPREM-PLAN §10.4) ─────────────────────────
+#
+# A backup is only a backup once it has been restored. This runs ON DEMAND:
+#
+#   kubectl -n restore-test create job --from=cronjob/pg-rova-restore-test rt-$(date +%s)
+#   # the G1 run, once pg-rova holds the rehearsal data (REQUIRE_DATA=1):
+#   kubectl -n restore-test create job --from=cronjob/pg-rova-restore-test rt-g1 --dry-run=client -o json \
+#     | jq '.spec.template.spec.containers[0].env[0].value="1"' | kubectl create -f -
+#   kubectl -n restore-test logs -f job/<that job>          # ends RESTORE-TEST: PASS|FAIL
+#   kubectl -n restore-test get cm pg-rova-restore-test-result -o yaml   # last result + time
+#
+# The CronJob is permanently suspended: it exists only as the template for
+# `create job --from`. (Make it a weekly schedule by flipping `suspend`; §10.4 wants
+# that once the on-demand run has passed.)
+#
+# What the Job does, in order:
+#   1. applies a throwaway CNPG Cluster `pg-restore-test` that RECOVERS from the
+#      pg-rova archive in R2 (latest base backup + all archived WAL), 1 instance,
+#      NO WAL archiving of its own, so it can never write into the production archive;
+#   2. waits for it to be Ready;
+#   3. runs sanity queries inside the restored instance (below);
+#   4. ALWAYS deletes the Cluster (and with it the PVC) on exit, then records the result.
+#
+# Sanity checks (any failure = FAIL, exit 1):
+#   - the instance is out of recovery, database `rova` exists, owned by rova_migrator;
+#   - rova_migrator has no CREATEROLE/SUPERUSER, the four rova roles exist;
+#   - tables in `public`, rows in drizzle.__drizzle_migrations and the latest one are
+#     PRINTED; with REQUIRE_DATA=1 (set it for the real run, after the rehearsal data
+#     is in pg-rova) zero tables or zero migrations fails;
+#   - rova_app can SELECT every table in `public` (counted via has_table_privilege).
+# Before data exists (pg-rova empty) run it with REQUIRE_DATA=0 (the default): that
+# proves the backup/WAL/recovery chain only. G1 needs the second, REQUIRE_DATA=1 run.
+#
+# Isolation: own namespace (restricted PSS), reachable from nothing, the runner's
+# RBAC is a Role in THIS namespace only. The credential is the same R2 token pg-rova
+# archives with (read+write; ONPREM-PLAN §10.3 wants a read-only one here later: the
+# Bucket Lock protects the prefix meanwhile). Mutation resistance: stop the archive
+# (wrong serverName) and the Cluster never becomes Ready, so the Job times out FAIL.
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-r2-backup
+  namespace: restore-test
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-r2-backup
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-backup-rw-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-backup-rw-secret-access-key }
+---
+# Read side of the same archive, in this namespace (an ObjectStore is namespaced).
+# No retentionPolicy: this one must never prune.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-rova-r2
+  namespace: restore-test
+spec:
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-rova/
+    endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId: { name: pg-rova-r2-backup, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: pg-rova-r2-backup, key: ACCESS_SECRET_KEY }
+    wal:
+      compression: gzip
+  instanceSidecarConfiguration:
+    env:
+      - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+      - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pg-rova-restore-test
+  namespace: restore-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pg-rova-restore-test
+  namespace: restore-test
+rules:
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [pods, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pg-rova-restore-test
+  namespace: restore-test
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-rova-restore-test }
+subjects:
+  - { kind: ServiceAccount, name: pg-rova-restore-test, namespace: restore-test }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-rova-restore-test-script
+  namespace: restore-test
+data:
+  cluster.yaml: |
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata:
+      name: pg-restore-test
+      namespace: restore-test
+    spec:
+      instances: 1
+      imageCatalogRef:
+        apiGroup: postgresql.cnpg.io
+        kind: ImageCatalog
+        name: postgresql
+        major: 18
+      storage:
+        size: 20Gi          # >= pg-rova's data volume
+      resources:
+        requests: { cpu: 250m, memory: 1Gi }
+        limits: { memory: 1Gi }
+      postgresql:
+        parameters: { timezone: UTC, shared_buffers: 256MB }
+      bootstrap:
+        recovery:
+          source: pg-rova
+          database: rova
+          owner: rova_migrator
+      externalClusters:
+        - name: pg-rova
+          plugin:
+            name: barman-cloud.cloudnative-pg.io
+            parameters:
+              barmanObjectName: pg-rova-r2
+              serverName: pg-rova-g1
+      # NO `plugins:` block: this cluster must not archive WAL anywhere.
+  run.sh: |
+    #!/usr/bin/env bash
+    set -uo pipefail
+    NS=restore-test C=pg-restore-test POD=pg-restore-test-1
+    REQUIRE_DATA=${REQUIRE_DATA:-0}
+    TIMEOUT=${READY_TIMEOUT:-1800}
+    status=FAIL detail="did not finish"
+    started=$(date -u +%FT%TZ)
+
+    record() {
+      kubectl -n "$NS" create configmap pg-rova-restore-test-result \
+        --from-literal=status="$status" --from-literal=started="$started" \
+        --from-literal=finished="$(date -u +%FT%TZ)" --from-literal=detail="$detail" \
+        --from-literal=require_data="$REQUIRE_DATA" --dry-run=client -o yaml \
+        | kubectl apply -f - >/dev/null || true
+    }
+    cleanup() {
+      echo "teardown: deleting cluster $C"
+      kubectl -n "$NS" delete cluster "$C" --wait=true --timeout=300s --ignore-not-found || true
+      record
+      echo "RESTORE-TEST: $status ($detail)"
+      [ "$status" = PASS ]
+    }
+    trap 'cleanup; exit $?' EXIT
+
+    q() { kubectl -n "$NS" exec "$POD" -c postgres -- psql -X -At -v ON_ERROR_STOP=1 -d rova -c "$1"; }
+    fail() { detail="$1"; echo "FAIL: $1"; exit 1; }
+
+    # A leftover cluster from a killed run would be "restored" without a restore.
+    kubectl -n "$NS" get cluster "$C" >/dev/null 2>&1 && fail "leftover cluster $C exists; delete it first"
+
+    echo "restoring latest pg-rova-g1 backup + WAL into $C"
+    kubectl -n "$NS" apply -f /work/cluster.yaml || fail "apply cluster"
+    kubectl -n "$NS" wait --for=condition=Ready "cluster/$C" --timeout="${TIMEOUT}s" \
+      || fail "cluster not Ready within ${TIMEOUT}s (restore failed or no backup)"
+
+    [ "$(q 'select pg_is_in_recovery()')" = f ] || fail "still in recovery"
+    [ "$(q "select pg_get_userbyid(datdba) from pg_database where datname='rova'")" = rova_migrator ] \
+      || fail "database rova missing or not owned by rova_migrator"
+    [ "$(q "select count(*) from pg_roles where rolname in ('rova_app','rova_worker','rova_migrator','rova_readonly')")" = 4 ] \
+      || fail "a rova role is missing"
+    [ "$(q "select count(*) from pg_roles where rolname='rova_migrator' and (rolcreaterole or rolsuper)")" = 0 ] \
+      || fail "rova_migrator has CREATEROLE or SUPERUSER"
+
+    tables=$(q "select count(*) from pg_tables where schemaname='public'") || fail "table count"
+    if [ "$(q "select to_regclass('drizzle.__drizzle_migrations') is not null")" = t ]; then
+      migs=$(q "select count(*) from drizzle.__drizzle_migrations")
+      head=$(q "select coalesce(max(created_at)::text,'-') from drizzle.__drizzle_migrations")
+    else
+      migs=0 head=-
+    fi
+    readable=$(q "select count(*) from pg_tables t where schemaname='public' and has_table_privilege('rova_app', format('%I.%I',schemaname,tablename), 'SELECT')")
+    for n in "$tables" "$migs" "$readable"; do [[ $n =~ ^[0-9]+$ ]] || fail "a sanity query returned '$n', not a number"; done
+    echo "public tables=$tables migrations=$migs latest_migration_ts=$head rova_app_selectable=$readable"
+
+    [ "$readable" = "$tables" ] || fail "rova_app cannot SELECT $((tables - readable)) of $tables tables"
+    if [ "$REQUIRE_DATA" = 1 ]; then
+      [ "$tables" -gt 0 ] || fail "REQUIRE_DATA=1 but no tables in public"
+      [ "$migs" -gt 0 ] || fail "REQUIRE_DATA=1 but no migrations recorded"
+    fi
+    status=PASS detail="tables=$tables migrations=$migs head=$head data_required=$REQUIRE_DATA"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-rova-restore-test
+  namespace: restore-test
+spec:
+  schedule: "0 20 * * 0"
+  suspend: true                  # on demand only; see the header
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0            # a failed restore test is a result, not something to retry
+      activeDeadlineSeconds: 3000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pg-rova-restore-test
+        spec:
+          serviceAccountName: pg-rova-restore-test
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 330   # the EXIT trap deletes the cluster (<= 300 s)
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: run
+              image: alpine/k8s:1.36.5@sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
+              command: ["bash", "/work/run.sh"]
+              env:
+                - { name: REQUIRE_DATA, value: "0" }   # the G1 run sets it to 1, see the header
+                - { name: HOME, value: /tmp }          # kubectl's cache dir; the root filesystem is read-only
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: work, mountPath: /work, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: work
+              configMap: { name: pg-rova-restore-test-script, defaultMode: 0555 }
+            - name: tmp
+              emptyDir: { sizeLimit: 16Mi }
