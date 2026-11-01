@@ -1,0 +1,256 @@
+# ── pg-rova: the rova PRODUCTION Postgres on k3s-01 (ONPREM-PLAN §6.3) ──────
+#
+# One single-instance CNPG cluster in `data-prod`, one database (`rova`), four
+# roles. Same pattern as pg-dev (platform/cnpg/pg-dev.yaml); differences:
+#   - passwords come from kv-qnsc-prod (rova-prod-db-*), through ClusterSecretStore
+#     kv-qnsc-prod, which only admits namespaces labelled qnsc.vn/env=prod;
+#   - the CA is `pg-rova-ca`, hand-applied from kv-qnsc-admin/platform-cnpg-ca-prod
+#     BEFORE this syncs (cnpg/ca.md);
+#   - a fourth role, rova_readonly, for the owner's ad-hoc queries;
+#   - backup to R2 is a separate file (pg-rova-backup.yaml), added by its own PR.
+#
+# SIZING (one node, a few GB of data, a few requests a day): 1 instance,
+# 500m / 2 Gi (memory limit = request, no CPU limit, §5.7), shared_buffers 512MB,
+# 20 Gi data + 8 Gi WAL. WAL is archived to R2 once the backup PR lands, so the WAL
+# volume only has to absorb a bad night of archive failures.
+#
+# rova_migrator owns the database (initdb) and is NOCREATEROLE, as the data-move
+# runbook expects: the restore runs as it, so it owns every restored object.
+# rova_readonly is a member of pg_read_all_data: SELECT everywhere, now and on
+# future tables, without a grant list to maintain.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-rova
+  namespace: data-prod
+spec:
+  instances: 1
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: postgresql
+    major: 18
+  storage:
+    size: 20Gi
+  walStorage:
+    size: 8Gi
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 2Gi }
+  postgresql:
+    parameters:
+      timezone: UTC
+      max_connections: "100"
+      shared_buffers: 512MB
+      work_mem: 8MB
+      maintenance_work_mem: 256MB
+  certificates:
+    serverCASecret: pg-rova-ca
+  bootstrap:
+    initdb:
+      database: rova
+      owner: rova_migrator
+      secret:
+        name: pg-rova-rova-migrator
+  managed:
+    roles:
+      - name: rova_app
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-rova-rova-app }
+      - name: rova_worker
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-rova-rova-worker }
+      - name: rova_migrator
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        passwordSecret: { name: pg-rova-rova-migrator }
+      - name: rova_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        passwordSecret: { name: pg-rova-rova-readonly }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-rova-app
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-rova-app
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_app
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-prod-db-app
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-rova-worker
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-rova-worker
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_worker
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-prod-db-worker
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-rova-migrator
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-rova-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-prod-db-migrator
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-rova-readonly
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-rova-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: rova_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-prod-db-readonly
+---
+# ── Role timeouts (rova migration 0073) ─────────────────────────────────────
+# Same mechanism and reasoning as pg-dev-role-timeouts (platform/cnpg/pg-dev.yaml):
+# CNPG has no per-role GUC field, and a LOGIN role may ALTER ROLE itself with no
+# CREATEROLE, so each role applies its own settings with the password ESO already
+# syncs for it. No superuser credential. rova_migrator is deliberately absent: its
+# DDL must be allowed to run longer than 30 s (the reason 0073 exempts it).
+# rova_readonly gets the app's 30 s so a stray ad-hoc query cannot hold the node.
+# PostSync, re-run on every sync; ALTER ROLE ... SET is idempotent and a missing
+# role or stale password fails the hook loudly.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-rova-role-timeouts
+  namespace: data-prod
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pg-rova-role-timeouts
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 26          # postgres, the image's user
+        runAsGroup: 26
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: rova-app
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-rova-rw.data-prod.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-app, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-app, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE rova_app SET statement_timeout = '30s'; ALTER ROLE rova_app SET idle_in_transaction_session_timeout = '60s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        - name: rova-worker
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-rova-rw.data-prod.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-worker, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-worker, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE rova_worker SET statement_timeout = '300s'; ALTER ROLE rova_worker SET idle_in_transaction_session_timeout = '300s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        - name: rova-readonly
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-rova-rw.data-prod.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: password } }
+          command: ["psql"]
+          args:
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-c"
+            - "ALTER ROLE rova_readonly SET statement_timeout = '30s'; ALTER ROLE rova_readonly SET idle_in_transaction_session_timeout = '60s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }

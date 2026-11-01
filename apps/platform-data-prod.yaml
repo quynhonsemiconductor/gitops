@@ -1,0 +1,33 @@
+# Prod data plane: pg-rova (CNPG) and valkey-rova, both in data-prod.
+# Sync wave 3, AFTER products (1) and cloudflared (2), on purpose: this app reads
+# kv-qnsc-prod through ESO, and that store is not Valid until the prod ESO
+# certificate exists. A Degraded app here must not hold root's earlier waves
+# (dev products, the tunnel). Split from platform-data for the same reason.
+# prune: false — these own PVCs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-data-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-prod
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/valkey
+      directory: { include: "valkey-rova.yaml" }
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/cnpg
+      directory: { include: "pg-rova*.yaml" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

@@ -173,19 +173,22 @@ has ever been printed — the 2026-10-31 incident is why.
  0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs, pg-dev (+ rova managed roles)
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
  2  platform-cloudflared     traffic arrives last
+ 3  platform-data-prod       valkey-rova, pg-rova (+ role timeouts); last, so an unready kv-qnsc-prod cannot hold earlier waves
 ```
 
 `platform-base`, `platform-prometheus-crds` and `platform-data` have `prune: false`
 (a pruned Namespace or PVC deletes data). A failed wave holds the next one:
 `platform-secrets` stays Degraded until the ESO stores are Valid, and that is the
 signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` secret (step 3) and
-the three `rova-dev-db-*` Key Vault secrets before wave 0.
+the three `rova-dev-db-*` Key Vault secrets before wave 0. `pg-rova` (wave 3) needs `data-prod/pg-rova-ca`
+(`cluster.sh --env prod`, or ca.md by hand) and the four `rova-prod-db-*` secrets in `kv-qnsc-prod`
+(`secrets.sh --env prod`) plus the `qnsc-eso-prod-cert` Secret, or the kv-qnsc-prod store stays InvalidProviderConfig.
 
 ## Not in git yet
 
 | Missing | Tracked as |
 |---|---|
-| `pg-rova`, opshub/kb roles in `pg-dev`, ObjectStore/backups, dump CronJobs, restore test, PriorityClasses, ResourceQuotas | PLT-B7 |
+| opshub/kb roles in `pg-dev`, ObjectStore/backups, dump CronJobs, restore test, PriorityClasses, ResourceQuotas | PLT-B7 |
 | k8s-monitoring / OTLP receiver (replaces the host-side Alloy values here) | PLT-H2 |
 | Prod Applications and values | PLT-B2 |
 | `ghcr-pull` imagePullSecret (`platform-<env>-ghcr-pull`, ONPREM-PLAN §7.1) | not started; needed if a product image is private |
