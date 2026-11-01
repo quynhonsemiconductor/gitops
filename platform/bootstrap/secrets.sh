@@ -169,7 +169,8 @@ if (( CHECK_ONLY )); then
   for n in db-readonly github-webhook-secret; do
     grep -q "$p-$n" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && echo "  $VAULT_APP/$p-$n"
   done
-  [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key"
+  [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
+    && echo "  $VAULT_APP/r2-backup-ro-access-key-id" && echo "  $VAULT_APP/r2-backup-ro-secret-access-key"
   if (( DO_SITE )); then
     echo "  $VAULT_ADMIN/admin-argocd-password"
     echo "  $VAULT_PLATFORM/platform-argocd-admin-bcrypt"
@@ -221,6 +222,9 @@ if [[ $ENV == prod ]]; then
   echo "== $VAULT_APP: pg-rova backup R2 token (qnsc-backups only; input hidden; Enter skips)"
   ask "$VAULT_APP" r2-backup-rw-access-key-id "$EXP_1Y" 'R2 token Access Key ID (bucket qnsc-backups, read+write)'
   ask "$VAULT_APP" r2-backup-rw-secret-access-key "$EXP_1Y" 'R2 token Secret Access Key'
+  # The restore test's own token: object READ on qnsc-backups only, so restore-test can never write to pg-rova/.
+  ask "$VAULT_APP" r2-backup-ro-access-key-id "$EXP_1Y" 'READ-ONLY R2 token Access Key ID (bucket qnsc-backups, object read)'
+  ask "$VAULT_APP" r2-backup-ro-secret-access-key "$EXP_1Y" 'READ-ONLY R2 token Secret Access Key'
 fi
 
 if (( DO_SITE )); then

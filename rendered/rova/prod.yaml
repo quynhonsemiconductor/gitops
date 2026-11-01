@@ -269,7 +269,7 @@ spec:
             - name: ENTRA_TENANT_ID
               value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
             - name: ENTRA_CLIENT_ID
-              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+              value: 503133fe-58c0-4158-86ca-0cecb2f6f376
             - name: ENTRA_GUEST_INVITE_ENABLED
               value: "true"
             - name: SSO_JIT_ENABLED
@@ -415,7 +415,7 @@ spec:
             - name: ENTRA_TENANT_ID
               value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
             - name: ENTRA_CLIENT_ID
-              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+              value: 503133fe-58c0-4158-86ca-0cecb2f6f376
             - name: ENTRA_GUEST_INVITE_ENABLED
               value: "true"
             - name: SSO_JIT_ENABLED
@@ -567,7 +567,7 @@ spec:
             - name: ENTRA_TENANT_ID
               value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
             - name: ENTRA_CLIENT_ID
-              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+              value: 503133fe-58c0-4158-86ca-0cecb2f6f376
             - name: ENTRA_GUEST_INVITE_ENABLED
               value: "true"
             - name: SSO_JIT_ENABLED

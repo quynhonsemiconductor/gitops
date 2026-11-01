@@ -71,18 +71,18 @@ defaults:
     # Same-origin: SPA and API both on rova.qnsc.vn; the tunnel routes /api/auth/*, /v1/*, /readyz.
     - { name: APP_BASE_URL, value: "https://rova.qnsc.vn" }
     - { name: CORS_ORIGINS, value: "https://rova.qnsc.vn" }
-    # Entra "Rova Prod" sign-in app. The tenant id is public. ⚠ PLACEHOLDER client id: the
-    # owner supplies it (Entra > Rova Prod > Application (client) ID, a public identifier);
-    # sign-in cannot work until it is replaced, and a one-line follow-up PR does that.
+    # Entra "Rova Prod" sign-in app: tenant and client ids are public identifiers.
     - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
-    - { name: ENTRA_CLIENT_ID, value: "<ROVA_PROD_ENTRA_CLIENT_ID>" }
+    - { name: ENTRA_CLIENT_ID, value: "503133fe-58c0-4158-86ca-0cecb2f6f376" }
     - { name: ENTRA_GUEST_INVITE_ENABLED, value: "true" }
     # The schema default is TRUE (env.schema.ts:341): invite-only access must be explicit.
     - { name: SSO_JIT_ENABLED, value: "false" }
     - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
     # Graph mail from noreply-rova@qnsc.vn through the "Rova Prod Service" app (cert-only,
-    # worker-only file below). ⚠ PLACEHOLDER client id: rova's schema refuses a `<...>`
-    # value when EMAIL_PROVIDER=graph (rova#727), so a half-filled file fails closed at boot.
+    # worker-only file below). ⚠ PLACEHOLDER client id: the app does not exist yet (owner
+    # creates it, infra#264). rova's schema refuses a `<...>` value when EMAIL_PROVIDER=graph
+    # (rova#727), so a half-filled file fails closed at boot, and scripts/check-prod-placeholders.sh
+    # (chart-ci) fails the PR that enables the prod ApplicationSet row while it remains.
     - { name: EMAIL_PROVIDER, value: "graph" }
     - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova@qnsc.vn" }
