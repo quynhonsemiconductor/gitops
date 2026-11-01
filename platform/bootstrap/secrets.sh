@@ -237,13 +237,18 @@ if (( DO_SITE )); then
     echo "  = exists, skipped"
   else
     # two parallel arrays, not an associative one: macOS ships bash 3.2
+    # These are EXACTLY the keys platform/alloy/k8s-monitoring.values.yaml reads
+    # through sys.env(): one access-policy token, then the push URL + numeric
+    # user for each of the three signals. Pyroscope is not used (profiling is
+    # off), so its two prompts are gone; a token with the wrong scopes fails in
+    # Alloy, not here, so the scope hint is printed with the token prompt.
     G_KEYS=(GRAFANA_PROM_URL GRAFANA_PROM_USER GRAFANA_LOKI_URL GRAFANA_LOKI_USER
-            GRAFANA_PYROSCOPE_URL GRAFANA_PYROSCOPE_USER GRAFANA_TOKEN)
+            GRAFANA_TEMPO_URL GRAFANA_TEMPO_USER GRAFANA_TOKEN)
     G_VALS=()
     placeholder=false
     for k in "${G_KEYS[@]}"; do
       if [[ $k == GRAFANA_TOKEN ]]; then
-        printf '  %s (input hidden): ' "$k" >&2
+        printf '  %s (scopes metrics:write logs:write traces:write; input hidden): ' "$k" >&2
         read -rs v
       else
         printf '  %s: ' "$k" >&2
