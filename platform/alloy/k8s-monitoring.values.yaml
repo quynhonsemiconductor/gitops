@@ -148,8 +148,8 @@ prometheusOperatorObjects:
   enabled: true
   collector: alloy
 
-# ESO's operator carries prometheus.io/scrape annotations today
-# (platform/eso/values.yaml) — this is what turns them into scrapes.
+# Annotation autodiscovery honours `k8s.grafana.com/*` annotations only (the
+# chart default), so it is NOT what scrapes ESO or ArgoCD — see extraConfig.
 annotationAutodiscovery:
   enabled: true
   collector: alloy
@@ -369,27 +369,40 @@ collectors:
         }
       }
 
-      // ArgoCD metrics services (platform/argocd values enable them). Scrape
-      // by port name so a rename fails visibly (no targets) instead of
-      // scraping the wrong port.
-      discovery.kubernetes "argocd_metrics" {
-        role = "endpoints"
+      // ArgoCD application-controller (pod port 8082, `metrics`). Pod discovery
+      // by label, not the metrics Service: it works whether or not the chart's
+      // Service exists, and `argocd_app_info` (the only series the rules read)
+      // is emitted by the controller alone. honor_labels keeps the app's own
+      // `name`/`namespace` labels, which the Degraded rule groups by.
+      discovery.kubernetes "argocd_controller_pods" {
+        role = "pod"
         namespaces {
           names = ["argocd"]
         }
       }
 
-      discovery.relabel "argocd_metrics" {
-        targets = discovery.kubernetes.argocd_metrics.targets
+      discovery.relabel "argocd_controller_pods" {
+        targets = discovery.kubernetes.argocd_controller_pods.targets
 
         rule {
-          source_labels = ["__meta_kubernetes_endpoint_port_name"]
-          regex         = "http-metrics"
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "argocd-application-controller"
           action        = "keep"
         }
         rule {
-          source_labels = ["__meta_kubernetes_service_name"]
-          target_label  = "service"
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "8082"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
         }
         rule {
           source_labels = ["__meta_kubernetes_namespace"]
@@ -400,23 +413,160 @@ collectors:
           target_label  = "pod"
         }
         rule {
-          source_labels = ["__meta_kubernetes_service_name"]
-          target_label  = "job"
+          target_label = "job"
+          replacement  = "argocd-application-controller"
         }
       }
 
-      prometheus.scrape "argocd_metrics" {
-        targets         = discovery.relabel.argocd_metrics.output
-        forward_to      = [prometheus.relabel.argocd_metrics.receiver]
+      prometheus.scrape "argocd_controller" {
+        targets         = discovery.relabel.argocd_controller_pods.output
+        forward_to      = [prometheus.relabel.argocd_controller.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+        honor_labels    = true
+      }
+
+      prometheus.relabel "argocd_controller" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "argocd_app_info|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
+      // CNPG instance exporter (pod port 9187, `metrics`) for EVERY cluster in
+      // the data namespaces: selected by the operator's own `cnpg.io/podRole=
+      // instance` label, so pg-dev, pg-rova and any later cluster are picked up
+      // with no list to maintain. (The operator's `podMonitorEnabled` covers the
+      // OPERATOR pod only, never the instances, which is why these were absent.)
+      // `cnpg_cluster` is the label the replication-lag alert summary prints.
+      discovery.kubernetes "cnpg_pods" {
+        role = "pod"
+        namespaces {
+          names = ["data-dev", "data-prod"]
+        }
+      }
+
+      discovery.relabel "cnpg_pods" {
+        targets = discovery.kubernetes.cnpg_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_cnpg_io_podRole"]
+          regex         = "instance"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "9187"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_cnpg_io_cluster"]
+          target_label  = "cnpg_cluster"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/cnpg"
+        }
+      }
+
+      prometheus.scrape "cnpg" {
+        targets         = discovery.relabel.cnpg_pods.output
+        forward_to      = [prometheus.relabel.cnpg.receiver]
         scrape_interval = "60s"
         scrape_timeout  = "10s"
       }
 
-      prometheus.relabel "argocd_metrics" {
+      prometheus.relabel "cnpg" {
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          regex         = "argocd_.*|up|scrape_samples_scraped"
+          regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
+      // External Secrets controller (pod port 8080, `metrics`). The chart's
+      // annotation autodiscovery reads `k8s.grafana.com/*` annotations, not the
+      // `prometheus.io/*` ones ESO carries, so it never scraped this pod.
+      // honor_labels keeps the ExternalSecret's own `name`/`namespace` labels,
+      // which the sync-failure rule groups by.
+      discovery.kubernetes "eso_pods" {
+        role = "pod"
+        namespaces {
+          names = ["external-secrets"]
+        }
+      }
+
+      discovery.relabel "eso_pods" {
+        targets = discovery.kubernetes.eso_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "external-secrets"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "8080"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/external-secrets"
+        }
+      }
+
+      prometheus.scrape "eso" {
+        targets         = discovery.relabel.eso_pods.output
+        forward_to      = [prometheus.relabel.eso.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+        honor_labels    = true
+      }
+
+      prometheus.relabel "eso" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "externalsecret_status_condition|up|scrape_samples_scraped"
           action        = "keep"
         }
       }
