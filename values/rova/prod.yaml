@@ -89,7 +89,7 @@ defaults:
     # The App id is public. ⚠ PLACEHOLDER until the owner gives it to the SA; the private key is
     # secrets.env below. scripts/check-prod-placeholders.sh fails the PR that enables the prod row
     # while it remains. (A wrong id would not stop boot: the SCM backfill would just fail to mint tokens.)
-    - { name: GITHUB_APP_ID, value: "<ROVA_PROD_GITHUB_APP_ID>" }
+    - { name: GITHUB_APP_ID, value: "4398910" }
     # R2: the buckets as they physically exist (infra live/storage-prod names; the brief's
     # "rova-production-*" is the old TOKEN name, not a bucket). One credential, as in dev.
     - { name: S3_ATTACHMENTS_BUCKET, value: "rova-prod-attachments" }

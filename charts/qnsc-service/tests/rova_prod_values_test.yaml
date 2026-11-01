@@ -51,7 +51,7 @@ tests:
           content: { name: REDIS_URL, value: "redis://valkey-rova.data-prod.svc:6379" }
       - contains:
           path: spec.template.spec.containers[0].env
-          content: { name: GITHUB_APP_ID, value: "<ROVA_PROD_GITHUB_APP_ID>" }   # the owner's id replaces this; the placeholder gate blocks enabling the row until then
+          content: { name: GITHUB_APP_ID, value: "4398910" }   # GitHub App rova-scm-prod
       - contains:
           path: spec.template.spec.containers[0].env
           content: { name: SSO_JIT_ENABLED, value: "false" }

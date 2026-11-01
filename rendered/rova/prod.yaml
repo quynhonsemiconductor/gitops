@@ -303,7 +303,7 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
             - name: GITHUB_APP_ID
-              value: <ROVA_PROD_GITHUB_APP_ID>
+              value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
@@ -449,7 +449,7 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
             - name: GITHUB_APP_ID
-              value: <ROVA_PROD_GITHUB_APP_ID>
+              value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
@@ -601,7 +601,7 @@ spec:
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
             - name: GITHUB_APP_ID
-              value: <ROVA_PROD_GITHUB_APP_ID>
+              value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
