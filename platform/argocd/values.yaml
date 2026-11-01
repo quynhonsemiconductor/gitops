@@ -57,6 +57,13 @@ controller:
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { memory: 1Gi }
+  # §12 — metrics Service, scraped by the k8s-monitoring collector
+  # (platform/alloy) by port name `http-metrics` in the argocd namespace.
+  # ServiceMonitor stays off: there is no operator managing these Services.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
 
 repoServer:
   replicas: 2
@@ -81,18 +88,39 @@ repoServer:
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { memory: 512Mi }
+  # §12 — metrics Service, scraped by the k8s-monitoring collector
+  # (platform/alloy) by port name `http-metrics` in the argocd namespace.
+  # ServiceMonitor stays off: there is no operator managing these Services.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
 
 applicationSet:
   replicas: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { memory: 256Mi }
+  # §12 — metrics Service, scraped by the k8s-monitoring collector
+  # (platform/alloy) by port name `http-metrics` in the argocd namespace.
+  # ServiceMonitor stays off: there is no operator managing these Services.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
 
 server:
   replicas: 2
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { memory: 256Mi }
+  # §12 — metrics Service, scraped by the k8s-monitoring collector
+  # (platform/alloy) by port name `http-metrics` in the argocd namespace.
+  # ServiceMonitor stays off: there is no operator managing these Services.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
 
   # Reached through the tunnel and Cloudflare Access, like every other internal
   # tool (§4b `protected`). No ALB, no public endpoint.

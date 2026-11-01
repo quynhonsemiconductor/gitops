@@ -38,11 +38,14 @@ operator:
     limits: { memory: 384Mi }
   monitoring:
     # §12 — the one Alloy scrapes CNPG through a PodMonitor on 9187 (the
-    # data-prod NetworkPolicy admits `platform` on that port). OFF until the
-    # k8s-monitoring release exists: PodMonitor is a monitoring.coreos.com CRD
-    # the k8s-monitoring chart brings, and a PodMonitor without its CRD fails
-    # the sync. Flip this on IN THE SAME PR that installs k8s-monitoring.
-    podMonitorEnabled: false
+    # data-prod NetworkPolicy admits `platform` on that port).
+    # ON since the k8s-monitoring release exists (platform/alloy,
+    # apps/platform-observability.yaml). This one line is in the gitops
+    # platform lane, not the observability lane: the file's own instruction
+    # was to flip it in the same PR that installs k8s-monitoring, and the
+    # PodMonitor it creates is what the chart's prometheusOperatorObjects
+    # feature scrapes. Revert = one word, and CNPG keeps running.
+    podMonitorEnabled: true
     grafanaDashboard:
       create: false
   config:

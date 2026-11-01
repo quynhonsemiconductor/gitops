@@ -1,0 +1,306 @@
+# ── k8s-monitoring — the ONE in-cluster Alloy (ONPREM-PLAN §12, PLT-H2) ─────
+#
+# Chart: grafana/k8s-monitoring, pinned in versions.yaml. One Alloy DaemonSet
+# does three jobs on purpose — OTLP receiver, metrics scraping, pod logs — so
+# there is no second collector layer to operate (§12: "k8s-monitoring chart,
+# one Alloy (OTLP receiver, metrics, logs), strict metric allowlist").
+#
+# ── THE CONTRACT THE APPS ALREADY HAVE ─────────────────────────────────────
+# rova-dev and opshub-dev export OTLP to
+# `http://alloy-receiver.platform.svc:4318` (chart base values set
+# OTEL_ENABLED=true and the endpoint). That name is produced here, not by the
+# apps: release name `alloy` + `extraService.name: receiver` →
+# Service `alloy-receiver` in `platform`, ports 4317/4318 from the
+# `otel-receiver` preset. The apps need NO change.
+#
+# ── CREDENTIALS: NOT IN GIT ────────────────────────────────────────────────
+# The Grafana Cloud URLs and tokens come from the `grafana-cloud` Secret
+# (ESO ← kv-qnsc-platform/platform-grafana-alloy) through `envFrom`, and every
+# destination reads them with a raw Alloy expression (`sys.env(...)`). The
+# stack-specific hostnames and numeric user ids stay out of the public repo.
+# Keys the Secret must carry (owner fills):
+#   GRAFANA_TOKEN          one write-scoped access-policy token
+#   GRAFANA_PROM_URL       metrics push
+#   GRAFANA_PROM_USER      metrics instance id
+#   GRAFANA_LOKI_URL       log push
+#   GRAFANA_LOKI_USER      log tenant id
+#   GRAFANA_TEMPO_URL      trace push (…/tempo)
+#   GRAFANA_TEMPO_USER     trace tenant id
+# `GRAFANA_PYROSCOPE_*` are unused here (profiling is not enabled).
+#
+# ── BUDGET ─────────────────────────────────────────────────────────────────
+# Single node, 36 GB. Alloy `medium` (250m / 512Mi, limit 1Gi) + kube-state-
+# metrics (~100m/256Mi) + node-exporter (~50m/64Mi) ≈ 300m / 1.1Gi steady —
+# the §5.7 line. The Alloy operator adds ~50m/128Mi.
+#
+# ── CARDINALITY ────────────────────────────────────────────────────────────
+# The Adaptive Metrics keep-label rules (infra#213) already aggregate the app
+# metrics. Here the COLLECTOR drops the labels that only the OLD semconv
+# generation carries (verified on live Mimir 2026-10-25) plus the churn labels
+# that made billable series outrun active ones. `instance` is deliberately NOT
+# dropped: the node/`up`/CNPG alerts read it. Scrapes stay on the chart's
+# strict allowlists (node-exporter and KSM defaults).
+---
+cluster:
+  name: qnsc-onprem
+
+destinations:
+  grafana-metrics:
+    type: prometheus
+    urlFrom: sys.env("GRAFANA_PROM_URL")
+    auth:
+      type: basic
+      usernameFrom: sys.env("GRAFANA_PROM_USER")
+      passwordFrom: sys.env("GRAFANA_TOKEN")
+    # Old semconv + churn labels. Safe for every current alert: the SLO and
+    # node rules read deployment_environment_name/service_namespace/route/
+    # method/status_class/le/instance, none of which are listed here.
+    metricProcessingRules: |
+      rule {
+        regex  = "http_method|http_status_code|http_flavor|http_scheme|net_host_name|net_host_port|service_version|service_instance_id"
+        action = "labeldrop"
+      }
+
+  grafana-logs:
+    type: loki
+    urlFrom: sys.env("GRAFANA_LOKI_URL")
+    auth:
+      type: basic
+      usernameFrom: sys.env("GRAFANA_LOKI_USER")
+      passwordFrom: sys.env("GRAFANA_TOKEN")
+
+  grafana-traces:
+    type: otlp
+    protocol: http
+    urlFrom: sys.env("GRAFANA_TEMPO_URL")
+    metrics:
+      enabled: false
+    logs:
+      enabled: false
+    traces:
+      enabled: true
+    auth:
+      type: basic
+      usernameFrom: sys.env("GRAFANA_TEMPO_USER")
+      passwordFrom: sys.env("GRAFANA_TOKEN")
+
+# The three flavours of telemetry the node produces, from three upstream
+# exports the chart deploys. No eBPF, no profiling (not needed at this scale).
+telemetryServices:
+  kube-state-metrics:
+    deploy: true
+  node-exporter:
+    deploy: true
+
+clusterMetrics:
+  enabled: true
+  collector: alloy
+
+hostMetrics:
+  enabled: true
+  collector: alloy
+  linuxHosts:
+    enabled: true
+    # KEEP `job="node"`: the on-prem node-down and filesystem rules in infra's
+    # observability-alerting query `up{job="node"}` and were verified against
+    # the old agent's label. Renaming it here would silently disarm them.
+    jobLabel: node
+
+podLogsViaLoki:
+  enabled: true
+  collector: alloy
+  # Exact names (not regexes) so pod discovery can use its efficient path.
+  # Prod namespaces carry secrets only in secret values, not in log lines;
+  # they are included because an incident on prod is exactly when logs matter.
+  namespaces:
+    - rova-prod
+    - rova-dev
+    - opshub-prod
+    - opshub-dev
+    - kb-dev
+    - ai
+    - ai-lab
+    - platform
+    - argocd
+    - data-prod
+    - data-dev
+  # No label-selector narrowing: the estate's pods have no common label.
+
+applicationObservability:
+  enabled: true
+  collector: alloy
+  receivers:
+    otlp:
+      grpc:
+        enabled: true
+        port: 4317
+      http:
+        enabled: true
+        port: 4318
+
+# CNPG's operator creates PodMonitors when its own `monitoring.podMonitorEnabled`
+# is on (flipped in the same PR, platform/cnpg/operator.yaml). ServiceMonitors
+# for ArgoCD and a PodMonitor for the Valkey exporters live in monitors.yaml.
+prometheusOperatorObjects:
+  enabled: true
+  collector: alloy
+
+# ESO's operator carries prometheus.io/scrape annotations today
+# (platform/eso/values.yaml) — this is what turns them into scrapes.
+annotationAutodiscovery:
+  enabled: true
+  collector: alloy
+
+collectors:
+  alloy:
+    presets:
+      - daemonset
+      # Annotation autodiscovery and Prometheus-Operator objects both require
+      # Alloy clustering: with one node it is a one-member cluster, and it is
+      # what makes scrape ownership well-defined if a second node ever joins.
+      - clustered
+      - otel-receiver
+      - filesystem-log-reader
+      - medium
+    # The collector is a DaemonSet: it must tolerate every taint, including the
+    # AI node's pool taint, or logs/metrics from half the estate vanish.
+    controller:
+      tolerations:
+        - operator: Exists
+    alloy:
+      # Digest pin (Docker Hub, verified 2026-11-01). The chart/operator would
+      # otherwise pick its own tag; a digest makes the collector binary that
+      # parses every pipeline in this file an explicit, reviewable choice.
+      image:
+        tag: v1.13.0
+        digest: sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221
+      envFrom:
+        - secretRef:
+            name: grafana-cloud
+      # The `filesystem-log-reader` preset also mounts /var/lib/docker; the
+      # cluster runs containerd, so the only path this needs is /var/log/pods.
+      mounts:
+        dockercontainers: false
+    extraConfig: |
+      // Valkey exporters — one sidecar per instance, in the data namespaces.
+      // Pod role: the exporter port is not on any Service, so endpoints
+      // discovery would never see it.
+      discovery.kubernetes "valkey_pods" {
+        role = "pod"
+        namespaces {
+          names = ["data-dev", "data-prod"]
+        }
+      }
+
+      discovery.relabel "valkey_pods" {
+        targets = discovery.kubernetes.valkey_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "9121"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/redis_exporter"
+        }
+      }
+
+      prometheus.scrape "valkey" {
+        targets         = discovery.relabel.valkey_pods.output
+        forward_to      = [prometheus.relabel.valkey.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "valkey" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "redis_.*|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
+      // ArgoCD metrics services (platform/argocd values enable them). Scrape
+      // by port name so a rename fails visibly (no targets) instead of
+      // scraping the wrong port.
+      discovery.kubernetes "argocd_metrics" {
+        role = "endpoints"
+        namespaces {
+          names = ["argocd"]
+        }
+      }
+
+      discovery.relabel "argocd_metrics" {
+        targets = discovery.kubernetes.argocd_metrics.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_endpoint_port_name"]
+          regex         = "http-metrics"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_service_name"]
+          target_label  = "service"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_service_name"]
+          target_label  = "job"
+        }
+      }
+
+      prometheus.scrape "argocd_metrics" {
+        targets         = discovery.relabel.argocd_metrics.output
+        forward_to      = [prometheus.relabel.argocd_metrics.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "argocd_metrics" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "argocd_.*|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
+    extraService:
+      enabled: true
+      name: receiver
+
+# The operator is chart-managed (CRDs + one Deployment). It is the cost of
+# chart 4.x; the alternative (chart 3.x's five fixed collectors) was worse.
+alloy-operator:
+  deploy: true

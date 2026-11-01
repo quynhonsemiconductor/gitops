@@ -1,0 +1,45 @@
+# ── The in-cluster collector (ONPREM-PLAN §12, PLT-H2) ──────────────────────
+#
+# Wave −1, the plan's wave for k8s-monitoring: the collector must be up before
+# data-plane and product Applications so their first scrapes/logs are not
+# lost. Nothing here depends on a product; the apps only need the
+# `alloy-receiver` Service this chart creates.
+#
+# ONE Helm source, no plain manifests: the chart brings Alloy (one DaemonSet),
+# its operator (chart 4.x), kube-state-metrics and node-exporter, and the
+# receiver Service. It is platform plumbing, not a product, so it does not go
+# through the qnsc-service chart or §11 promotion (the same reason clamd and
+# the AI services are plain/their-own-chart here).
+#
+# CRDs: ArgoCD renders Helm charts with `--include-crds` and applies
+# CustomResourceDefinitions first, which is what makes the `Alloy` CR
+# syncable in this same Application. `SkipDryRunOnMissingResource` covers the
+# first sync on a cluster where the CRD is being created in the same apply.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-observability
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: k8s-monitoring
+      targetRevision: "4.5.3"   # keep in step with versions.yaml
+      helm:
+        releaseName: alloy
+        valueFiles: [$values/platform/alloy/k8s-monitoring.values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
