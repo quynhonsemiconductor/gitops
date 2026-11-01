@@ -63,6 +63,8 @@ spec:
             - ""                # no RDB snapshots — a cache repopulates
             - --appendonly
             - "no"
+            - --aclfile
+            - /etc/valkey-acl/users.acl     # `default` is OFF in that file: no anonymous access
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -75,14 +77,17 @@ spec:
             limits: { memory: 192Mi }
           # §9j — liveness is the process: valkey-cli ping answers without
           # touching persistence or replication.
+          env:
+            - name: EXPORTER_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-rova-acl, key: exporter-password } }
           livenessProbe:
             exec:
-              command: ["valkey-cli", "--no-auth-warning", "ping"]
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             exec:
-              command: ["valkey-cli", "--no-auth-warning", "ping"]
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
             periodSeconds: 5
             failureThreshold: 3
           volumeMounts:
@@ -90,6 +95,9 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            - name: acl
+              mountPath: /etc/valkey-acl
+              readOnly: true
         # §12 — the one Alloy scrapes valkey metrics here (9121); the data-prod
         # NetworkPolicy admits `platform` on exactly this port.
         - name: exporter
@@ -102,6 +110,9 @@ spec:
             - { name: metrics, containerPort: 9121 }
           env:
             - { name: REDIS_ADDR, value: "redis://localhost:6379" }
+            - { name: REDIS_USER, value: exporter }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-rova-acl, key: exporter-password } }
           resources:
             requests: { cpu: 10m, memory: 32Mi }
             limits: { memory: 32Mi }
@@ -110,6 +121,44 @@ spec:
           emptyDir: {}          # no persistence on a cache (§6.4)
         - name: tmp
           emptyDir: {}
+        - name: acl
+          secret: { secretName: valkey-rova-acl, defaultMode: 0440 }
+---
+# ── valkey-rova ACL (the Valkey hardening PR) ────────────────────────────────
+# Before this, any pod admitted to 6379 (rova-prod, restore-test) had unauthenticated
+# full access, FLUSHALL and CONFIG included. Now `default` is off and there are two users:
+#   rova      the app: all keys, every command except @admin and @dangerous (no KEYS,
+#             FLUSHALL, CONFIG, DEBUG, SHUTDOWN, ACL), plus INFO and CLIENT SETNAME/SETINFO
+#             that ioredis sends on connect. EVAL stays allowed: platform-cache's rate
+#             limiter, locks and the idempotency interceptor are Lua scripts.
+#   exporter  the metrics sidecar and the probes: PING/INFO/CONFIG GET/DBSIZE/SLOWLOG/
+#             LATENCY/MEMORY, no key access.
+# ONE vault secret, `rova-prod-redis-url` in kv-qnsc-prod, is the whole credential:
+# redis://rova:<hex>@valkey-rova.data-prod.svc:6379. rova reads it as REDIS_URL (chart
+# secrets.env); this ExternalSecret derives the ACL file from the SAME value, so the two can
+# never disagree. The exporter password is the sha256 of that URL: derived, not a second
+# secret to rotate. The ACL is read at START: after a rotation, restart the pod
+# (kubectl -n data-prod rollout restart sts/valkey-rova) right after rova's secret refreshes.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: valkey-rova-acl
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: valkey-rova-acl
+    template:
+      data:
+        exporter-password: '{{ .url | sha256sum }}'
+        users.acl: |
+          user default off
+          user rova on >{{ index (splitList ":" (urlParse .url).userinfo) 1 }} ~* &* +@all -@admin -@dangerous +info +client|setname +client|setinfo
+          user exporter on >{{ .url | sha256sum }} +ping +info +config|get +dbsize +slowlog +latency +memory +client|setname +client|setinfo
+  data:
+    - secretKey: url
+      remoteRef: { key: rova-prod-redis-url }
 ---
 apiVersion: v1
 kind: Service

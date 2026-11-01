@@ -143,7 +143,7 @@ drift_check() {
   handled+="$p-platform-admin-emails $p-entra-client-secret "
   handled+="$p-storage-access-key-id $p-storage-secret-access-key "
   handled+="$p-db-app $p-db-worker $p-db-migrator $p-db-readonly "
-  handled+="$p-github-webhook-secret "
+  handled+="$p-github-webhook-secret $p-redis-url "
   # graph-cert is a Key Vault CERTIFICATE (identity lane), named here so the check
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
@@ -166,7 +166,7 @@ if (( CHECK_ONLY )); then
   done
   grep -q "$p-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null \
     && echo "  $VAULT_APP/$p-platform-admin-emails"
-  for n in db-readonly github-webhook-secret; do
+  for n in db-readonly github-webhook-secret redis-url; do
     grep -q "$p-$n" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && echo "  $VAULT_APP/$p-$n"
   done
   [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
@@ -197,6 +197,12 @@ echo "== $VAULT_APP: $PRODUCT-$ENV generated app secrets"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
 openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
+# Valkey login for products whose values file lists it (prod): the WHOLE credential is this one URL,
+# and the valkey ACL file is derived from it (platform/valkey/valkey-rova.yaml). Hex is URL-safe.
+if grep -q "$PRODUCT-$ENV-redis-url" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  printf 'redis://%s:%s@valkey-%s.data-%s.svc:6379' "$PRODUCT" "$(openssl rand -hex 24)" "$PRODUCT" "$ENV" \
+    | put "$VAULT_APP" "$PRODUCT-$ENV-redis-url" "$EXP_1Y"
+fi
 # GitHub webhook HMAC: only where the values file maps it (prod). The owner pastes the same value into the GitHub App.
 if grep -q "$PRODUCT-$ENV-github-webhook-secret" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
   openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-github-webhook-secret" "$EXP_1Y"

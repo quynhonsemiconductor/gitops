@@ -21,6 +21,7 @@ tests:
             - { secretKey: COOKIE_SECRET, remoteRef: { key: rova-prod-cookie-secret } }
             - { secretKey: CSRF_SECRET, remoteRef: { key: rova-prod-csrf-secret } }
             - { secretKey: ENTRA_CLIENT_SECRET, remoteRef: { key: rova-prod-entra-client-secret } }
+            - { secretKey: REDIS_URL, remoteRef: { key: rova-prod-redis-url } }
             - { secretKey: STORAGE_ACCESS_KEY_ID, remoteRef: { key: rova-prod-storage-access-key-id } }
             - { secretKey: STORAGE_SECRET_ACCESS_KEY, remoteRef: { key: rova-prod-storage-secret-access-key } }
         documentSelector: { path: metadata.name, value: rova-env }
@@ -43,7 +44,8 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content: { name: DATABASE_HOST, value: pg-rova-rw.data-prod.svc }
-      - contains:
+      # the Valkey URL carries a password, so it must never be a plain env value
+      - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: REDIS_URL, value: "redis://valkey-rova.data-prod.svc:6379" }
       - contains:

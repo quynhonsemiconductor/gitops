@@ -258,8 +258,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: prod
-            - name: REDIS_URL
-              value: redis://valkey-rova.data-prod.svc:6379
             - name: OTEL_ENABLED
               value: "true"
             - name: APP_BASE_URL
@@ -404,8 +402,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: prod
-            - name: REDIS_URL
-              value: redis://valkey-rova.data-prod.svc:6379
             - name: OTEL_ENABLED
               value: "true"
             - name: APP_BASE_URL
@@ -556,8 +552,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: prod
-            - name: REDIS_URL
-              value: redis://valkey-rova.data-prod.svc:6379
             - name: OTEL_ENABLED
               value: "true"
             - name: APP_BASE_URL
@@ -743,6 +737,9 @@ spec:
     - secretKey: ENTRA_CLIENT_SECRET
       remoteRef:
         key: rova-prod-entra-client-secret
+    - secretKey: REDIS_URL
+      remoteRef:
+        key: rova-prod-redis-url
     - secretKey: STORAGE_ACCESS_KEY_ID
       remoteRef:
         key: rova-prod-storage-access-key-id

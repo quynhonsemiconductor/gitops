@@ -60,13 +60,11 @@ defaults:
   env:
     - { name: NODE_ENV, value: "production" }
     - { name: DEPLOYMENT_ENV, value: "prod" }
-    # valkey-rova: the DEDICATED prod cache in data-prod (platform/valkey/valkey-rova.yaml,
-    # allkeys-lru, no persistence). Chosen over a db/ACL on a shared Valkey because the
-    # data-prod NetworkPolicy already isolates it from every dev workload, it already
-    # exists in git for exactly this, and sessions/rate-limit windows must not share an
-    # eviction pool with dev. The per-app ACL user is the Valkey hardening PR (PR C);
-    # until then it is reachable only from rova-prod. Plain redis://, no TLS in-cluster.
-    - { name: REDIS_URL, value: "redis://valkey-rova.data-prod.svc:6379" }
+    # REDIS_URL is NOT here: valkey-rova (the DEDICATED prod cache in data-prod, allkeys-lru, no
+    # persistence) requires a login now, so the URL carries a password and comes from
+    # kv-qnsc-prod/rova-prod-redis-url (secrets.env below). Chosen over a db/ACL on a shared
+    # Valkey: the data-prod NetworkPolicy already isolates it from dev, it exists in git for
+    # this, and prod sessions/rate-limit windows must not share an eviction pool with dev.
     - { name: OTEL_ENABLED, value: "true" }
     # Same-origin: SPA and API both on rova.qnsc.vn; the tunnel routes /api/auth/*, /v1/*, /readyz.
     - { name: APP_BASE_URL, value: "https://rova.qnsc.vn" }
@@ -106,6 +104,7 @@ secrets:
     ENTRA_CLIENT_SECRET: rova-prod-entra-client-secret
     STORAGE_ACCESS_KEY_ID: rova-prod-storage-access-key-id
     STORAGE_SECRET_ACCESS_KEY: rova-prod-storage-secret-access-key
+    REDIS_URL: rova-prod-redis-url   # redis://rova:<hex>@valkey-rova.data-prod.svc:6379; the ACL file derives from this same value
   envApiOnly:
     BETTER_AUTH_SECRET: rova-prod-better-auth-secret
     PLATFORM_ADMIN_EMAILS: rova-prod-platform-admin-emails   # staff roster: Key Vault, not this public repo
