@@ -78,10 +78,10 @@ tests:
           path: spec.template.spec.containers[0].env
           content: { name: LOG_DEV_EMAIL_CONTENT, value: "true" }
 
-  - it: the migrator runs the identity v8 backfill (move night only; delete this test with the flag)
+  - it: the migrator does NOT carry the one-off identity v8 backfill
     template: templates/job.yaml
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: IDENTITY_V8_BACKFILL, value: "commit" }
 

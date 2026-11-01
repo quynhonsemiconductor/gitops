@@ -4,9 +4,8 @@
 # NOT DEPLOYED BY THIS FILE: the prod ApplicationSet row is disabled (appsets/products.yaml)
 # and is switched on in the move-night PR. Until then nothing syncs from here.
 #
-# MOVE NIGHT ONLY: services.migrator.env carries IDENTITY_V8_BACKFILL=commit (rova
-# docs/runbooks/prod-release-night.md sections 2 and 4). REMOVE IT in a follow-up PR once the
-# night is done: while set, every migrate re-runs the backfill preflight against live data.
+# The identity v8 backfill ran ONCE on the move night (2026-11-01, 7 users committed);
+# IDENTITY_V8_BACKFILL is not set here on purpose.
 env: prod
 size: s                      # one node: 1 replica each, no PDB. A rollout still surges first.
 
@@ -44,9 +43,6 @@ services:
       - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
       # pg-rova serves rova only (max_connections 100): 20 + 10 + a migrator leaves headroom.
       - { name: DATABASE_POOL_MAX, value: "20" }
-  migrator:
-    env:
-      - { name: IDENTITY_V8_BACKFILL, value: "commit" }   # MOVE NIGHT ONLY, see the header
   worker:
     replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
     resources: { cpu: 100m, memory: 512Mi }

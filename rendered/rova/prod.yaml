@@ -612,8 +612,6 @@ spec:
               value: "true"
             - name: CDN_PUBLIC_ASSETS_BASE_URL
               value: https://rova-assets.qnsc.vn
-            - name: IDENTITY_V8_BACKFILL
-              value: commit
       volumes:
         - name: tmp
           emptyDir: {}
