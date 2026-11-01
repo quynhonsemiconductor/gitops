@@ -425,6 +425,11 @@
         "enabled": {
           "type": "boolean",
           "description": "Render the namespace-wide default-deny set. On-prem sets false: the one data-prod NetworkPolicy lives in gitops/platform (ONPREM-PLAN \u00a75.6/\u00a76.2)."
+        },
+        "clusterCidrs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Pod and Service CIDRs excluded from the allow-egress-external rule, so default-deny egress also stops a product reaching other namespaces by IP. Defaults are k3s's."
         }
       }
     },
