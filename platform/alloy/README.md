@@ -47,7 +47,7 @@ Secret `platform/grafana-cloud` (ExternalSecret ← Key Vault
 | `GRAFANA_PROM_USER` | metrics instance ID (numeric) |
 | `GRAFANA_LOKI_URL` | Loki push URL |
 | `GRAFANA_LOKI_USER` | logs instance / user id |
-| `GRAFANA_TEMPO_URL` | traces OTLP base URL (including the `/tempo` path) |
+| `GRAFANA_TEMPO_URL` | Tempo URL as Grafana shows it (`https://tempo-….grafana.net/tempo`); the config pushes OTLP/gRPC to the same host on `:443` |
 | `GRAFANA_TEMPO_USER` | traces tenant / user id |
 
 `GRAFANA_PYROSCOPE_*` are no longer read (profiling is not enabled). Nothing

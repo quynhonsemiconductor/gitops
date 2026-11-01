@@ -71,8 +71,11 @@ destinations:
 
   grafana-traces:
     type: otlp
-    protocol: http
-    urlFrom: sys.env("GRAFANA_TEMPO_URL")
+    # Grafana Cloud Tempo takes OTLP over gRPC on :443; its "/tempo" URL is the
+    # query path and answers OTLP/HTTP pushes with 404. The secret holds the URL
+    # exactly as Grafana shows it, so the endpoint is derived here.
+    protocol: grpc
+    urlFrom: string.trim_suffix(sys.env("GRAFANA_TEMPO_URL"), "/tempo") + ":443"
     metrics:
       enabled: false
     logs:
