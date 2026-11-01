@@ -1,0 +1,99 @@
+suite: rova prod values (on-prem shape)
+# The real values/rova/prod.yaml, no fixture overlay: what ArgoCD will render once the prod
+# ApplicationSet row is enabled. Guards the pre-prod review items: api reachable only from
+# platform, no debug switches, JIT off, per-value secrets from kv-qnsc-prod.
+templates:
+  - templates/externalsecret.yaml
+  - templates/deployment.yaml
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/prod.yaml
+  - ../../../values/rova/tags.prod.yaml
+
+tests:
+  - it: maps every shared secret to its own kv-qnsc-prod secret and the api-only ones separately
+    template: templates/externalsecret.yaml
+    asserts:
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: COOKIE_SECRET, remoteRef: { key: rova-prod-cookie-secret } }
+            - { secretKey: CSRF_SECRET, remoteRef: { key: rova-prod-csrf-secret } }
+            - { secretKey: ENTRA_CLIENT_SECRET, remoteRef: { key: rova-prod-entra-client-secret } }
+            - { secretKey: STORAGE_ACCESS_KEY_ID, remoteRef: { key: rova-prod-storage-access-key-id } }
+            - { secretKey: STORAGE_SECRET_ACCESS_KEY, remoteRef: { key: rova-prod-storage-secret-access-key } }
+        documentSelector: { path: metadata.name, value: rova-env }
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-prod-better-auth-secret } }
+            - { secretKey: GITHUB_WEBHOOK_SECRET, remoteRef: { key: rova-prod-github-webhook-secret } }
+            - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-prod-platform-admin-emails } }
+        documentSelector: { path: metadata.name, value: rova-env-api }
+      - equal:
+          path: spec.secretStoreRef.name
+          value: kv-qnsc-prod
+        documentSelector: { path: metadata.name, value: rova-env }
+
+  - it: the api talks to pg-rova and valkey-rova, with JIT off and every debug switch absent
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_HOST, value: pg-rova-rw.data-prod.svc }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: REDIS_URL, value: "redis://valkey-rova.data-prod.svc:6379" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SSO_JIT_ENABLED, value: "false" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: APP_BASE_URL, value: "https://rova.qnsc.vn" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: CORS_ORIGINS, value: "https://rova.qnsc.vn" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: EMAIL_PROVIDER, value: graph }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DISABLE_RATE_LIMIT, value: "true" }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SWAGGER_ENABLED, value: "true" }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: LOG_HTTP_BODIES, value: "true" }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: LOG_DEV_EMAIL_CONTENT, value: "true" }
+
+  - it: api:3000 accepts ingress only from the platform namespace and its own namespace
+    # A pod elsewhere in the cluster must not reach the api and spoof cf-connecting-ip /
+    # x-forwarded-for, which would defeat the per-IP rate limits.
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-ingress-api }
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: platform }
+              ports:
+                - { protocol: TCP, port: 3000 }
+            - from:
+                - podSelector: {}
+              ports:
+                - { protocol: TCP, port: 3000 }
+
+  - it: renders the namespace default-deny for ingress and egress
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: default-deny }
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress, Egress]
