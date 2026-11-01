@@ -1,0 +1,56 @@
+suite: network policy egress (cluster CIDRs)
+# `0.0.0.0/0 except IMDS` matches every pod and Service IP in the cluster, so default-deny
+# egress did not stop a product reaching other namespaces. The cluster CIDRs are excluded
+# and the product's own data namespace is allowed by name.
+templates:
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+set:
+  networkPolicy.enabled: true
+
+tests:
+  - it: excludes IMDS and the k3s pod and Service CIDRs from the internet egress rule
+    documentSelector: { path: metadata.name, value: allow-egress-external }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].ipBlock
+          value:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32, 10.42.0.0/16, 10.43.0.0/16]
+
+  - it: the excluded CIDRs are configurable
+    set:
+      networkPolicy.clusterCidrs: [192.168.0.0/16]
+    documentSelector: { path: metadata.name, value: allow-egress-external }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].ipBlock.except
+          value: [169.254.169.254/32, 192.168.0.0/16]
+
+  - it: allows egress to the product's data namespace on 5432 and 6379 only (cnpg mode)
+    documentSelector: { path: metadata.name, value: allow-egress-data }
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: data-dev }
+              ports:
+                - { protocol: TCP, port: 5432 }
+                - { protocol: TCP, port: 6379 }
+
+  - it: renders no data-egress policy outside cnpg mode
+    values:
+      - ../../../values/rova/base.yaml
+      - ../../../values/rova/tags.prod.yaml
+    set:
+      env: prod
+      networkPolicy.enabled: true
+    template: templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 5   # default-deny, dns, platform, external, allow-ingress-api: no allow-egress-data

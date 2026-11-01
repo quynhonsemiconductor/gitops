@@ -115,6 +115,10 @@ images: {}
 # back only via §9's trigger, and the templates would be dead code until then.
 networkPolicy:
   enabled: true
+  # Excluded from the `allow-egress-external` rule (0.0.0.0/0 would otherwise match every
+  # pod and Service in the cluster). The k3s defaults: the config in infra live/onprem-vm
+  # sets no cluster-cidr/service-cidr, so these are what k3s uses.
+  clusterCidrs: [10.42.0.0/16, 10.43.0.0/16]
 # Worker-only mounted credentials (§7.1). Empty by default: with no graphCert
 # nothing is mounted and no AZURE_CLIENT_CERTIFICATE_PATH is exported.
 # The workerOnly key must EXIST (empty is fine) — the templates read through

@@ -52,7 +52,27 @@ spec:
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]   # IMDS — pods use IRSA, never the node role
+            except:
+              - 169.254.169.254/32   # IMDS — pods use IRSA, never the node role
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-data
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
 
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
