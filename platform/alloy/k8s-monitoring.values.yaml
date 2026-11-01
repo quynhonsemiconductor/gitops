@@ -244,6 +244,128 @@ collectors:
         }
       }
 
+      // cert-manager controller (9402, port name `http-metrics`). The chart's
+      // integration feature would do this too; the pod discovery here keeps
+      // every out-of-band scrape in ONE block and one allowlist style.
+      discovery.kubernetes "certmanager_pods" {
+        role = "pod"
+        namespaces {
+          names = ["cert-manager"]
+        }
+      }
+
+      discovery.relabel "certmanager_pods" {
+        targets = discovery.kubernetes.certmanager_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_name"]
+          regex         = "http-metrics"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/cert-manager"
+        }
+      }
+
+      prometheus.scrape "certmanager" {
+        targets         = discovery.relabel.certmanager_pods.output
+        forward_to      = [prometheus.relabel.certmanager.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "certmanager" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "certmanager_.*|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
+      // cloudflared (the tunnel connector) on its metrics port 2000. It has no
+      // Service and no scrape annotation; the deployment only exposes the
+      // container port. `cloudflared_tunnel_ha_connections` is the tunnel-down
+      // signal in infra's alerting rules.
+      discovery.kubernetes "cloudflared_pods" {
+        role = "pod"
+        namespaces {
+          names = ["platform"]
+        }
+      }
+
+      discovery.relabel "cloudflared_pods" {
+        targets = discovery.kubernetes.cloudflared_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "cloudflared"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "2000"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "cloudflared"
+        }
+      }
+
+      prometheus.scrape "cloudflared" {
+        targets         = discovery.relabel.cloudflared_pods.output
+        forward_to      = [prometheus.relabel.cloudflared.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "cloudflared" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "cloudflared_.*|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
       // ArgoCD metrics services (platform/argocd values enable them). Scrape
       // by port name so a rename fails visibly (no targets) instead of
       // scraping the wrong port.

@@ -26,6 +26,8 @@ mention the old allowlist in `agent.alloy`; that comment is now historical.
 | Metrics — Valkey | redis_exporter sidecars on 9121 (extra Alloy config: pod discovery; the port is on no Service) | Mimir |
 | Metrics — ArgoCD | the four metrics Services (controller, repo-server, server, applicationset), enabled in `platform/argocd/values.yaml`; scraped by port name `http-metrics` via endpoints discovery | Mimir |
 | Metrics — ESO | its `prometheus.io/*` annotations, read by `annotationAutodiscovery` (remapped to the `prometheus.io` annotation names) | Mimir |
+| Metrics — cert-manager | controller pod port `http-metrics` (9402), pod discovery; `certmanager_*` allowlist | Mimir |
+| Metrics — cloudflared | the two tunnel connectors on port 2000 (no Service, no annotation); `cloudflared_*` allowlist | Mimir |
 | Logs | pod logs from the product/ai/platform namespaces via `/var/log/pods` (containerd) | Grafana Cloud Loki |
 
 The receiver Service is `alloy-receiver` in `platform` — release name `alloy` +
