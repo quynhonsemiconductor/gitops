@@ -282,6 +282,8 @@ spec:
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: GITHUB_APP_ID
+              value: <ROVA_PROD_GITHUB_APP_ID>
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
@@ -426,6 +428,8 @@ spec:
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: GITHUB_APP_ID
+              value: <ROVA_PROD_GITHUB_APP_ID>
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
@@ -576,6 +580,8 @@ spec:
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
               value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: GITHUB_APP_ID
+              value: <ROVA_PROD_GITHUB_APP_ID>
             - name: S3_ATTACHMENTS_BUCKET
               value: rova-prod-attachments
             - name: S3_PUBLIC_ASSETS_BUCKET
@@ -737,6 +743,9 @@ spec:
     - secretKey: ENTRA_CLIENT_SECRET
       remoteRef:
         key: rova-prod-entra-client-secret
+    - secretKey: GITHUB_APP_PRIVATE_KEY
+      remoteRef:
+        key: rova-prod-github-app-private-key
     - secretKey: REDIS_URL
       remoteRef:
         key: rova-prod-redis-url

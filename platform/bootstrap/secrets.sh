@@ -143,7 +143,7 @@ drift_check() {
   handled+="$p-platform-admin-emails $p-entra-client-secret "
   handled+="$p-storage-access-key-id $p-storage-secret-access-key "
   handled+="$p-db-app $p-db-worker $p-db-migrator $p-db-readonly "
-  handled+="$p-github-webhook-secret $p-redis-url "
+  handled+="$p-github-webhook-secret $p-redis-url $p-github-app-private-key "
   # graph-cert is a Key Vault CERTIFICATE (identity lane), named here so the check
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
@@ -166,7 +166,7 @@ if (( CHECK_ONLY )); then
   done
   grep -q "$p-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null \
     && echo "  $VAULT_APP/$p-platform-admin-emails"
-  for n in db-readonly github-webhook-secret redis-url; do
+  for n in db-readonly github-webhook-secret redis-url github-app-private-key; do
     grep -q "$p-$n" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && echo "  $VAULT_APP/$p-$n"
   done
   [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
@@ -216,6 +216,27 @@ ask "$VAULT_APP" "$PRODUCT-$ENV-storage-access-key-id" "$EXP_1Y" \
   'R2 API token Access Key ID (attachments + public-assets, object read/write)'
 ask "$VAULT_APP" "$PRODUCT-$ENV-storage-secret-access-key" "$EXP_1Y" \
   'R2 API token Secret Access Key'
+# A multi-line PEM is not something to paste into a hidden prompt: read it from a FILE (the path is
+# not secret; the content is never printed), check it is a private key, and store it through stdin.
+ask_pem_file() {
+  local v=$1 n=$2 e=$3 prompt=$4 path
+  if exists "$v" "$n" && ! is_forced "$n"; then
+    echo "  = $v/$n exists, skipped"
+    return 0
+  fi
+  printf '  %s (path to the .pem file; Enter skips): ' "$prompt" >&2
+  read -r path
+  if [[ -z ${path:-} ]]; then
+    echo "  - $n left empty: skipped (rova-env will not sync until it exists)"
+    return 0
+  fi
+  path=${path/#\~/$HOME}
+  [[ -f $path && -r $path ]] || { echo "  ! $path is not a readable file" >&2; exit 1; }
+  openssl pkey -in "$path" -noout 2>/dev/null \
+    || { echo "  ! $path is not a valid private key (openssl pkey rejected it)" >&2; exit 1; }
+  put "$v" "$n" "$e" <"$path"
+}
+
 # Only the products whose schema HAS a roster: opshub has none.
 if grep -q "$PRODUCT-$ENV-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
   ask "$VAULT_APP" "$PRODUCT-$ENV-platform-admin-emails" "$EXP_1Y" \
@@ -231,6 +252,11 @@ if [[ $ENV == prod ]]; then
   # The restore test's own token: object READ on qnsc-backups only, so restore-test can never write to pg-rova/.
   ask "$VAULT_APP" r2-backup-ro-access-key-id "$EXP_1Y" 'READ-ONLY R2 token Access Key ID (bucket qnsc-backups, object read)'
   ask "$VAULT_APP" r2-backup-ro-secret-access-key "$EXP_1Y" 'READ-ONLY R2 token Secret Access Key'
+fi
+
+if grep -q "$PRODUCT-$ENV-github-app-private-key" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  echo "== $VAULT_APP: $PRODUCT-$ENV GitHub App private key (read from a file)"
+  ask_pem_file "$VAULT_APP" "$PRODUCT-$ENV-github-app-private-key" "$EXP_1Y" 'GitHub App private key'
 fi
 
 if (( DO_SITE )); then

@@ -85,6 +85,11 @@ defaults:
     - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova@qnsc.vn" }
     - { name: MAIL_GRAPH_CLIENT_ID, value: "<ROVA_PROD_SERVICE_APP_ID>" }
+    # GitHub App (SCM backfill + authenticated REST; it must survive the move, owner 2026-11-01).
+    # The App id is public. ⚠ PLACEHOLDER until the owner gives it to the SA; the private key is
+    # secrets.env below. scripts/check-prod-placeholders.sh fails the PR that enables the prod row
+    # while it remains. (A wrong id would not stop boot: the SCM backfill would just fail to mint tokens.)
+    - { name: GITHUB_APP_ID, value: "<ROVA_PROD_GITHUB_APP_ID>" }
     # R2: the buckets as they physically exist (infra live/storage-prod names; the brief's
     # "rova-production-*" is the old TOKEN name, not a bucket). One credential, as in dev.
     - { name: S3_ATTACHMENTS_BUCKET, value: "rova-prod-attachments" }
@@ -102,6 +107,11 @@ secrets:
     COOKIE_SECRET: rova-prod-cookie-secret
     CSRF_SECRET: rova-prod-csrf-secret
     ENTRA_CLIENT_SECRET: rova-prod-entra-client-secret
+    # The App's private key, a multi-line PEM. rova reads GITHUB_APP_PRIVATE_KEY directly
+    # (github-app-auth.service.ts:134-143: createPrivateKey, PKCS#1 or PKCS#8, literal "\n" also
+    # accepted). Azure Key Vault keeps the newlines, ESO copies the bytes, and a Secret value
+    # reaches the container env intact.
+    GITHUB_APP_PRIVATE_KEY: rova-prod-github-app-private-key
     STORAGE_ACCESS_KEY_ID: rova-prod-storage-access-key-id
     STORAGE_SECRET_ACCESS_KEY: rova-prod-storage-secret-access-key
     REDIS_URL: rova-prod-redis-url   # redis://rova:<hex>@valkey-rova.data-prod.svc:6379; the ACL file derives from this same value
