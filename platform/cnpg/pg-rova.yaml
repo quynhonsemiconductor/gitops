@@ -219,11 +219,11 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-rova-rova-app, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-rova-rova-app, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-prod-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused.
+          # Wait for the server (up to 2 min) instead of failing the first try.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE rova_app SET statement_timeout = '30s'; ALTER ROLE rova_app SET idle_in_transaction_session_timeout = '60s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
@@ -236,11 +236,11 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-rova-rova-worker, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-rova-rova-worker, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-prod-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused.
+          # Wait for the server (up to 2 min) instead of failing the first try.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE rova_worker SET statement_timeout = '300s'; ALTER ROLE rova_worker SET idle_in_transaction_session_timeout = '300s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
@@ -253,11 +253,11 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-rova-rova-readonly, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-prod-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused.
+          # Wait for the server (up to 2 min) instead of failing the first try.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE rova_readonly SET statement_timeout = '30s'; ALTER ROLE rova_readonly SET idle_in_transaction_session_timeout = '60s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
