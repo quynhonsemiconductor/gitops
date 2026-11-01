@@ -294,7 +294,7 @@ spec:
             - name: DATABASE_NAME
               value: "opshub"
             - name: DATABASE_USER
-              value: "opshub_app"
+              value: "opshub_worker"
             - name: DATABASE_SSL_CA
               value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
