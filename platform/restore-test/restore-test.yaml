@@ -32,26 +32,28 @@
 # proves the backup/WAL/recovery chain only. G1 needs the second, REQUIRE_DATA=1 run.
 #
 # Isolation: own namespace (restricted PSS), reachable from nothing, the runner's
-# RBAC is a Role in THIS namespace only. The credential is the same R2 token pg-rova
-# archives with (read+write; ONPREM-PLAN §10.3 wants a read-only one here later: the
-# Bucket Lock protects the prefix meanwhile). Mutation resistance: stop the archive
+# RBAC is a Role in THIS namespace only. The credential is a separate READ-ONLY R2 token
+# (bucket qnsc-backups, object read; kv-qnsc-prod r2-backup-ro-*): this namespace can
+# never write to s3://qnsc-backups/pg-rova/, whatever the Job or the restored cluster
+# does. The `postgresql` ImageCatalog it needs is declared next to the other two in
+# platform/cnpg/imagecatalog.yaml (one file, one digest). Mutation resistance: stop the archive
 # (wrong serverName) and the Cluster never becomes Ready, so the Job times out FAIL.
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: pg-rova-r2-backup
+  name: pg-rova-r2-restore
   namespace: restore-test
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
   target:
-    name: pg-rova-r2-backup
+    name: pg-rova-r2-restore
   data:
     - secretKey: ACCESS_KEY_ID
-      remoteRef: { key: r2-backup-rw-access-key-id }
+      remoteRef: { key: r2-backup-ro-access-key-id }
     - secretKey: ACCESS_SECRET_KEY
-      remoteRef: { key: r2-backup-rw-secret-access-key }
+      remoteRef: { key: r2-backup-ro-secret-access-key }
 ---
 # Read side of the same archive, in this namespace (an ObjectStore is namespaced).
 # No retentionPolicy: this one must never prune.
@@ -65,8 +67,8 @@ spec:
     destinationPath: s3://qnsc-backups/pg-rova/
     endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
     s3Credentials:
-      accessKeyId: { name: pg-rova-r2-backup, key: ACCESS_KEY_ID }
-      secretAccessKey: { name: pg-rova-r2-backup, key: ACCESS_SECRET_KEY }
+      accessKeyId: { name: pg-rova-r2-restore, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: pg-rova-r2-restore, key: ACCESS_SECRET_KEY }
     wal:
       compression: gzip
   instanceSidecarConfiguration:
@@ -165,12 +167,16 @@ data:
     }
     cleanup() {
       echo "teardown: deleting cluster $C"
-      kubectl -n "$NS" delete cluster "$C" --wait=true --timeout=300s --ignore-not-found || true
+      trap '' TERM INT   # a second signal must not interrupt the teardown
+      kubectl -n "$NS" delete cluster "$C" --wait=true --timeout=300s --ignore-not-found &
+      wait $! || true
       record
       echo "RESTORE-TEST: $status ($detail)"
       [ "$status" = PASS ]
     }
     trap 'cleanup; exit $?' EXIT
+    # PID 1 ignores SIGTERM unless a handler exists; 143 makes the EXIT trap run the teardown.
+    trap 'exit 143' TERM INT
 
     q() { kubectl -n "$NS" exec "$POD" -c postgres -- psql -X -At -v ON_ERROR_STOP=1 -d rova -c "$1"; }
     fail() { detail="$1"; echo "FAIL: $1"; exit 1; }
@@ -180,7 +186,11 @@ data:
 
     echo "restoring latest pg-rova-g1 backup + WAL into $C"
     kubectl -n "$NS" apply -f /work/cluster.yaml || fail "apply cluster"
-    kubectl -n "$NS" wait --for=condition=Ready "cluster/$C" --timeout="${TIMEOUT}s" \
+    # Background + `wait $!`: bash as PID 1 defers a trap until the foreground command
+    # returns, so a SIGTERM (activeDeadlineSeconds, job delete) would otherwise wait out
+    # the whole timeout and be SIGKILLed with the cluster and PVC still there.
+    kubectl -n "$NS" wait --for=condition=Ready "cluster/$C" --timeout="${TIMEOUT}s" &
+    wait $! \
       || fail "cluster not Ready within ${TIMEOUT}s (restore failed or no backup)"
 
     [ "$(q 'select pg_is_in_recovery()')" = f ] || fail "still in recovery"
