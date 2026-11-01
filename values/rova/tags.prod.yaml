@@ -1,5 +1,9 @@
 # GENERATED — DO NOT EDIT BY HAND.
 #
+# PROVISIONAL TAG (2026-11-01): the latest `GHCR · Publish` build of rova main (0dd4f254),
+# all three images exist on GHCR. Agent C names the commit the move runs
+# (rova docs/runbooks/prod-release-night.md section 1.1); change it in the move-night PR.
+#
 # CI writes this file on every deploy, and it is separate from prod.yaml for one
 # reason: `yq -i` REWRITES a whole file, and these values files carry reasoning
 # transcribed from the live OpenTofu — why qnsc-kb's api stays off Spot, why
@@ -12,10 +16,10 @@
 services:
   api:
     image:
-      tag: sha-0000000
+      tag: sha-0dd4f25472fe
   migrator:
     image:
-      tag: sha-0000000
+      tag: sha-0dd4f25472fe
   worker:
     image:
-      tag: sha-0000000
+      tag: sha-0dd4f25472fe

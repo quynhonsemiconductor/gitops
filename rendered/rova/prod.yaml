@@ -86,48 +86,6 @@ spec:
         - { protocol: TCP, port: 3000 }
 
 ---
-# Source: qnsc-service/templates/pdb.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: api
-      app.kubernetes.io/instance: rova
-
----
-# Source: qnsc-service/templates/pdb.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: worker
-  labels:
-    app.kubernetes.io/name: worker
-    app.kubernetes.io/instance: rova
-    app.kubernetes.io/part-of: rova
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: rova
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: worker
-      app.kubernetes.io/instance: rova
-
----
 # Source: qnsc-service/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -224,7 +182,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -250,18 +208,10 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: api
-              app.kubernetes.io/instance: rova
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/rova-api:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/rova-api:sha-0dd4f25472fe
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -291,22 +241,86 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+              value: service.namespace=rova,deployment.environment=prod,service.version=sha-0dd4f25472fe
+            - name: DATABASE_HOST
+              value: pg-rova-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
             - name: DATABASE_NAME
               value: "rova"
             - name: DATABASE_USER
-              value: "rova"
+              value: "rova_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
-              value: "iam"
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: REDIS_URL
+              value: redis://valkey-rova.data-prod.svc:6379
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: APP_BASE_URL
+              value: https://rova.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://rova.qnsc.vn
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+            - name: ENTRA_GUEST_INVITE_ENABLED
+              value: "true"
+            - name: SSO_JIT_ENABLED
+              value: "false"
+            - name: INTERNAL_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_FROM_EMAIL
+              value: noreply@qnsc.vn
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-rova@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: S3_ATTACHMENTS_BUCKET
+              value: rova-prod-attachments
+            - name: S3_PUBLIC_ASSETS_BUCKET
+              value: rova-prod-public-assets
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
+            - name: CDN_PUBLIC_ASSETS_BASE_URL
+              value: https://rova-assets.qnsc.vn
+            - name: PORT
+              value: "3000"
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=512
+            - name: DATABASE_POOL_MAX
+              value: "20"
           envFrom:
             - secretRef:
-                name: rova-app
+                name: rova-env
+            - secretRef:
+                name: rova-env-api
+            - secretRef:
+                name: rova-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: rova-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
@@ -349,18 +363,10 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: worker
-              app.kubernetes.io/instance: rova
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/rova-worker:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/rova-worker:sha-0dd4f25472fe
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -369,7 +375,7 @@ spec:
               drop: ["ALL"]
           resources:
             requests:
-              cpu: 250m
+              cpu: 100m
               memory: 512Mi
             limits:
               memory: 512Mi
@@ -379,29 +385,99 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=prod,service.version=sha-0000000
+              value: service.namespace=rova,deployment.environment=prod,service.version=sha-0dd4f25472fe
+            - name: DATABASE_HOST
+              value: pg-rova-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
             - name: DATABASE_NAME
               value: "rova"
             - name: DATABASE_USER
-              value: "rova"
+              value: "rova_worker"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
-              value: "iam"
+              value: "password"
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: "/etc/qnsc/graph/cert.pem"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: REDIS_URL
+              value: redis://valkey-rova.data-prod.svc:6379
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: APP_BASE_URL
+              value: https://rova.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://rova.qnsc.vn
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+            - name: ENTRA_GUEST_INVITE_ENABLED
+              value: "true"
+            - name: SSO_JIT_ENABLED
+              value: "false"
+            - name: INTERNAL_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_FROM_EMAIL
+              value: noreply@qnsc.vn
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-rova@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: S3_ATTACHMENTS_BUCKET
+              value: rova-prod-attachments
+            - name: S3_PUBLIC_ASSETS_BUCKET
+              value: rova-prod-public-assets
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
+            - name: CDN_PUBLIC_ASSETS_BASE_URL
+              value: https://rova-assets.qnsc.vn
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=256
+            - name: DATABASE_POOL_MAX
+              value: "10"
           envFrom:
             - secretRef:
-                name: rova-app
+                name: rova-env
+            - secretRef:
+                name: rova-db-worker
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: graph-cert
+              mountPath: /etc/qnsc/graph/cert.pem
+              subPath: cert.pem
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: rova-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        - name: graph-cert
+          secret:
+            secretName: rova-prod-graph-cert
+            items: [{ key: cert.pem, path: cert.pem }]
 
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-0000000
+  name: migrator-sha-0dd4f25472fe
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -440,7 +516,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/rova-migrator:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/rova-migrator:sha-0dd4f25472fe
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -459,41 +535,70 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
           env:
+            - name: DATABASE_HOST
+              value: pg-rova-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
             - name: DATABASE_NAME
               value: "rova"
             - name: DATABASE_USER
               value: "rova_migrator"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
             - name: DATABASE_AUTH
-              value: "iam"
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: REDIS_URL
+              value: redis://valkey-rova.data-prod.svc:6379
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: APP_BASE_URL
+              value: https://rova.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://rova.qnsc.vn
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <ROVA_PROD_ENTRA_CLIENT_ID>
+            - name: ENTRA_GUEST_INVITE_ENABLED
+              value: "true"
+            - name: SSO_JIT_ENABLED
+              value: "false"
+            - name: INTERNAL_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_FROM_EMAIL
+              value: noreply@qnsc.vn
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-rova@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: <ROVA_PROD_SERVICE_APP_ID>
+            - name: S3_ATTACHMENTS_BUCKET
+              value: rova-prod-attachments
+            - name: S3_PUBLIC_ASSETS_BUCKET
+              value: rova-prod-public-assets
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
+            - name: CDN_PUBLIC_ASSETS_BASE_URL
+              value: https://rova-assets.qnsc.vn
       volumes:
         - name: tmp
           emptyDir: {}
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: rova-app
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: rova
-    kind: SecretStore
-  target:
-    name: rova-app
-  dataFrom:
-    - find:
-        path: qnsc/prod/rova/app/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+        - name: db-ca
+          secret:
+            secretName: rova-migrator-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -508,21 +613,166 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: rova
-    kind: SecretStore
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
   target:
     name: rova-migrator
-  dataFrom:
-    - find:
-        path: qnsc/prod/rova/migrator/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: rova-prod-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: rova-prod-db-app
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-db-worker
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-db-worker
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: rova-prod-db-worker
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-db-ca
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-rova-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-migrator-db-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-migrator-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-rova-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-prod-graph-cert
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-prod-graph-cert
+  data:
+    - secretKey: cert.pem
+      remoteRef:
+        key: rova-prod-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-env
+  data:
+    - secretKey: COOKIE_SECRET
+      remoteRef:
+        key: rova-prod-cookie-secret
+    - secretKey: CSRF_SECRET
+      remoteRef:
+        key: rova-prod-csrf-secret
+    - secretKey: ENTRA_CLIENT_SECRET
+      remoteRef:
+        key: rova-prod-entra-client-secret
+    - secretKey: STORAGE_ACCESS_KEY_ID
+      remoteRef:
+        key: rova-prod-storage-access-key-id
+    - secretKey: STORAGE_SECRET_ACCESS_KEY
+      remoteRef:
+        key: rova-prod-storage-secret-access-key
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rova-env-api
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: rova-env-api
+  data:
+    - secretKey: BETTER_AUTH_SECRET
+      remoteRef:
+        key: rova-prod-better-auth-secret
+    - secretKey: GITHUB_WEBHOOK_SECRET
+      remoteRef:
+        key: rova-prod-github-webhook-secret
+    - secretKey: PLATFORM_ADMIN_EMAILS
+      remoteRef:
+        key: rova-prod-platform-admin-emails
 
 ---
 # Source: qnsc-service/templates/slo.yaml
@@ -629,19 +879,3 @@ spec:
             env: prod
           annotations:
             summary: "rova-api has reported no metrics for 10 minutes"
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: rova
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: ap-southeast-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: api

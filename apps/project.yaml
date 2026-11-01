@@ -30,6 +30,7 @@ spec:
     - { server: https://kubernetes.default.svc, namespace: rova-dev }
     - { server: https://kubernetes.default.svc, namespace: opshub-dev }
     - { server: https://kubernetes.default.svc, namespace: kb-dev }
+    - { server: https://kubernetes.default.svc, namespace: rova-prod }   # the prod row is disabled until the move-night PR
 
   # ── What a product Application may create ─────────────────────────────────
   # An explicit allow-list rather than "*", so a chart that starts rendering
