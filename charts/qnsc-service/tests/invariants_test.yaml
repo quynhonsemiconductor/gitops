@@ -8,11 +8,15 @@ templates:
   - templates/pdb.yaml
 values:
   - ../../../values/rova/base.yaml
-  - ../../../values/rova/prod.yaml
   # The image tag lives in a MACHINE-OWNED file: `yq -i` rewrites whatever it
   # touches, and the values files above carry reasoning transcribed from the live
   # OpenTofu. CI writes only this one.
   - ../../../values/rova/tags.prod.yaml
+# base + tags + `env: prod` ONLY: the EKS-era shape these invariants were written for
+# (what values/rova/prod.yaml used to contribute was exactly `env: prod`). The real
+# on-prem prod values are asserted in rova_prod_values_test.yaml.
+set:
+  env: prod
 
 tests:
   # ── §15d ────────────────────────────────────────────────────────────────────

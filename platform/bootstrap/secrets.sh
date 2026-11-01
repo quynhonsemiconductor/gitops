@@ -142,7 +142,8 @@ drift_check() {
   handled+="$p-cookie-secret $p-csrf-secret $p-better-auth-secret "
   handled+="$p-platform-admin-emails $p-entra-client-secret "
   handled+="$p-storage-access-key-id $p-storage-secret-access-key "
-  handled+="$p-db-app $p-db-worker $p-db-migrator "
+  handled+="$p-db-app $p-db-worker $p-db-migrator $p-db-readonly "
+  handled+="$p-github-webhook-secret $p-redis-url $p-github-app-private-key "
   # graph-cert is a Key Vault CERTIFICATE (identity lane), named here so the check
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
@@ -165,6 +166,11 @@ if (( CHECK_ONLY )); then
   done
   grep -q "$p-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null \
     && echo "  $VAULT_APP/$p-platform-admin-emails"
+  for n in db-readonly github-webhook-secret redis-url github-app-private-key; do
+    grep -q "$p-$n" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && echo "  $VAULT_APP/$p-$n"
+  done
+  [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
+    && echo "  $VAULT_APP/r2-backup-ro-access-key-id" && echo "  $VAULT_APP/r2-backup-ro-secret-access-key"
   if (( DO_SITE )); then
     echo "  $VAULT_ADMIN/admin-argocd-password"
     echo "  $VAULT_PLATFORM/platform-argocd-admin-bcrypt"
@@ -178,7 +184,10 @@ echo "== Azure: $(az account show --query user.name -o tsv 2>/dev/null) / $(az a
 
 # ── generated: DB role passwords (CNPG managed roles + chart) ────────────────
 echo "== $VAULT_APP: $PRODUCT-$ENV DB role passwords (hex 48)"
-for r in app worker migrator; do
+# readonly exists only where the values file lists it (prod: pg-rova's rova_readonly).
+db_roles=(app worker migrator)
+grep -q "$PRODUCT-$ENV-db-readonly" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && db_roles+=(readonly)
+for r in "${db_roles[@]}"; do
   openssl rand -hex 24 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-db-$r" "$EXP_1Y" "role=$PRODUCT-$r"
 done
 
@@ -188,6 +197,16 @@ echo "== $VAULT_APP: $PRODUCT-$ENV generated app secrets"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
 openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
+# Valkey login for products whose values file lists it (prod): the WHOLE credential is this one URL,
+# and the valkey ACL file is derived from it (platform/valkey/valkey-rova.yaml). Hex is URL-safe.
+if grep -q "$PRODUCT-$ENV-redis-url" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  printf 'redis://%s:%s@valkey-%s.data-%s.svc:6379' "$PRODUCT" "$(openssl rand -hex 24)" "$PRODUCT" "$ENV" \
+    | put "$VAULT_APP" "$PRODUCT-$ENV-redis-url" "$EXP_1Y"
+fi
+# GitHub webhook HMAC: only where the values file maps it (prod). The owner pastes the same value into the GitHub App.
+if grep -q "$PRODUCT-$ENV-github-webhook-secret" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-github-webhook-secret" "$EXP_1Y"
+fi
 
 # ── asked: third-party and owner-provided values ─────────────────────────────
 echo "== $VAULT_APP: $PRODUCT-$ENV values issued elsewhere (input hidden; Enter skips)"
@@ -197,10 +216,47 @@ ask "$VAULT_APP" "$PRODUCT-$ENV-storage-access-key-id" "$EXP_1Y" \
   'R2 API token Access Key ID (attachments + public-assets, object read/write)'
 ask "$VAULT_APP" "$PRODUCT-$ENV-storage-secret-access-key" "$EXP_1Y" \
   'R2 API token Secret Access Key'
+# A multi-line PEM is not something to paste into a hidden prompt: read it from a FILE (the path is
+# not secret; the content is never printed), check it is a private key, and store it through stdin.
+ask_pem_file() {
+  local v=$1 n=$2 e=$3 prompt=$4 path
+  if exists "$v" "$n" && ! is_forced "$n"; then
+    echo "  = $v/$n exists, skipped"
+    return 0
+  fi
+  printf '  %s (path to the .pem file; Enter skips): ' "$prompt" >&2
+  read -r path
+  if [[ -z ${path:-} ]]; then
+    echo "  - $n left empty: skipped (rova-env will not sync until it exists)"
+    return 0
+  fi
+  path=${path/#\~/$HOME}
+  [[ -f $path && -r $path ]] || { echo "  ! $path is not a readable file" >&2; exit 1; }
+  openssl pkey -in "$path" -noout 2>/dev/null \
+    || { echo "  ! $path is not a valid private key (openssl pkey rejected it)" >&2; exit 1; }
+  put "$v" "$n" "$e" <"$path"
+}
+
 # Only the products whose schema HAS a roster: opshub has none.
 if grep -q "$PRODUCT-$ENV-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
   ask "$VAULT_APP" "$PRODUCT-$ENV-platform-admin-emails" "$EXP_1Y" \
     'PLATFORM_ADMIN_EMAILS (comma-separated, no spaces; staff roster stays out of the public repo)'
+fi
+
+# The pg-rova backup credential (platform/cnpg/pg-rova-backup.yaml, platform/restore-test): an R2 API token
+# scoped to bucket qnsc-backups, object read+write. Prod vault only; ESO in data-prod/restore-test reads nothing else.
+if [[ $ENV == prod ]]; then
+  echo "== $VAULT_APP: pg-rova backup R2 token (qnsc-backups only; input hidden; Enter skips)"
+  ask "$VAULT_APP" r2-backup-rw-access-key-id "$EXP_1Y" 'R2 token Access Key ID (bucket qnsc-backups, read+write)'
+  ask "$VAULT_APP" r2-backup-rw-secret-access-key "$EXP_1Y" 'R2 token Secret Access Key'
+  # The restore test's own token: object READ on qnsc-backups only, so restore-test can never write to pg-rova/.
+  ask "$VAULT_APP" r2-backup-ro-access-key-id "$EXP_1Y" 'READ-ONLY R2 token Access Key ID (bucket qnsc-backups, object read)'
+  ask "$VAULT_APP" r2-backup-ro-secret-access-key "$EXP_1Y" 'READ-ONLY R2 token Secret Access Key'
+fi
+
+if grep -q "$PRODUCT-$ENV-github-app-private-key" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
+  echo "== $VAULT_APP: $PRODUCT-$ENV GitHub App private key (read from a file)"
+  ask_pem_file "$VAULT_APP" "$PRODUCT-$ENV-github-app-private-key" "$EXP_1Y" 'GitHub App private key'
 fi
 
 if (( DO_SITE )); then

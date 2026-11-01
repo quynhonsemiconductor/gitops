@@ -78,10 +78,25 @@ spec:
                 jqPathExpressions: [".spec.replicas"]
 
     # ── prod ─────────────────────────────────────────────────────────────────
-    # No prod rows yet (PLT-B2): prod values are not complete (the chart pin
-    # predates the on-prem secrets shape, tags are placeholders). The prod
-    # generator comes back, with `prune: false`, in the prod-values PR together
-    # with the rova-prod / opshub-prod namespaces in the project destinations.
+    # DISABLED: `elements` is empty, so no prod Application exists. rova prod is switched on
+    # in the move-night PR by uncommenting the row below (SA merges it on the owner's go,
+    # after pg-rova is restored and verified). `prune: false`: a prune must never delete
+    # prod objects. Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
+    # prod has no downscaler and replica drift is real drift.
+    - list:
+        elements: []
+          # - { product: rova, env: prod, chartVersion: "0.14.0" }
+        template:
+          metadata:
+            name: "{{.product}}-{{.env}}"
+          spec:
+            project: products
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: "{{.product}}-{{.env}}"
+            syncPolicy:
+              automated:
+                prune: false
 
     # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
     # simply has no dev row — §5c: "Absence is the mechanism."

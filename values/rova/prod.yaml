@@ -1,11 +1,127 @@
+# rova PRODUCTION on k3s-01 (rova prod fast track, 2026-11-01). Same shape as dev.yaml;
+# the differences are named here. ArgoCD merges base.yaml, this file and tags.prod.yaml.
+#
+# NOT DEPLOYED BY THIS FILE: the prod ApplicationSet row is disabled (appsets/products.yaml)
+# and is switched on in the move-night PR. Until then nothing syncs from here.
+#
+# What the move night adds that is NOT here on purpose:
+#   - IDENTITY_V8_BACKFILL=commit on the migrator (rova docs/runbooks/prod-release-night.md
+#     section 2). It must be set for that one run and removed after, so it lives in the
+#     move-night PR and is not committed as steady state.
 env: prod
+size: s                      # one node: 1 replica each, no PDB. A rollout still surges first.
 
-# ⚠ HOST DELIBERATELY UNSET. `infra/live/data-prod` has not been applied, so this
-# endpoint does not exist yet. The chart emits no DATABASE_HOST without it and the
-# application fails its own env validation at boot with a precise message — which
-# is the correct outcome, and strictly better than a placeholder that resolves to
-# the wrong database.
-# Fill from `tofu output -raw postgres_endpoint` in infra/live/data-prod.
-# data:
-#   postgres:
-#     host: <qnsc-shared-prod endpoint>
+networkPolicy:
+  # ON, unlike dev. The chart renders default-deny (ingress + egress), DNS, egress to
+  # platform and to the internet (not IMDS), and `allow-ingress-api`: api:3000 is reachable
+  # ONLY from the `platform` namespace (cloudflared, and the one Alloy that scrapes) and
+  # from its own namespace. Any other pod in the cluster, rova-dev and the restore test
+  # included, can no longer reach api.rova-prod.svc and spoof cf-connecting-ip /
+  # x-forwarded-for, which would defeat the per-IP rate limits. (There is no `monitoring`
+  # namespace on-prem; Alloy runs in `platform`.) data-prod already admits rova-prod
+  # (platform/networkpolicy/data-prod.yaml).
+  enabled: true
+
+data:
+  postgres:
+    # Overrides base.yaml's AWS shape (mode dedicated, auth iam, user rova).
+    mode: cnpg
+    cluster: pg-rova
+    namespace: data-prod      # DATABASE_HOST = pg-rova-rw.data-prod.svc
+    auth: password
+    pooling: none
+    name: rova
+    user: rova_app
+    workerUser: rova_worker
+    # migratorUser defaults to rova_migrator, the database owner (no CREATEROLE).
+    caFile: /etc/qnsc/db-ca/ca.crt     # pg-rova-ca-pub via the cnpg-ca-prod store
+
+services:
+  api:
+    replicas: 1
+    resources: { cpu: 250m, memory: 1Gi }
+    env:
+      - { name: PORT, value: "3000" }
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+      # pg-rova serves rova only (max_connections 100): 20 + 10 + a migrator leaves headroom.
+      - { name: DATABASE_POOL_MAX, value: "20" }
+  worker:
+    replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
+    resources: { cpu: 100m, memory: 512Mi }
+    env:
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+      - { name: DATABASE_POOL_MAX, value: "10" }
+
+# Product-wide (api and worker share one env validator). Non-secret only.
+# Deliberately ABSENT: DISABLE_RATE_LIMIT, SWAGGER_ENABLED, LOG_HTTP_BODIES,
+# LOG_DEV_EMAIL_CONTENT, EDGE_CLIENT_IP_SECRET (no Pages Function on-prem: the tunnel carries
+# the real client address), every SES_*/SQS_*/AWS_* value.
+defaults:
+  env:
+    - { name: NODE_ENV, value: "production" }
+    - { name: DEPLOYMENT_ENV, value: "prod" }
+    # REDIS_URL is NOT here: valkey-rova (the DEDICATED prod cache in data-prod, allkeys-lru, no
+    # persistence) requires a login now, so the URL carries a password and comes from
+    # kv-qnsc-prod/rova-prod-redis-url (secrets.env below). Chosen over a db/ACL on a shared
+    # Valkey: the data-prod NetworkPolicy already isolates it from dev, it exists in git for
+    # this, and prod sessions/rate-limit windows must not share an eviction pool with dev.
+    - { name: OTEL_ENABLED, value: "true" }
+    # Same-origin: SPA and API both on rova.qnsc.vn; the tunnel routes /api/auth/*, /v1/*, /readyz.
+    - { name: APP_BASE_URL, value: "https://rova.qnsc.vn" }
+    - { name: CORS_ORIGINS, value: "https://rova.qnsc.vn" }
+    # Entra "Rova Prod" sign-in app: tenant and client ids are public identifiers.
+    - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: ENTRA_CLIENT_ID, value: "503133fe-58c0-4158-86ca-0cecb2f6f376" }
+    - { name: ENTRA_GUEST_INVITE_ENABLED, value: "true" }
+    # The schema default is TRUE (env.schema.ts:341): invite-only access must be explicit.
+    - { name: SSO_JIT_ENABLED, value: "false" }
+    - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
+    # Graph mail from noreply-rova@qnsc.vn through the "Rova Prod Service" app (cert-only,
+    # worker-only file below). ⚠ PLACEHOLDER client id: the app does not exist yet (owner
+    # creates it, infra#264). rova's schema refuses a `<...>` value when EMAIL_PROVIDER=graph
+    # (rova#727), so a half-filled file fails closed at boot, and scripts/check-prod-placeholders.sh
+    # (chart-ci) fails the PR that enables the prod ApplicationSet row while it remains.
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
+    - { name: MAIL_GRAPH_SENDER, value: "noreply-rova@qnsc.vn" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "<ROVA_PROD_SERVICE_APP_ID>" }
+    # GitHub App (SCM backfill + authenticated REST; it must survive the move, owner 2026-11-01).
+    # The App id is public. ⚠ PLACEHOLDER until the owner gives it to the SA; the private key is
+    # secrets.env below. scripts/check-prod-placeholders.sh fails the PR that enables the prod row
+    # while it remains. (A wrong id would not stop boot: the SCM backfill would just fail to mint tokens.)
+    - { name: GITHUB_APP_ID, value: "4398910" }
+    # R2: the buckets as they physically exist (infra live/storage-prod names; the brief's
+    # "rova-production-*" is the old TOKEN name, not a bucket). One credential, as in dev.
+    - { name: S3_ATTACHMENTS_BUCKET, value: "rova-prod-attachments" }
+    - { name: S3_PUBLIC_ASSETS_BUCKET, value: "rova-prod-public-assets" }
+    - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
+    # Custom domain already on rova-prod-public-assets (live/storage-prod): a CDN base URL.
+    - { name: CDN_PUBLIC_ASSETS_BASE_URL, value: "https://rova-assets.qnsc.vn" }
+
+# One Key Vault secret per value in kv-qnsc-prod; every name, format and class is in
+# values/rova/prod.secrets.yaml, and platform/bootstrap/secrets.sh --env prod creates them.
+secrets:
+  clusterSecretStore: kv-qnsc-prod
+  env:
+    COOKIE_SECRET: rova-prod-cookie-secret
+    CSRF_SECRET: rova-prod-csrf-secret
+    ENTRA_CLIENT_SECRET: rova-prod-entra-client-secret
+    # The App's private key, a multi-line PEM. rova reads GITHUB_APP_PRIVATE_KEY directly
+    # (github-app-auth.service.ts:134-143: createPrivateKey, PKCS#1 or PKCS#8, literal "\n" also
+    # accepted). Azure Key Vault keeps the newlines, ESO copies the bytes, and a Secret value
+    # reaches the container env intact.
+    GITHUB_APP_PRIVATE_KEY: rova-prod-github-app-private-key
+    STORAGE_ACCESS_KEY_ID: rova-prod-storage-access-key-id
+    STORAGE_SECRET_ACCESS_KEY: rova-prod-storage-secret-access-key
+    REDIS_URL: rova-prod-redis-url   # redis://rova:<hex>@valkey-rova.data-prod.svc:6379; the ACL file derives from this same value
+  envApiOnly:
+    BETTER_AUTH_SECRET: rova-prod-better-auth-secret
+    PLATFORM_ADMIN_EMAILS: rova-prod-platform-admin-emails   # staff roster: Key Vault, not this public repo
+    GITHUB_WEBHOOK_SECRET: rova-prod-github-webhook-secret   # the webhook endpoint answers 503 without it
+  db: rova-prod-db-app
+  dbMigrator: rova-prod-db-migrator
+  dbWorker: rova-prod-db-worker
+  workerOnly:
+    graphCert: rova-prod-graph-cert
+    path: /etc/qnsc/graph/cert.pem

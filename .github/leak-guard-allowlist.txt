@@ -31,6 +31,7 @@ dev\.qnsc\.vn
 # Role mailboxes (tier 2, exact) — no staff addresses exist in this tree.
 noreply@qnsc\.vn
 noreply-rova-dev@qnsc\.vn
+noreply-rova@qnsc\.vn
 noreply-opshub-dev@qnsc\.vn
 noreply-kb-dev@qnsc\.vn
 # The AWS IMDS endpoint (link-local, in a NetworkPolicy exception) — not an

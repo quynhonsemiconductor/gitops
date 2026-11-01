@@ -149,6 +149,10 @@ jobs:
             echo "::notice::infra not checked out — conformance skipped"
           fi
 
+      # A prod row must not be enabled while a values file holds a `<..._PROD_...>` placeholder.
+      - name: no prod placeholders behind an enabled row
+        run: ./scripts/check-prod-placeholders.sh
+
       # ── the golden render ────────────────────────────────────────────────────
       # Unit tests on a chart serving fifteen services are necessary and not
       # sufficient. The failure to catch is "this change silently removes the
