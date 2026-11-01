@@ -375,7 +375,7 @@ cfargotunnel.com:53 {
 # Values a fake store serves. Everything is the same dummy string except the one
 # Key Vault secret whose real value is a JSON OBJECT (platform-grafana-alloy):
 # `dataFrom.extract` JSON-unmarshals it, so a plain string fails there.
-GRAFANA_JSON='{"GRAFANA_TOKEN":"rehearsal-dummy","GRAFANA_PROM_URL":"http://dummy.invalid","GRAFANA_PROM_USER":"dummy","GRAFANA_LOKI_URL":"http://dummy.invalid","GRAFANA_LOKI_USER":"dummy","GRAFANA_PYROSCOPE_URL":"http://dummy.invalid","GRAFANA_PYROSCOPE_USER":"dummy"}'
+GRAFANA_JSON='{"GRAFANA_TOKEN":"rehearsal-dummy","GRAFANA_PROM_URL":"http://dummy.invalid","GRAFANA_PROM_USER":"dummy","GRAFANA_LOKI_URL":"http://dummy.invalid","GRAFANA_LOKI_USER":"dummy","GRAFANA_TEMPO_URL":"http://dummy.invalid","GRAFANA_TEMPO_USER":"dummy"}'
 
 seed_fake_store() {  # STORE "KEY KEY ..."
   local store=$1 k v data=""
