@@ -24,10 +24,10 @@
 # Sanity checks (any failure = FAIL, exit 1):
 #   - the instance is out of recovery, database `rova` exists, owned by rova_migrator;
 #   - rova_migrator has no CREATEROLE/SUPERUSER, the four rova roles exist;
-#   - tables in `public`, rows in drizzle.__drizzle_migrations and the latest one are
+#   - tables in the application schemas (rova keeps none in `public`), rows in drizzle.__drizzle_migrations and the latest one are
 #     PRINTED; with REQUIRE_DATA=1 (set it for the real run, after the rehearsal data
 #     is in pg-rova) zero tables or zero migrations fails;
-#   - rova_app can SELECT every table in `public` (counted via has_table_privilege).
+#   - rova_app can SELECT every application table (counted via has_table_privilege).
 # Before data exists (pg-rova empty) run it with REQUIRE_DATA=0 (the default): that
 # proves the backup/WAL/recovery chain only. G1 needs the second, REQUIRE_DATA=1 run.
 #
@@ -201,20 +201,20 @@ data:
     [ "$(q "select count(*) from pg_roles where rolname='rova_migrator' and (rolcreaterole or rolsuper)")" = 0 ] \
       || fail "rova_migrator has CREATEROLE or SUPERUSER"
 
-    tables=$(q "select count(*) from pg_tables where schemaname='public'") || fail "table count"
+    tables=$(q "select count(*) from pg_tables where schemaname not in ('pg_catalog','information_schema','drizzle') and schemaname not like 'pg\\_%'") || fail "table count"
     if [ "$(q "select to_regclass('drizzle.__drizzle_migrations') is not null")" = t ]; then
       migs=$(q "select count(*) from drizzle.__drizzle_migrations")
       head=$(q "select coalesce(max(created_at)::text,'-') from drizzle.__drizzle_migrations")
     else
       migs=0 head=-
     fi
-    readable=$(q "select count(*) from pg_tables t where schemaname='public' and has_table_privilege('rova_app', format('%I.%I',schemaname,tablename), 'SELECT')")
+    readable=$(q "select count(*) from pg_tables t where schemaname not in ('pg_catalog','information_schema','drizzle') and schemaname not like 'pg\\_%' and has_table_privilege('rova_app', format('%I.%I',schemaname,tablename), 'SELECT')")
     for n in "$tables" "$migs" "$readable"; do [[ $n =~ ^[0-9]+$ ]] || fail "a sanity query returned '$n', not a number"; done
-    echo "public tables=$tables migrations=$migs latest_migration_ts=$head rova_app_selectable=$readable"
+    echo "app tables=$tables migrations=$migs latest_migration_ts=$head rova_app_selectable=$readable"
 
     [ "$readable" = "$tables" ] || fail "rova_app cannot SELECT $((tables - readable)) of $tables tables"
     if [ "$REQUIRE_DATA" = 1 ]; then
-      [ "$tables" -gt 0 ] || fail "REQUIRE_DATA=1 but no tables in public"
+      [ "$tables" -gt 0 ] || fail "REQUIRE_DATA=1 but no application tables"
       [ "$migs" -gt 0 ] || fail "REQUIRE_DATA=1 but no migrations recorded"
     fi
     status=PASS detail="tables=$tables migrations=$migs head=$head data_required=$REQUIRE_DATA"
