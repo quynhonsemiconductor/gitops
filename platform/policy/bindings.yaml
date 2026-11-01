@@ -45,3 +45,15 @@ spec:
     namespaceSelector:
       matchLabels:
         qnsc.vn/tenant: product
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: qnsc-externalsecret-scope
+spec:
+  policyName: qnsc-externalsecret-scope
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        qnsc.vn/tenant: product

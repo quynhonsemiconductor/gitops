@@ -336,6 +336,10 @@ else
     -f platform/argocd/values.yaml --wait --timeout 10m >/dev/null
 fi
 "${KUBECTL[@]}" -n argocd rollout status deploy/argocd-server --timeout=300s >/dev/null
+# root's first comparison goes through the repo-server; a health check on the API
+# server alone let a just-started repo-server answer "connection refused" and the
+# bootstrap mistook it for a bad revision.
+"${KUBECTL[@]}" -n argocd rollout status deploy/argocd-repo-server --timeout=300s >/dev/null
 say "  ok argocd $ARGO_VERSION: server rolled out"
 
 # ══ rehearsal guards ════════════════════════════════════════════════════════
@@ -391,8 +395,13 @@ store_keys() {  # STORE
   case $1 in
     platform) echo "platform-cloudflared-qnsc-apps platform-grafana-alloy platform-argocd-admin-bcrypt" ;;
     dev|prod)
-      awk '/^secrets:/{s=1;next} s&&/^[^ #]/{s=0} s&&/^  *- name:/{print $NF}' \
-        "values/rova/$1.secrets.yaml" 2>/dev/null ;;
+      # EVERY product that reads this vault, not just rova: the fake store must
+      # carry opshub's keys too or its ExternalSecrets never become Ready and the
+      # data wave degrades on a rehearsal-only gap.
+      for f in values/*/"$1".secrets.yaml; do
+        [[ -f $f ]] || continue
+        awk '/^secrets:/{s=1;next} s&&/^[^ #]/{s=0} s&&/^  *- name:/{print $NF}' "$f"
+      done ;;
   esac
 }
 
@@ -485,6 +494,12 @@ if (( REHEARSAL )); then
   step "rehearsal guards"
   block_argotunnel
 fi
+# The AppProjects first: root itself belongs to `platform`, and ArgoCD refuses an
+# Application whose project does not exist. They are in git (apps/) and root adopts
+# them on its first sync, so this is a bootstrap ordering step, not a second source.
+"${KUBECTL[@]}" apply -f apps/project.yaml -f apps/project-platform.yaml >/dev/null
+say "  ok AppProjects products + platform"
+
 # `root` is applied once. A rehearsal holds it at manual sync on purpose, so
 # re-applying the committed (automated) version would re-arm everything the
 # rehearsal is holding; on a re-run it is left exactly as the cluster has it.
@@ -505,7 +520,9 @@ if [[ -z $("${KUBECTL[@]}" -n argocd get applications -o name 2>/dev/null \
   for _ in 1 2 3 4 5 6 7 8 9; do
     msg=$("${KUBECTL[@]}" -n argocd get application root -o json 2>/dev/null \
       | jq -r '[.status.conditions[]? | select(.type == "ComparisonError") | .message] | first // empty')
-    if [[ -n $msg ]]; then
+    # Only a REVISION problem aborts. A repo-server that is still starting says
+    # "connection refused", and that resolves itself on the next reconcile.
+    if [[ $msg == *revision* || $msg == *"not found"* ]]; then
       echo "  ! ArgoCD cannot compare root at revision '$REVISION':" >&2
       echo "    $msg" >&2
       echo "    push that revision first, or use --revision main" >&2

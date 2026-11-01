@@ -1,0 +1,59 @@
+# The AppProject the platform's own Applications belong to.
+#
+# Until now every Application — products AND the platform — lived in ArgoCD's
+# `default` project, which has no sourceRepos, no destinations and no kind
+# allow-list: an Application that could deploy a product could equally deploy a
+# ClusterRole. Splitting the platform out is what lets the products project stay
+# strict (an explicit kind allow-list, product namespaces only) while the platform
+# project carries the reach the operators genuinely need.
+#
+# WHAT BOUNDS THIS PROJECT: sources and destinations. Its kind lists are `*` on
+# purpose — upstream charts (ESO, cert-manager, CNPG, the Prometheus CRDs) create
+# cluster-scoped objects this repository does not enumerate, and an allow-list
+# that lags a chart release fails a sync at 2am for no security gain. The product
+# namespaces are NOT destinations here, so a platform Application cannot deploy
+# into one.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"   # before the Applications that reference it
+spec:
+  description: Platform Applications — namespaces, policy, ESO, CNPG, cert-manager, ArgoCD's own secrets, cloudflared.
+
+  sourceRepos:
+    - https://github.com/quynhonsemiconductor/gitops
+    - ghcr.io/quynhonsemiconductor/charts
+    - https://charts.jetstack.io                 # cert-manager
+    - https://charts.external-secrets.io         # ESO
+    - https://cloudnative-pg.github.io/charts    # CNPG + barman plugin
+    - https://prometheus-community.github.io/helm-charts   # prometheus-operator-crds
+
+  # Exactly the namespaces the platform Applications target. `argocd` is here
+  # because root and every child Application object live there.
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: argocd }
+    - { server: https://kubernetes.default.svc, namespace: platform }
+    - { server: https://kubernetes.default.svc, namespace: external-secrets }
+    - { server: https://kubernetes.default.svc, namespace: cnpg-system }
+    - { server: https://kubernetes.default.svc, namespace: cert-manager }
+    - { server: https://kubernetes.default.svc, namespace: data-dev }
+    # platform-base owns the one NetworkPolicy that matters in data-prod
+    # (networkpolicy/data-prod.yaml): the data namespaces are platform's, unlike
+    # the product namespaces, which this project cannot target.
+    - { server: https://kubernetes.default.svc, namespace: data-prod }
+    # cert-manager v1.21 renders its leader-election Role/RoleBinding into
+    # kube-system by default. platform/cert-manager/values.yaml moves them into
+    # the cert-manager namespace, but a chart revision that ignored the value
+    # would otherwise make the whole platform wave unsyncable — an explicit
+    # destination is the difference between "the chart changes" and "the platform
+    # stops".
+    - { server: https://kubernetes.default.svc, namespace: kube-system }
+
+  # See the header: sources and destinations bound this project, not the kinds.
+  namespaceResourceWhitelist:
+    - { group: "*", kind: "*" }
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }

@@ -73,7 +73,9 @@ by the identity lane, not a plain secret.
                         A PKCS#8 or RSA key is refused here, with the reason (#68)
 4  ArgoCD               helm upgrade --install, version from versions.yaml.
                         No yq: one awk reads `platform.argo-cd.version`
-5  root                 apps/root.yaml applied with --revision substituted
+5  root                 apps/project*.yaml first (root belongs to `platform`,
+                        and an Application whose project does not exist is refused),
+                        then apps/root.yaml with --revision substituted
 ```
 
 Then it waits wave by wave. A wave is done when every Application in it is

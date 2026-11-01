@@ -11,7 +11,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: default
+  project: platform
   destination:
     server: https://kubernetes.default.svc
     namespace: data-dev

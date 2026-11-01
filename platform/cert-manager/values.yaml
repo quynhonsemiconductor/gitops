@@ -18,6 +18,13 @@ crds:
   enabled: true
   keep: true
 replicaCount: 1
+# The chart's leader-election Role/RoleBinding default to `kube-system`. They must
+# live in cert-manager's own namespace: the platform AppProject does not admit
+# kube-system, and no operator needs to write there (found by the rehearsal:
+# "namespace kube-system is not permitted in project 'platform'").
+global:
+  leaderElection:
+    namespace: cert-manager
 resources:
   # §5.7 — all three pods together: 30m / 144Mi.
   requests: { cpu: 10m, memory: 48Mi }
