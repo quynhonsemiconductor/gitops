@@ -130,3 +130,50 @@ spec:
           c.livenessProbe.httpGet.path == '/livez')
       message: "liveness must be /livez and must not touch a dependency (§9j). Use readinessProbe for that."
       reason: Invalid
+---
+# ── An ExternalSecret may only read the vault keys that look like its namespace ──
+#
+# Every product namespace reads the SAME Key Vault (`kv-qnsc-dev`): the store's
+# namespaceSelector admits qnsc.vn/env=dev, and RBAC grants that service principal
+# Secrets User on the whole vault. So "a dev namespace can never read another
+# product's secrets" was true of the STORE and false of the DATA — anything that
+# could create an ExternalSecret in rova-dev could read opshub's and kb's values
+# by naming their keys (audit 2026-11-01 #1).
+#
+# The naming convention makes this enforceable: every key a product reads is
+# `<namespace>-…` (rova-dev-cookie-secret, opshub-dev-db-app). The one deliberate
+# exception is the CNPG public CA mirror, `pg-<cluster>-ca-pub` — a certificate,
+# never a key, and the cnpg-ca store's RBAC admits exactly that name
+# (platform/eso/stores-onprem.yaml).
+#
+# `dataFrom.find` is refused outright: it selects keys by pattern, which is the
+# opposite of naming the ones you are allowed to read.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: qnsc-externalsecret-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["external-secrets.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["externalsecrets"]
+  variables:
+    - name: keys
+      expression: "has(object.spec.data) ? object.spec.data.map(d, d.remoteRef.key) : []"
+  validations:
+    - expression: >-
+        variables.keys.all(k, k.startsWith(request.namespace + '-') || k.matches('^pg-[a-z0-9]+-ca-pub$'))
+      message: >-
+        An ExternalSecret may only read keys named <namespace>-… (this namespace's
+        own Key Vault prefix). The public CNPG CA mirror pg-<cluster>-ca-pub is the
+        only exemption.
+      reason: Forbidden
+    - expression: >-
+        !has(object.spec.dataFrom) || !object.spec.dataFrom.exists(d, has(d.find))
+      message: >-
+        dataFrom.find is forbidden in a product namespace: it selects keys by
+        pattern instead of naming them, which defeats the key-prefix rule.
+      reason: Forbidden

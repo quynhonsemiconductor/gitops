@@ -44,7 +44,10 @@ spec:
     - { group: policy,                        kind: PodDisruptionBudget }
     - { group: networking.k8s.io,             kind: NetworkPolicy }
     - { group: external-secrets.io,           kind: ExternalSecret }
-    - { group: external-secrets.io,           kind: SecretStore }
+    # NO SecretStore. Product Applications read `kv-qnsc-dev` through the
+    # ClusterSecretStores the platform owns; a product that could create its own
+    # store could point it at any vault its ServiceAccount can reach. The ESO
+    # store in a product namespace is platform configuration (audit 2026-11-01 #1).
     - { group: monitoring.coreos.com,         kind: PrometheusRule }
 
   # Cluster-scoped: nothing. A product cannot create a Namespace, a ClusterRole,
