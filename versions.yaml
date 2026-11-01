@@ -53,6 +53,8 @@ platform:
     repo: https://argoproj.github.io/argo-helm
     version: "10.9.2"          # ArgoCD 3.x
   alloy:
+    # The HOST collector on the Proxmox host (SMART/ZFS/NUT), not the in-cluster
+    # one: the cluster uses the k8s-monitoring chart below (ONPREM-PLAN §12).
     chart: alloy
     repo: https://grafana.github.io/helm-charts
     version: "1.12.1"
@@ -97,6 +99,18 @@ platform:
     # the Docker Hub registry API 2026-10-21. Renovate bumps when it ages in.
     image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
 
+  k8s-monitoring:
+    # The ONE in-cluster collector (ONPREM-PLAN §12, PLT-H2). Verified
+    # 2026-11-01 against the Grafana chart index: 4.5.3 (created 2026-10-07,
+    # inside the two-week age floor) — 4.6.0 (2026-10-30) is two days old.
+    # Rendered with platform/alloy/k8s-monitoring.values.yaml: receiver Service
+    # `alloy-receiver` on 4317/4318, node scrape job `node`, KSM allowlist
+    # carries kube_pod_status_ready / kube_pod_container_status_waiting_reason.
+    # It depends on alloy-operator 0.8.0 + the alloy/podlogs CRDs (chart-managed).
+    chart: k8s-monitoring
+    repo: https://grafana.github.io/helm-charts
+    version: "4.5.3"
+
   # ── Everything else ──────────────────────────────────────────────────────────
   # REMOVED 2026-10-20 with platform/gateway (ONPREM-PLAN §13): gateway-api CRDs
   # and envoy-gateway — no Gateway on-prem, ingress is a Tunnel rule in
@@ -108,6 +122,8 @@ images:
   # 2026.10.2 verified 2026-10-20: docker.io/cloudflare/cloudflared tag digest
   cloudflared: "2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2"
   clamav: "1.5"               # amd64 only — the estate's one exception (§4c)
+  # §12 collector binary, digest-pinned (Docker Hub API, verified 2026-11-01).
+  alloy: "docker.io/grafana/alloy:v1.13.0@sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221"
 
 # ── Toolchain, for CI and for humans ─────────────────────────────────────────
 tools:
