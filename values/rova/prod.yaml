@@ -4,10 +4,9 @@
 # NOT DEPLOYED BY THIS FILE: the prod ApplicationSet row is disabled (appsets/products.yaml)
 # and is switched on in the move-night PR. Until then nothing syncs from here.
 #
-# What the move night adds that is NOT here on purpose:
-#   - IDENTITY_V8_BACKFILL=commit on the migrator (rova docs/runbooks/prod-release-night.md
-#     section 2). It must be set for that one run and removed after, so it lives in the
-#     move-night PR and is not committed as steady state.
+# MOVE NIGHT ONLY: services.migrator.env carries IDENTITY_V8_BACKFILL=commit (rova
+# docs/runbooks/prod-release-night.md sections 2 and 4). REMOVE IT in a follow-up PR once the
+# night is done: while set, every migrate re-runs the backfill preflight against live data.
 env: prod
 size: s                      # one node: 1 replica each, no PDB. A rollout still surges first.
 
@@ -45,6 +44,9 @@ services:
       - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
       # pg-rova serves rova only (max_connections 100): 20 + 10 + a migrator leaves headroom.
       - { name: DATABASE_POOL_MAX, value: "20" }
+  migrator:
+    env:
+      - { name: IDENTITY_V8_BACKFILL, value: "commit" }   # MOVE NIGHT ONLY, see the header
   worker:
     replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
     resources: { cpu: 100m, memory: 512Mi }
@@ -77,14 +79,13 @@ defaults:
     - { name: SSO_JIT_ENABLED, value: "false" }
     - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
     # Graph mail from noreply-rova@qnsc.vn through the "Rova Prod Service" app (cert-only,
-    # worker-only file below). ⚠ PLACEHOLDER client id: the app does not exist yet (owner
-    # creates it, infra#264). rova's schema refuses a `<...>` value when EMAIL_PROVIDER=graph
-    # (rova#727), so a half-filled file fails closed at boot, and scripts/check-prod-placeholders.sh
-    # (chart-ci) fails the PR that enables the prod ApplicationSet row while it remains.
+    # worker-only file below). Client id of the "Rova Prod Service" Entra app (public identifier).
+    # (rova refuses a `<...>` value here at boot, rova#727, and scripts/check-prod-placeholders.sh
+    # in chart-ci refuses to enable the prod ApplicationSet row while any placeholder remains.)
     - { name: EMAIL_PROVIDER, value: "graph" }
     - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova@qnsc.vn" }
-    - { name: MAIL_GRAPH_CLIENT_ID, value: "<ROVA_PROD_SERVICE_APP_ID>" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "a9fd92e0-6b76-474d-9f4e-daab4c503c4b" }
     # GitHub App (SCM backfill + authenticated REST; it must survive the move, owner 2026-11-01).
     # The App id is public. ⚠ PLACEHOLDER until the owner gives it to the SA; the private key is
     # secrets.env below. scripts/check-prod-placeholders.sh fails the PR that enables the prod row

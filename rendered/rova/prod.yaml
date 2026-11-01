@@ -301,7 +301,7 @@ spec:
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
-              value: <ROVA_PROD_SERVICE_APP_ID>
+              value: a9fd92e0-6b76-474d-9f4e-daab4c503c4b
             - name: GITHUB_APP_ID
               value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
@@ -447,7 +447,7 @@ spec:
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
-              value: <ROVA_PROD_SERVICE_APP_ID>
+              value: a9fd92e0-6b76-474d-9f4e-daab4c503c4b
             - name: GITHUB_APP_ID
               value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
@@ -599,7 +599,7 @@ spec:
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
-              value: <ROVA_PROD_SERVICE_APP_ID>
+              value: a9fd92e0-6b76-474d-9f4e-daab4c503c4b
             - name: GITHUB_APP_ID
               value: "4398910"
             - name: S3_ATTACHMENTS_BUCKET
@@ -612,6 +612,8 @@ spec:
               value: "true"
             - name: CDN_PUBLIC_ASSETS_BASE_URL
               value: https://rova-assets.qnsc.vn
+            - name: IDENTITY_V8_BACKFILL
+              value: commit
       volumes:
         - name: tmp
           emptyDir: {}

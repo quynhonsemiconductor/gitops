@@ -6,6 +6,7 @@ templates:
   - templates/externalsecret.yaml
   - templates/deployment.yaml
   - templates/networkpolicy.yaml
+  - templates/job.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/prod.yaml
@@ -76,6 +77,13 @@ tests:
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: LOG_DEV_EMAIL_CONTENT, value: "true" }
+
+  - it: the migrator runs the identity v8 backfill (move night only; delete this test with the flag)
+    template: templates/job.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: IDENTITY_V8_BACKFILL, value: "commit" }
 
   - it: api:3000 accepts ingress only from the platform namespace and its own namespace
     # A pod elsewhere in the cluster must not reach the api and spoof cf-connecting-ip /
