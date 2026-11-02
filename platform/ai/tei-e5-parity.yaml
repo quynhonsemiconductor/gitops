@@ -1,0 +1,221 @@
+# ── Parity gate: TEI vectors vs KB's ONNX reference (ONPREM-PLAN §9.1) ──────
+#
+# Switching KB from in-process ONNX embeddings to this Service must NOT move the
+# vector space: every stored chunk was embedded locally, and a query embedded in
+# a different space degrades retrieval SILENTLY (no error, just worse answers).
+# KB's own gate says the same thing in code: cosine ≥ 0.999 against the
+# reference for the same input.
+#
+# HOW IT RUNS
+#   1. An operator generates reference.json with KB's OWN ONNX path (a box with
+#      the export and the model; the image can also do it). Exact command in
+#      README.md §Parity.
+#   2. `kubectl create configmap tei-e5-parity-reference -n ai --from-file=reference.json`
+#   3. Resume this Job; it embeds golden.json through the Service and compares
+#      every cosine. It fails if any is < 0.999, or if any dimension differs.
+#
+# WHY IT IS SUSPENDED AND THE REFERENCE CONFIGMAP DOES NOT EXIST YET
+#   The reference vectors do not exist until KB's fp32 ONNX export is run for
+#   this exact golden set — see the TODO in README.md. Until then a resumed Job
+#   fails with a clear "reference missing" message rather than a false pass.
+#
+# WHAT THE PARITY DOES AND DOES NOT COVER
+#   Covered: same model revision, same dtype (fp32), same pooling (mean), and
+#   the contract that the CLIENT sends the exact string to embed (TEI adds no
+#   instruction prefix — the `q-` entries in golden.json are already decorated,
+#   which is how KB will call it).
+#   Not covered: numerical drift from a different CE/GPU kernel layout beyond
+#   cosine 0.999, and batch-vs-single differences (the Job embeds in one batch
+#   of 10; KB batches up to 32).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tei-e5-parity-golden
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5-parity
+    app.kubernetes.io/part-of: ai
+data:
+  golden.json: |
+    [
+      {"id": "p-vi-01", "text": "Hợp đồng thuê văn phòng có thời hạn ba năm, giá thuê thanh toán hàng tháng bằng chuyển khoản và không bao gồm thuế giá trị gia tăng."},
+      {"id": "p-vi-02", "text": "Nhân viên được nghỉ phép năm 12 ngày, nghỉ ốm có giấy tờ y tế được hưởng lương theo quy định của pháp luật lao động."},
+      {"id": "p-en-01", "text": "Text embeddings inference converts a sentence into a 1024-dimensional unit vector so that semantically similar passages are close in cosine distance."},
+      {"id": "p-en-02", "text": "The deployment pipeline builds once per merge, records the image digest, and promotes the same digest from development to production without rebuilding."},
+      {"id": "p-mix-01", "text": "Quy trình phê duyệt gồm bốn bước: lập yêu cầu, kiểm tra ngân sách, phê duyệt của trưởng bộ phận và xác nhận của kế toán (approval workflow)."},
+      {"id": "p-num-01", "text": "Q3 2026 revenue grew 18% quarter over quarter, with gross margin 41.2% and churn 2.1% monthly."},
+      {"id": "p-short-01", "text": "Hướng dẫn sử dụng thiết bị."},
+      {"id": "p-long-01", "text": "Điều 1. Phạm vi điều chỉnh. Nghị định này quy định về quản lý, cung cấp và sử dụng dịch vụ thanh toán không dùng tiền mặt, bao gồm các điều kiện cấp phép, trách nhiệm của tổ chức cung ứng dịch vụ và biện pháp bảo đảm an toàn, bảo mật trong hoạt động thanh toán. Điều 2. Đối tượng áp dụng. Nghị định này áp dụng đối với tổ chức, cá nhân Việt Nam và tổ chức, cá nhân nước ngoài tham gia hoặc có liên quan đến hoạt động thanh toán không dùng tiền mặt trên lãnh thổ Việt Nam. Điều 3. Giải thích từ ngữ. Trong Nghị định này, các từ ngữ dưới đây được hiểu như sau: Dịch vụ thanh toán không dùng tiền mặt là dịch vụ thanh toán trong đó tiền được chuyển từ tài khoản này sang tài khoản khác hoặc được thanh toán bằng phương tiện điện tử, không sử dụng tiền mặt trong toàn bộ quá trình giao dịch."},
+      {"id": "q-vi-01", "text": "Instruct: Given a search query, retrieve relevant passages that answer the query\nQuery: Thời hạn nghỉ phép năm của nhân viên là bao nhiêu?"},
+      {"id": "q-en-01", "text": "Instruct: Given a search query, retrieve relevant passages that answer the query\nQuery: How many days of paid annual leave do employees get?"}
+    ]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tei-e5-parity-script
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5-parity
+    app.kubernetes.io/part-of: ai
+data:
+  parity.py: |
+    # Compare TEI's embeddings for a golden set with the reference vectors that
+    # KB's fp32 ONNX path produced. Exits non-zero on any mismatch.
+    import json, math, os, sys, urllib.error, urllib.request
+
+    TEI_URL = os.environ.get("TEI_URL", "http://tei-e5.ai.svc/embed")
+    THRESHOLD = float(os.environ.get("COSINE_THRESHOLD", "0.999"))
+    # Overridable so the script can be exercised outside the cluster;
+    # the Job mounts the ConfigMaps at these paths.
+    GOLDEN_FILE = os.environ.get("GOLDEN_FILE", "/golden/golden.json")
+    REFERENCE_FILE = os.environ.get("REFERENCE_FILE", "/reference/reference.json")
+
+    def cosine(a, b):
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        return dot / (na * nb)
+
+    def main():
+        with open(GOLDEN_FILE) as fh:
+            golden = json.load(fh)
+        try:
+            with open(REFERENCE_FILE) as fh:
+                reference = json.load(fh)
+        except FileNotFoundError:
+            print("reference missing: create the tei-e5-parity-reference ConfigMap "
+                  "first (README.md §Parity). Not a pass.", file=sys.stderr)
+            return 2
+
+        body = json.dumps({"inputs": [g["text"] for g in golden]}).encode()
+        req = urllib.request.Request(
+            TEI_URL, data=body, headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=600) as resp:
+                vectors = json.load(resp)
+        except urllib.error.HTTPError as exc:
+            print("TEI HTTP", exc.code, exc.read().decode(errors="replace")[:2000],
+                  file=sys.stderr)
+            return 1
+
+        if len(vectors) != len(golden):
+            print(f"got {len(vectors)} vectors for {len(golden)} inputs", file=sys.stderr)
+            return 1
+
+        dim = reference.get("dimension")
+        worst = 1.0
+        failures = 0
+        for entry, vec in zip(golden, vectors):
+            key = entry["id"]
+            expected = reference["vectors"].get(key)
+            if expected is None:
+                print(f"{key}: no reference vector", file=sys.stderr)
+                failures += 1
+                continue
+            if dim and (len(vec) != dim or len(expected) != dim):
+                print(f"{key}: dimension {len(vec)}/{len(expected)} != {dim}",
+                      file=sys.stderr)
+                failures += 1
+                continue
+            cos = cosine(vec, expected)
+            worst = min(worst, cos)
+            status = "ok" if cos >= THRESHOLD else "FAIL"
+            print(f"{key}: cosine={cos:.6f} {status}")
+            if cos < THRESHOLD:
+                failures += 1
+
+        print(f"worst cosine={worst:.6f} threshold={THRESHOLD} "
+              f"reference_model={reference.get('model')} "
+              f"reference_revision={reference.get('revision')}")
+        return 0 if failures == 0 else 1
+
+    sys.exit(main())
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tei-e5-parity
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5-parity
+    app.kubernetes.io/part-of: ai
+spec:
+  # Off until the reference ConfigMap exists (README.md §Parity).
+  suspend: true
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-e5-parity
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        qnsc.vn/pool: ai
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      priorityClassName: ai
+      containers:
+        - name: parity
+          image: python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
+          command: ["python", "/scripts/parity.py"]
+          env:
+            - { name: TEI_URL, value: "http://tei-e5.ai.svc/embed" }
+            - { name: COSINE_THRESHOLD, value: "0.999" }
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - { name: golden, mountPath: /golden, readOnly: true }
+            - { name: script, mountPath: /scripts, readOnly: true }
+            - { name: reference, mountPath: /reference, readOnly: true }
+      volumes:
+        - name: golden
+          configMap:
+            name: tei-e5-parity-golden
+        - name: script
+          configMap:
+            name: tei-e5-parity-script
+        - name: reference
+          configMap:
+            name: tei-e5-parity-reference
+            # optional: the Job must start (and explain itself) before the
+            # reference exists; a non-optional volume would leave the pod
+            # Pending with a less useful error.
+            optional: true
+---
+# Parity Job egress: DNS + the embedding Service only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-e5-parity-egress
+  namespace: ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5-parity
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tei-e5
+      ports:
+        - { protocol: TCP, port: 80 }

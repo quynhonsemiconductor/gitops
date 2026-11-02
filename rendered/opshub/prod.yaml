@@ -56,6 +56,26 @@ spec:
               - 169.254.169.254/32   # IMDS — pods use IRSA, never the node role
               - 10.42.0.0/16
               - 10.43.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-data
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
 
 ---
 # Source: qnsc-service/templates/networkpolicy.yaml
@@ -87,48 +107,6 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: 3000 }
-
----
-# Source: qnsc-service/templates/pdb.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: api
-  labels:
-    app.kubernetes.io/name: api
-    app.kubernetes.io/instance: opshub
-    app.kubernetes.io/part-of: opshub
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: opshub
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: api
-      app.kubernetes.io/instance: opshub
-
----
-# Source: qnsc-service/templates/pdb.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: worker
-  labels:
-    app.kubernetes.io/name: worker
-    app.kubernetes.io/instance: opshub
-    app.kubernetes.io/part-of: opshub
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: opshub
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: worker
-      app.kubernetes.io/instance: opshub
 
 ---
 # Source: qnsc-service/templates/serviceaccount.yaml
@@ -227,7 +205,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -253,18 +231,10 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: api
-              app.kubernetes.io/instance: opshub
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-api:sha-9ef2a6dc006a
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -276,10 +246,10 @@ spec:
               containerPort: 3000
           resources:
             requests:
-              cpu: 1
-              memory: 2Gi
+              cpu: 250m
+              memory: 1Gi
             limits:
-              memory: 2Gi
+              memory: 1Gi
           livenessProbe:
             httpGet: { path: /livez, port: 3000 }
             periodSeconds: 10
@@ -294,16 +264,70 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=prod,service.version=sha-0000000
+              value: service.namespace=opshub,deployment.environment=prod,service.version=sha-9ef2a6dc006a
+            - name: DATABASE_HOST
+              value: pg-opshub-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
+            - name: DATABASE_USER
+              value: "opshub_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <OPSHUB_PROD_ENTRA_CLIENT_ID>
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub@qnsc.vn
+            - name: S3_FILES_BUCKET
+              value: opshub-prod-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
+            - name: PORT
+              value: "3000"
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=512
+            - name: DATABASE_POOL_MAX
+              value: "20"
+            - name: APP_URL
+              value: https://opshub.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://opshub.qnsc.vn
           envFrom:
             - secretRef:
-                name: opshub-app
+                name: opshub-env
+            - secretRef:
+                name: opshub-env-api
+            - secretRef:
+                name: opshub-db-app
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: opshub-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
@@ -346,18 +370,10 @@ spec:
           type: RuntimeDefault
       nodeSelector:
         kubernetes.io/arch: amd64
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: worker
-              app.kubernetes.io/instance: opshub
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-worker:sha-9ef2a6dc006a
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -366,33 +382,91 @@ spec:
               drop: ["ALL"]
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 100m
+              memory: 512Mi
             limits:
-              memory: 1Gi
+              memory: 512Mi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-receiver.platform.svc:4318
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=prod,service.version=sha-0000000
+              value: service.namespace=opshub,deployment.environment=prod,service.version=sha-9ef2a6dc006a
+            - name: DATABASE_HOST
+              value: pg-opshub-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
+            - name: DATABASE_USER
+              value: "opshub_worker"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: "/etc/qnsc/graph/cert.pem"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <OPSHUB_PROD_ENTRA_CLIENT_ID>
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub@qnsc.vn
+            - name: S3_FILES_BUCKET
+              value: opshub-prod-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=256
+            - name: DATABASE_POOL_MAX
+              value: "10"
+            - name: GRAPH_CLIENT_ID
+              value: <OPSHUB_PROD_SERVICE_APP_ID>
           envFrom:
             - secretRef:
-                name: opshub-app
+                name: opshub-env
+            - secretRef:
+                name: opshub-db-worker
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: graph-cert
+              mountPath: /etc/qnsc/graph/cert.pem
+              subPath: cert.pem
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: opshub-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        - name: graph-cert
+          secret:
+            secretName: opshub-prod-graph-cert
+            items: [{ key: cert.pem, path: cert.pem }]
 
 ---
 # Source: qnsc-service/templates/job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-sha-0000000
+  name: migrator-sha-9ef2a6dc006a
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -431,7 +505,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-0000000
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator:sha-9ef2a6dc006a
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -450,37 +524,50 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
           env:
+            - name: DATABASE_HOST
+              value: pg-opshub-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "opshub"
             - name: DATABASE_USER
               value: "opshub_migrator"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: NODE_ENV
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: ENTRA_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: ENTRA_CLIENT_ID
+              value: <OPSHUB_PROD_ENTRA_CLIENT_ID>
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MAIL_GRAPH_SENDER
+              value: noreply-opshub@qnsc.vn
+            - name: S3_FILES_BUCKET
+              value: opshub-prod-attachments
+            - name: STORAGE_ENDPOINT
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: STORAGE_FORCE_PATH_STYLE
+              value: "true"
       volumes:
         - name: tmp
           emptyDir: {}
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: opshub-app
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: opshub
-    kind: SecretStore
-  target:
-    name: opshub-app
-  dataFrom:
-    - find:
-        path: qnsc/prod/opshub/app/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+        - name: db-ca
+          secret:
+            secretName: opshub-migrator-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml
@@ -495,21 +582,163 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: opshub
-    kind: SecretStore
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
   target:
     name: opshub-migrator
-  dataFrom:
-    - find:
-        path: qnsc/prod/opshub/migrator/
-        name:
-          regexp: ".*"
-      rewrite:
-        - regexp:
-            source: ".*/([^/]+)$"
-            target: "$1"
-        - transform:
-            template: '{{ .value | upper | replace "-" "_" }}'
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: opshub-prod-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: opshub-prod-db-app
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-db-worker
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-db-worker
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: opshub-prod-db-worker
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-db-ca
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-opshub-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-migrator-db-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-migrator-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-opshub-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-prod-graph-cert
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-prod-graph-cert
+  data:
+    - secretKey: cert.pem
+      remoteRef:
+        key: opshub-prod-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-env
+  data:
+    - secretKey: COOKIE_SECRET
+      remoteRef:
+        key: opshub-prod-cookie-secret
+    - secretKey: CSRF_SECRET
+      remoteRef:
+        key: opshub-prod-csrf-secret
+    - secretKey: STORAGE_ACCESS_KEY_ID
+      remoteRef:
+        key: opshub-prod-storage-access-key-id
+    - secretKey: STORAGE_SECRET_ACCESS_KEY
+      remoteRef:
+        key: opshub-prod-storage-secret-access-key
+    - secretKey: VALKEY_URL
+      remoteRef:
+        key: opshub-prod-redis-url
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opshub-env-api
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: opshub-env-api
+  data:
+    - secretKey: BETTER_AUTH_SECRET
+      remoteRef:
+        key: opshub-prod-better-auth-secret
+    - secretKey: ENTRA_CLIENT_SECRET
+      remoteRef:
+        key: opshub-prod-entra-client-secret
 
 ---
 # Source: qnsc-service/templates/slo.yaml
@@ -616,19 +845,3 @@ spec:
             env: prod
           annotations:
             summary: "opshub-api has reported no metrics for 10 minutes"
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: opshub
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: ap-southeast-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: api

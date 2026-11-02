@@ -16,6 +16,7 @@ key:value
 key:tenantId
 # Product hostnames (tier 2, exact).
 rova\.qnsc\.vn
+opshub\.qnsc\.vn
 rova-dev\.qnsc\.vn
 rova-api\.qnsc\.vn
 rova-api-dev\.qnsc\.vn
@@ -32,6 +33,7 @@ dev\.qnsc\.vn
 noreply@qnsc\.vn
 noreply-rova-dev@qnsc\.vn
 noreply-rova@qnsc\.vn
+noreply-opshub@qnsc\.vn
 noreply-opshub-dev@qnsc\.vn
 noreply-kb-dev@qnsc\.vn
 # The AWS IMDS endpoint (link-local, in a NetworkPolicy exception) — not an
@@ -41,3 +43,9 @@ noreply-kb-dev@qnsc\.vn
 # exclusion in the chart: documented upstream defaults, not this site's topology.
 10\.42\.0\.0
 10\.43\.0\.0
+# The three RFC1918 network addresses, as NetworkPolicy egress exclusions in the product values
+# (a product pod must not reach the LAN or the node): the standard private ranges, not this
+# site's addressing plan.
+10\.0\.0\.0
+172\.16\.0\.0
+192\.168\.0\.0

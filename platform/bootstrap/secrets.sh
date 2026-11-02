@@ -132,6 +132,11 @@ ask() {
   unset val
 }
 
+# Is this secret listed in the product's values secrets file? The file is the source of truth for WHICH
+# secrets a product reads, so generation is driven by it. No file = the original behaviour (create all).
+SECFILE="values/$PRODUCT/$ENV.secrets.yaml"
+listed() { [[ ! -f $SECFILE ]] || grep -qE -- "^[[:space:]]*- name: $1\$" "$SECFILE"; }
+
 # ── drift check: every name in values/<product>/<env>.secrets.yaml is handled ──
 # The values file is the source of truth for WHICH Key Vault secrets a product reads.
 # A secret added there without a rule here would silently never exist.
@@ -147,6 +152,8 @@ drift_check() {
   # graph-cert is a Key Vault CERTIFICATE (identity lane), named here so the check
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
+  # kb names its secrets after the env var they carry (values/kb/dev.secrets.yaml)
+  handled+="$p-secret-key $p-data-encryption-key $p-gemini-api-key $p-r2-access-key-id $p-r2-secret-access-key $p-microsoft-client-secret "
   local missing=0 n
   while read -r n; do
     [[ $handled == *" $n "* ]] || { echo "  ! $f names $n, which this script does not create" >&2; missing=1; }
@@ -159,16 +166,18 @@ drift_check
 if (( CHECK_ONLY )); then
   echo "== --check: names this run would create (nothing written)"
   p="$PRODUCT-$ENV"
-  for n in "$p-db-app" "$p-db-worker" "$p-db-migrator" "$p-cookie-secret" "$p-csrf-secret" \
-           "$p-better-auth-secret" "$p-entra-client-secret" "$p-storage-access-key-id" \
-           "$p-storage-secret-access-key"; do
-    echo "  $VAULT_APP/$n"
-  done
-  grep -q "$p-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null \
-    && echo "  $VAULT_APP/$p-platform-admin-emails"
-  for n in db-readonly github-webhook-secret redis-url github-app-private-key; do
-    grep -q "$p-$n" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && echo "  $VAULT_APP/$p-$n"
-  done
+  if [[ -f $SECFILE ]]; then
+    # every secret the file lists, except the certificate (identity lane, not this script)
+    awk '$1 == "-" && $2 == "name:" { print $3 }' "$SECFILE" | grep -v -- '-graph-cert$' | while read -r n; do
+      echo "  $VAULT_APP/$n"
+    done
+  else
+    for n in "$p-db-app" "$p-db-worker" "$p-db-migrator" "$p-cookie-secret" "$p-csrf-secret" \
+             "$p-better-auth-secret" "$p-entra-client-secret" "$p-storage-access-key-id" \
+             "$p-storage-secret-access-key"; do
+      echo "  $VAULT_APP/$n"
+    done
+  fi
   [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
     && echo "  $VAULT_APP/r2-backup-ro-access-key-id" && echo "  $VAULT_APP/r2-backup-ro-secret-access-key" \
     && echo "  $VAULT_APP/r2-dump-rw-access-key-id" && echo "  $VAULT_APP/r2-dump-rw-secret-access-key"
@@ -186,18 +195,23 @@ echo "== Azure: $(az account show --query user.name -o tsv 2>/dev/null) / $(az a
 # ── generated: DB role passwords (CNPG managed roles + chart) ────────────────
 echo "== $VAULT_APP: $PRODUCT-$ENV DB role passwords (hex 48)"
 # readonly exists only where the values file lists it (prod: pg-rova's rova_readonly).
-db_roles=(app worker migrator)
-grep -q "$PRODUCT-$ENV-db-readonly" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null && db_roles+=(readonly)
-for r in "${db_roles[@]}"; do
+# Only the roles the values file lists (kb has no worker role; prod pg-rova adds readonly).
+for r in app worker migrator readonly; do
+  listed "$PRODUCT-$ENV-db-$r" || continue
+  [[ $r == readonly && ! -f $SECFILE ]] && continue
   openssl rand -hex 24 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-db-$r" "$EXP_1Y" "role=$PRODUCT-$r"
 done
 
 # ── generated: app signing secrets ───────────────────────────────────────────
 # distinct values per role: rotating one must not sign out the other.
 echo "== $VAULT_APP: $PRODUCT-$ENV generated app secrets"
-openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
-openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
-openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
+listed "$PRODUCT-$ENV-cookie-secret" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
+listed "$PRODUCT-$ENV-csrf-secret" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
+listed "$PRODUCT-$ENV-better-auth-secret" && openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
+# kb: the JWT signing key and the data-at-rest key, two DIFFERENT values (config.py:68, :71)
+for n in secret-key data-encryption-key; do
+  [[ -f $SECFILE ]] && listed "$PRODUCT-$ENV-$n" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-$n" "$EXP_1Y"
+done
 # Valkey login for products whose values file lists it (prod): the WHOLE credential is this one URL,
 # and the valkey ACL file is derived from it (platform/valkey/valkey-rova.yaml). Hex is URL-safe.
 if grep -q "$PRODUCT-$ENV-redis-url" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
@@ -211,12 +225,22 @@ fi
 
 # ── asked: third-party and owner-provided values ─────────────────────────────
 echo "== $VAULT_APP: $PRODUCT-$ENV values issued elsewhere (input hidden; Enter skips)"
-ask "$VAULT_APP" "$PRODUCT-$ENV-entra-client-secret" "$EXP_6M" \
+listed "$PRODUCT-$ENV-entra-client-secret" && ask "$VAULT_APP" "$PRODUCT-$ENV-entra-client-secret" "$EXP_6M" \
   "Entra '$PRODUCT $ENV' app client secret value (6 months)"
-ask "$VAULT_APP" "$PRODUCT-$ENV-storage-access-key-id" "$EXP_1Y" \
+listed "$PRODUCT-$ENV-storage-access-key-id" && ask "$VAULT_APP" "$PRODUCT-$ENV-storage-access-key-id" "$EXP_1Y" \
   'R2 API token Access Key ID (attachments + public-assets, object read/write)'
-ask "$VAULT_APP" "$PRODUCT-$ENV-storage-secret-access-key" "$EXP_1Y" \
+listed "$PRODUCT-$ENV-storage-secret-access-key" && ask "$VAULT_APP" "$PRODUCT-$ENV-storage-secret-access-key" "$EXP_1Y" \
   'R2 API token Secret Access Key'
+# kb (names follow the env var, values/kb/dev.secrets.yaml); only when that file lists them
+if [[ -f $SECFILE ]]; then
+  listed "$PRODUCT-$ENV-microsoft-client-secret" && ask "$VAULT_APP" "$PRODUCT-$ENV-microsoft-client-secret" "$EXP_6M" \
+    "Entra '$PRODUCT $ENV' app client secret value (6 months)"
+  listed "$PRODUCT-$ENV-gemini-api-key" && ask "$VAULT_APP" "$PRODUCT-$ENV-gemini-api-key" "$EXP_1Y" 'Gemini API key'
+  listed "$PRODUCT-$ENV-r2-access-key-id" && ask "$VAULT_APP" "$PRODUCT-$ENV-r2-access-key-id" "$EXP_1Y" \
+    'R2 API token Access Key ID (sources bucket, object read/write)'
+  listed "$PRODUCT-$ENV-r2-secret-access-key" && ask "$VAULT_APP" "$PRODUCT-$ENV-r2-secret-access-key" "$EXP_1Y" \
+    'R2 API token Secret Access Key'
+fi
 # A multi-line PEM is not something to paste into a hidden prompt: read it from a FILE (the path is
 # not secret; the content is never printed), check it is a private key, and store it through stdin.
 ask_pem_file() {

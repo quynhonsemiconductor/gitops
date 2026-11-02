@@ -25,7 +25,11 @@ spec:
       targetRevision: main
       ref: values
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    # prune: false (audit G-03): this chart ships CRDs. Pruning one deletes every object of that
+    # kind in the cluster (all CNPG Clusters, all ExternalSecrets), so a chart bump that stops
+    # rendering a CRD must never delete anything on its own. Removals are manual and deliberate.
+    # (`argocd app sync --prune` still prunes: do not pass it for this app.)
+    automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true]
     retry:
       limit: 5

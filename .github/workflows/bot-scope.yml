@@ -1,0 +1,63 @@
+# =============================================================================
+# bot-scope — the automation bot may merge on its own ONLY for values/*/tags.dev.yaml.
+#
+# gitops main needs a review for everything (main-review ruleset), except that the
+# `qnsc-automation` app may bypass it by pull request. This check is what keeps that bypass
+# narrow: a bot PR that touches anything else (tags.prod.yaml, charts, appsets) fails until a
+# human with write access approves the CURRENT head sha. See scripts/bot-scope.sh.
+#
+# The script is checked out from the BASE branch, not the PR head, so a PR cannot edit the
+# gate that judges it. (The workflow file itself is the PR's copy: changing it needs the
+# human review that every non-bot PR gets.)
+#
+# One check name, many runs: pull_request (push), pull_request_review (submitted/dismissed)
+# all report as `bot-scope`. A newer run cancels the older one for the same PR (concurrency
+# group), and the head sha's check is the latest run: a review re-runs the gate and replaces
+# the earlier failure. The repo does not use a merge queue, so there is no merge_group trigger;
+# add one together with `merge_group` in the ruleset if a queue is ever enabled.
+# =============================================================================
+name: bot-scope
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+concurrency:
+  group: bot-scope-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  bot-scope:
+    # This name IS the required check context. Do not rename it.
+    name: bot-scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      # The base branch has no script until this workflow's own PR is merged; that one PR
+      # skips (the check is not required yet). After that the base always has it.
+      - name: Script tests
+        run: |
+          [ -f scripts/bot-scope.sh ] || { echo "::notice::no scripts/bot-scope.sh on the base branch yet: bootstrap PR, skipping"; exit 0; }
+          ./scripts/test-bot-scope.sh
+
+      - name: Gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          [ -f scripts/bot-scope.sh ] || exit 0
+          ./scripts/bot-scope.sh

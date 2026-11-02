@@ -85,6 +85,17 @@ spec:
         login: true
         passwordSecret:
           name: pg-dev-opshub-migrator
+      # kb joins with its dev move: app (api + worker, one role) and the migrator that owns the database.
+      - name: kb_app
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-kb-app
+      - name: kb_migrator
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-dev-kb-migrator
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -239,6 +250,72 @@ spec:
     - secretKey: password
       remoteRef:
         key: opshub-dev-db-migrator
+---
+---
+# kb's database, owned by its migrator like the others. The extensions are created by the OPERATOR
+# (superuser) through the Database resource, so kb_migrator does not need to be allowed to
+# CREATE EXTENSION itself: pgvector (the `standard` image carries it) and pgcrypto, as values/kb/base.yaml.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: kb
+  namespace: data-dev
+spec:
+  cluster:
+    name: pg-dev
+  name: kb
+  owner: kb_migrator
+  ensure: present
+  databaseReclaimPolicy: retain
+  extensions:
+    - { name: vector, ensure: present }
+    - { name: pgcrypto, ensure: present }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-kb-app
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-kb-app
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: kb_app
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-dev-db-app
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-kb-migrator
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-kb-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: kb_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-dev-db-migrator
 ---
 # ── Role timeouts ───────────────────────────────────────────────────────────
 # CNPG 1.30 has no per-role GUC field — `Cluster.managed.roles` carries only

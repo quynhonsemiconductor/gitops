@@ -1,0 +1,87 @@
+suite: opshub prod values (on-prem shape)
+# The real values/opshub/prod.yaml: what ArgoCD will render once the (disabled) prod row is enabled.
+templates:
+  - templates/externalsecret.yaml
+  - templates/deployment.yaml
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/opshub/base.yaml
+  - ../../../values/opshub/prod.yaml
+  - ../../../values/opshub/tags.prod.yaml
+
+tests:
+  - it: maps the shared secrets to kv-qnsc-prod, the Valkey URL included
+    template: templates/externalsecret.yaml
+    documentSelector: { path: metadata.name, value: opshub-env }
+    asserts:
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: COOKIE_SECRET, remoteRef: { key: opshub-prod-cookie-secret } }
+            - { secretKey: CSRF_SECRET, remoteRef: { key: opshub-prod-csrf-secret } }
+            - { secretKey: STORAGE_ACCESS_KEY_ID, remoteRef: { key: opshub-prod-storage-access-key-id } }
+            - { secretKey: STORAGE_SECRET_ACCESS_KEY, remoteRef: { key: opshub-prod-storage-secret-access-key } }
+            - { secretKey: VALKEY_URL, remoteRef: { key: opshub-prod-redis-url } }
+      - equal:
+          path: spec.secretStoreRef.name
+          value: kv-qnsc-prod
+
+  - it: the api talks to pg-opshub, never carries VALKEY_URL as a plain value, and is same-origin
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_HOST, value: pg-opshub-rw.data-prod.svc }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: APP_URL, value: "https://opshub.qnsc.vn" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DEPLOYMENT_ENV, value: prod }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: VALKEY_URL, value: "redis://valkey-opshub.data-prod.svc:6379" }
+
+  - it: the worker logs in as opshub_worker and never sees the api-only secrets
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_USER, value: opshub_worker }
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: opshub-env-api } }
+
+  - it: api:3000 accepts ingress only from platform and its own namespace
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-ingress-api }
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: platform }
+              ports:
+                - { protocol: TCP, port: 3000 }
+            - from:
+                - podSelector: {}
+              ports:
+                - { protocol: TCP, port: 3000 }
+
+  - it: product egress excludes the pod/Service CIDRs and all of RFC1918, and reaches data-prod by name
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-egress-external }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].ipBlock.except
+          value: [169.254.169.254/32, 10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  - it: egress to the data namespace is data-prod
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-egress-data }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].namespaceSelector.matchLabels
+          value: { kubernetes.io/metadata.name: data-prod }
