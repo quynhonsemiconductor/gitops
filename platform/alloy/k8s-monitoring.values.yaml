@@ -761,6 +761,29 @@ collectors:
           regex         = "(http_server_request_duration_seconds|http_client_request_duration_seconds|rpc_server_duration_seconds|rpc_client_duration_seconds|db_client_operation_duration_seconds)_(bucket|sum|count)|traces_service_graph_request_(total|failed_total)|up|scrape_samples_scraped"
           action        = "keep"
         }
+        // The Adaptive Metrics rules (infra live/adaptive-metrics) aggregate every `http_server_*` /
+        // `http_client_*` series down to the labels job, service_*, deployment_environment_name,
+        // method, status_class, route and le. Beyla names the same dimensions http_request_method,
+        // http_response_status_code and http_route, which AM would DROP, leaving RED metrics with no
+        // error rate. Rename them to the app convention BEFORE they reach Mimir.
+        rule {
+          source_labels = ["http_request_method"]
+          target_label  = "method"
+        }
+        rule {
+          source_labels = ["http_response_status_code"]
+          regex         = "([1-5])[0-9][0-9]"
+          replacement   = "${1}xx"
+          target_label  = "status_class"
+        }
+        rule {
+          source_labels = ["http_route"]
+          target_label  = "route"
+        }
+        rule {
+          regex  = "http_request_method|http_response_status_code|http_route"
+          action = "labeldrop"
+        }
         // Belt and braces: the path is never a label (Beyla is told not to emit it too).
         rule {
           regex  = "url_path|url_full|client_address"
