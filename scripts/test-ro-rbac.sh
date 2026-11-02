@@ -78,7 +78,21 @@ spec:
   versions: [{ name: v1alpha1, served: true, storage: true, schema: { openAPIV3Schema: { type: object, x-kubernetes-preserve-unknown-fields: true } } }]
 CRD
 done
-"${K[@]}" wait --for=condition=Established crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io --timeout=60s >/dev/null
+for pair in cluster:Cluster:clusters backup:Backup:backups scheduledbackup:ScheduledBackup:scheduledbackups database:Database:databases pooler:Pooler:poolers; do
+  IFS=: read -r kind Kind plural <<<"$pair"
+  "${K[@]}" apply -f - >/dev/null <<CRD
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: { name: ${plural}.postgresql.cnpg.io }
+spec:
+  group: postgresql.cnpg.io
+  scope: Namespaced
+  names: { kind: ${Kind}, plural: ${plural}, singular: ${kind} }
+  versions: [{ name: v1, served: true, storage: true, schema: { openAPIV3Schema: { type: object, x-kubernetes-preserve-unknown-fields: true } } }]
+CRD
+done
+"${K[@]}" wait --for=condition=Established crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io \
+  crd/clusters.postgresql.cnpg.io crd/backups.postgresql.cnpg.io crd/scheduledbackups.postgresql.cnpg.io crd/databases.postgresql.cnpg.io crd/poolers.postgresql.cnpg.io --timeout=60s >/dev/null
 AS=system:serviceaccount:platform-access:sa-readonly
 fail=0
 set -f   # "* *" must reach kubectl as two words, not a glob
@@ -95,6 +109,8 @@ can() { # can <yes|no> <verb> <resource[/subresource]> [kubectl flags]. `pods/ex
 for a in "get pods -A" "list deployments -A" "list pods -n kube-system" "get configmaps -A" "list events -A" \
          "list nodes" "list namespaces" "list persistentvolumes" "list storageclasses" \
          "list applications.argoproj.io -n argocd" "list applicationsets.argoproj.io -n argocd" "get appprojects.argoproj.io -n argocd" \
+         "list clusters.postgresql.cnpg.io -n data-dev" "get clusters.postgresql.cnpg.io -n data-prod" "list backups.postgresql.cnpg.io -n data-prod" \
+         "list scheduledbackups.postgresql.cnpg.io -n data-prod" "list databases.postgresql.cnpg.io -n data-dev" "list poolers.postgresql.cnpg.io -n data-dev" \
          "get pods/log -n kube-system" "watch applications.argoproj.io -A"; do
   # shellcheck disable=SC2086
   can yes $a
@@ -104,7 +120,8 @@ for a in "get secrets -A" "get secrets -n kube-system" "list secrets -n argocd" 
          "get pods/portforward -n kube-system" "get pods/proxy -n kube-system" "get nodes/proxy" "get services/proxy -n default" \
          "create serviceaccounts/token -n argocd" "update pods/ephemeralcontainers -n default" \
          "create pods -n default" "delete pods -n default" "update deployments -n default" "patch applications.argoproj.io -n argocd" \
-         "create applications.argoproj.io -n argocd" "delete namespaces" "create clusterrolebindings.rbac.authorization.k8s.io" \
+         "create applications.argoproj.io -n argocd" "patch clusters.postgresql.cnpg.io -n data-prod" "create backups.postgresql.cnpg.io -n data-prod" \
+         "delete databases.postgresql.cnpg.io -n data-dev" "delete namespaces" "create clusterrolebindings.rbac.authorization.k8s.io" \
          "escalate clusterroles.rbac.authorization.k8s.io" "impersonate users" "* *" ; do
   # shellcheck disable=SC2086
   can no $a

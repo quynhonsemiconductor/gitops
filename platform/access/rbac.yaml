@@ -3,7 +3,7 @@
 # WHAT IT GRANTS: the built-in ClusterRole `view` (namespaced read of workloads, services,
 # configmaps, events, ... in EVERY namespace; `view` deliberately excludes Secrets, Pod exec,
 # attach, port-forward, proxy and every write) plus `qnsc-readonly-extra` below: read of the
-# ArgoCD objects and the cluster-scoped kinds `view` lacks. NOTHING ELSE. In particular no
+# ArgoCD objects, the CloudNativePG kinds and the cluster-scoped kinds `view` lacks. NOTHING ELSE. In particular no
 # Secrets, no pods/exec, pods/attach, pods/portforward, no proxy subresources, no write verb.
 # scripts/test-ro-rbac.sh pins all of that (static) and policy-test proves it on a real API
 # server (`kubectl auth can-i`).
@@ -44,6 +44,11 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  # CloudNativePG: the clusters and what hangs off them (status, backups and their schedule, declared
+  # databases, poolers). Read only; the `*.postgresql.cnpg.io` kinds are not in `view`.
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters", "backups", "scheduledbackups", "databases", "poolers"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
