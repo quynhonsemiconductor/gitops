@@ -89,6 +89,10 @@ spec:
     - list:
         elements:
           - { product: rova, env: prod, chartVersion: "0.15.0" }
+          # opshub prod: DISABLED prep (values/opshub/prod.yaml, platform/opshub-prod/). The move PR
+          # uncomments it after the data layer is up, the secrets exist and no `<OPSHUB_PROD_...>`
+          # placeholder remains (scripts/check-prod-placeholders.sh).
+          # - { product: opshub, env: prod, chartVersion: "0.15.0" }
         template:
           metadata:
             name: "{{.product}}-{{.env}}"

@@ -1,1 +1,95 @@
+# opshub PRODUCTION on k3s-01 (prep, 2026-11-02): mirrors values/rova/prod.yaml. ArgoCD merges
+# base.yaml, this file and tags.prod.yaml.
+#
+# NOT DEPLOYED: the opshub prod row in appsets/products.yaml is a comment, and the data layer lives
+# in platform/opshub-prod/ (pg-opshub, valkey-opshub, backup, dump, restore test), enabled by the
+# move PR. The EKS-era file this replaces was only `env: prod`: opshub prod never ran on AWS.
+#
+# PLACEHOLDERS (`<OPSHUB_PROD_...>`) stand for public Entra client ids that do not exist yet; the
+# placeholder gate (scripts/check-prod-placeholders.sh, chart-ci) fails the PR that enables the row
+# while any remains.
 env: prod
+size: s                      # one node: 1 replica each, no PDB (base.yaml says m / 2 api replicas)
+
+networkPolicy:
+  # ON: default-deny ingress and egress. api:3000 only from `platform` (cloudflared, Alloy) and its own
+  # namespace; egress to DNS, platform, data-prod (5432/6379) and the internet minus the cluster ranges
+  # AND all of RFC1918 (LAN, hypervisor, PBS, router, the node).
+  enabled: true
+  clusterCidrs: [10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+
+data:
+  postgres:
+    mode: cnpg
+    cluster: pg-opshub
+    namespace: data-prod      # DATABASE_HOST = pg-opshub-rw.data-prod.svc
+    auth: password
+    pooling: none             # the worker holds a session-level LISTEN connection
+    name: opshub
+    user: opshub_app
+    workerUser: opshub_worker
+    migratorUser: opshub_migrator
+    caFile: /etc/qnsc/db-ca/ca.crt     # pg-opshub-ca-pub via the cnpg-ca-prod store
+
+services:
+  api:
+    replicas: 1
+    resources: { cpu: 250m, memory: 1Gi }
+    env:
+      - { name: PORT, value: "3000" }
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+      # pg-opshub serves opshub only (max_connections 100): 20 + 10 + a migrator leaves headroom.
+      - { name: DATABASE_POOL_MAX, value: "20" }
+      # Same-origin: SPA and API on one host; the tunnel routes /api/auth/*, /v1/*, /readyz.
+      - { name: APP_URL, value: "https://opshub.qnsc.vn" }
+      - { name: CORS_ORIGINS, value: "https://opshub.qnsc.vn" }
+  worker:
+    replicas: 1                # fixed at one: relays and the LISTEN connection must not run twice
+    resources: { cpu: 100m, memory: 512Mi }
+    env:
+      - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
+      - { name: DATABASE_POOL_MAX, value: "10" }
+      # Worker-only (the API's schema refuses GRAPH_*). The certificate is the mounted file below.
+      # ⚠ PLACEHOLDER: the "OpsHub Prod Service" Entra app does not exist yet.
+      - { name: GRAPH_CLIENT_ID, value: "<OPSHUB_PROD_SERVICE_APP_ID>" }
+  migrator: { }
+
+# Product-wide (api and worker share one env validator). Non-secret only. Deliberately ABSENT: every
+# debug/local switch, every SES_*/SQS_*/AWS_* value.
+defaults:
+  env:
+    - { name: NODE_ENV, value: "production" }
+    - { name: DEPLOYMENT_ENV, value: "prod" }
+    # VALKEY_URL is NOT here: valkey-opshub (the dedicated prod cache in data-prod) requires a login, so
+    # the URL carries a password and comes from kv-qnsc-prod/opshub-prod-redis-url (secrets.env below).
+    - { name: OTEL_ENABLED, value: "true" }
+    # Entra "OpsHub Prod" sign-in app: tenant id is public. ⚠ PLACEHOLDER client id (owner creates the app).
+    - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: ENTRA_CLIENT_ID, value: "<OPSHUB_PROD_ENTRA_CLIENT_ID>" }
+    # Graph mail from noreply-opshub@qnsc.vn through the "OpsHub Prod Service" app (cert-only, worker-only).
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MAIL_GRAPH_SENDER, value: "noreply-opshub@qnsc.vn" }
+    # R2: the bucket as it physically exists (infra live/storage-prod). One credential, as in dev.
+    - { name: S3_FILES_BUCKET, value: "opshub-prod-attachments" }
+    - { name: STORAGE_ENDPOINT, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    - { name: STORAGE_FORCE_PATH_STYLE, value: "true" }
+
+# One Key Vault secret per value in kv-qnsc-prod; every name, format and class is in
+# values/opshub/prod.secrets.yaml, and platform/bootstrap/secrets.sh --product opshub --env prod creates them.
+secrets:
+  clusterSecretStore: kv-qnsc-prod
+  env:
+    COOKIE_SECRET: opshub-prod-cookie-secret
+    CSRF_SECRET: opshub-prod-csrf-secret
+    STORAGE_ACCESS_KEY_ID: opshub-prod-storage-access-key-id
+    STORAGE_SECRET_ACCESS_KEY: opshub-prod-storage-secret-access-key
+    VALKEY_URL: opshub-prod-redis-url   # redis://opshub:<hex>@valkey-opshub.data-prod.svc:6379; the ACL derives from it
+  envApiOnly:
+    BETTER_AUTH_SECRET: opshub-prod-better-auth-secret
+    ENTRA_CLIENT_SECRET: opshub-prod-entra-client-secret
+  db: opshub-prod-db-app
+  dbWorker: opshub-prod-db-worker
+  dbMigrator: opshub-prod-db-migrator
+  workerOnly:
+    graphCert: opshub-prod-graph-cert
+    path: /etc/qnsc/graph/cert.pem

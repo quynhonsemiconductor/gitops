@@ -1,0 +1,42 @@
+# ── data-prod: opshub-prod's access to ITS data only (prep, nothing runs yet) ───────────
+#
+# data-prod-admit (data-prod.yaml) admits rova-prod, restore-test and cnpg-system to EVERY pod in
+# data-prod. NetworkPolicies add up, so opshub-prod gets two narrow policies of its own instead of a
+# new line in that one: opshub-prod reaches only pg-opshub (5432) and valkey-opshub (6379), selected
+# by the pods' own labels. The CNPG operator (cnpg-system), the restore test and Alloy are already
+# admitted by data-prod-admit.
+#
+# FOLLOW-UP once opshub-prod runs (not now: rova-prod is live and in its soak): rova-prod is still
+# admitted to every data-prod pod by data-prod-admit, so it could reach pg-opshub/valkey-opshub (each
+# needs its own credentials; defence in depth only). Scope that rule to pg-rova/valkey-rova pods then.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-opshub-postgres
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: pg-opshub }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: opshub-prod }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-opshub-valkey
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/instance: valkey-opshub }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: opshub-prod }
+      ports:
+        - { protocol: TCP, port: 6379 }
