@@ -96,8 +96,11 @@ spec:
           image: ghcr.io/huggingface/text-embeddings-inference:120-1.9.4@sha256:bd8e5b1954146f7fe8590b64b959bc194433c6c38c036592a84d736841ca9400
           imagePullPolicy: IfNotPresent
           args:
-            - --model-id=intfloat/multilingual-e5-large-instruct
-            - --revision=274baa43b0e13e37fafa6428dbc7938e62e5c439
+            # The local snapshot, not the hub id: TEI's Rust hub client resolves a
+            # revision through refs/<rev>, which the Python pull does not write for a
+            # commit hash, so with a hub id it tries the network (blocked here) and
+            # crash-loops. The path pins the same revision.
+            - --model-id=/data/hub/models--intfloat--multilingual-e5-large-instruct/snapshots/274baa43b0e13e37fafa6428dbc7938e62e5c439
             - --dtype=float32
             - --pooling=mean
             - --max-client-batch-size=32
@@ -226,8 +229,11 @@ spec:
           image: ghcr.io/huggingface/text-embeddings-inference:1.9.4@sha256:02864b69c15e4f247b8306b0be8801d6800fed97702185fb19d98170e956fab1
           imagePullPolicy: IfNotPresent
           args:
-            - --model-id=intfloat/multilingual-e5-large-instruct
-            - --revision=274baa43b0e13e37fafa6428dbc7938e62e5c439
+            # The local snapshot, not the hub id: TEI's Rust hub client resolves a
+            # revision through refs/<rev>, which the Python pull does not write for a
+            # commit hash, so with a hub id it tries the network (blocked here) and
+            # crash-loops. The path pins the same revision.
+            - --model-id=/data/hub/models--intfloat--multilingual-e5-large-instruct/snapshots/274baa43b0e13e37fafa6428dbc7938e62e5c439
             - --dtype=float32
             - --pooling=mean
             - --max-client-batch-size=32
