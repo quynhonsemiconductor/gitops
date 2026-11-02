@@ -1,0 +1,79 @@
+# ── pg-opshub backups: barman-cloud plugin -> R2 `qnsc-backups`, prefix pg-opshub/ ──
+#
+# Continuous WAL archiving plus a nightly base backup, restorable to any point in
+# the retention window (PITR). Same design as pg-rova-backup.yaml. ⚠ INFRA FIRST: infra
+# live/onprem/backups.tf locks only `pg-rova/pg-rova-g1/wals/`; the `pg-opshub/pg-opshub-g1/wals/` lock
+# rule does not exist yet (infra lane, the same one-line rule), and without it opshub's WAL archive is
+# deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately does not), so
+# retentionPolicy equals the lock window.
+#
+# Credential: an R2 API token scoped to bucket qnsc-backups only, object read+write
+# (barman needs delete to prune; the Bucket Lock is the immutability control, not a
+# write-only token). The OWNER creates it and stores it as TWO plain-string secrets
+# in kv-qnsc-prod; this namespace can only read kv-qnsc-prod (the store admits
+# qnsc.vn/env=prod), which is why the secret is not in kv-qnsc-platform:
+#   r2-backup-rw-access-key-id        32 hex chars
+#   r2-backup-rw-secret-access-key    64 hex chars
+#
+# R2 needs the two checksum variables on the plugin sidecar, or uploads fail with a
+# checksum/trailer error (ONPREM-PLAN §6.3). The endpoint is the account's R2 S3
+# endpoint, the same host already committed in values/*/dev.yaml.
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-opshub-r2-backup
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-opshub-r2-backup
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-backup-rw-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-backup-rw-secret-access-key }
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-opshub-r2
+  namespace: data-prod
+spec:
+  retentionPolicy: "14d"
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-opshub/
+    endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId: { name: pg-opshub-r2-backup, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: pg-opshub-r2-backup, key: ACCESS_SECRET_KEY }
+    wal:
+      compression: gzip
+      maxParallel: 2
+    data:
+      compression: gzip
+  instanceSidecarConfiguration:
+    env:
+      - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+      - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 256Mi }
+---
+# Nightly base backup, 02:00 ICT (19:00 UTC; the cron has a SECONDS field first).
+# `immediate` takes one at creation so G1 has a backup to restore without waiting
+# for the first night.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: pg-opshub-nightly
+  namespace: data-prod
+spec:
+  schedule: "0 15 19 * * *"          # 19:15 UTC, after pg-rova (19:00), so the two base backups do not overlap
+  immediate: true
+  backupOwnerReference: self
+  cluster: { name: pg-opshub }
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

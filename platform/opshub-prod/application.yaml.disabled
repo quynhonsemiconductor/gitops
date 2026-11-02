@@ -1,0 +1,53 @@
+# The two Applications that deploy this directory. DISABLED: root only syncs apps/*.yaml, and this file
+# ends in `.disabled`. To enable (the opshub prod move PR): `git mv` it to apps/platform-opshub-prod.yaml.
+# Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier waves. prune false:
+# these own PVCs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-opshub-prod-data
+  namespace: argocd
+  annotations:
+    # server-side diff through the CNPG webhook, as platform-data-prod (audit G-07)
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-prod
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/opshub-prod
+    directory: { include: "{pg-opshub.yaml,pg-opshub-backup.yaml,pg-opshub-dump.yaml,valkey-opshub.yaml}" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-opshub-restore-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: restore-test
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/opshub-prod
+    directory: { include: "restore-test-opshub.yaml" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

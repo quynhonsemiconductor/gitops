@@ -16,6 +16,7 @@ key:value
 key:tenantId
 # Product hostnames (tier 2, exact).
 rova\.qnsc\.vn
+opshub\.qnsc\.vn
 rova-dev\.qnsc\.vn
 rova-api\.qnsc\.vn
 rova-api-dev\.qnsc\.vn
@@ -32,6 +33,7 @@ dev\.qnsc\.vn
 noreply@qnsc\.vn
 noreply-rova-dev@qnsc\.vn
 noreply-rova@qnsc\.vn
+noreply-opshub@qnsc\.vn
 noreply-opshub-dev@qnsc\.vn
 noreply-kb-dev@qnsc\.vn
 # The AWS IMDS endpoint (link-local, in a NetworkPolicy exception) — not an

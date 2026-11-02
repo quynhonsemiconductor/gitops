@@ -1,5 +1,8 @@
 # GENERATED — DO NOT EDIT BY HAND.
 #
+# PROVISIONAL TAG (2026-11-02): the latest successful `GHCR · Publish` of opshub main (9ef2a6dc006a); all
+# three images exist on GHCR. The move PR sets the commit it runs.
+#
 # CI writes this file on every deploy, and it is separate from prod.yaml for one
 # reason: `yq -i` REWRITES a whole file, and these values files carry reasoning
 # transcribed from the live OpenTofu — why qnsc-kb's api stays off Spot, why
@@ -12,10 +15,10 @@
 services:
   api:
     image:
-      tag: sha-0000000
+      tag: sha-9ef2a6dc006a
   migrator:
     image:
-      tag: sha-0000000
+      tag: sha-9ef2a6dc006a
   worker:
     image:
-      tag: sha-0000000
+      tag: sha-9ef2a6dc006a
