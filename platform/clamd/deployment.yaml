@@ -88,29 +88,33 @@ spec:
     spec:
       # §10 Pod Security Standards restricted — the platform namespace enforces it
       # (namespaces/platform.yaml). The official clamav image runs as USER 100
-      # specifically for runAsNonRoot compatibility (Cisco-Talos/clamav PR #666),
-      # so this needs no image change.
+      # (group 101) for runAsNonRoot compatibility, BUT its default entrypoint
+      # `/init` is a ROOT entrypoint: it `chown -R clamav:clamav /var/lib/clamav` and
+      # creates /run/clamav, which fails under runAsNonRoot ("chown: /var/lib/clamav:
+      # Operation not permitted", CrashLoopBackOff). The image ships the non-root
+      # twin `/init-unprivileged` (verified in clamav/clamav:1.5.4: no chown, no
+      # /run/clamav, socket in /tmp, same freshclam and clamd startup); the
+      # container below uses it as its command.
       securityContext:
         runAsNonRoot: true
         runAsUser: 100
-        runAsGroup: 100
-        fsGroup: 100
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile: { type: RuntimeDefault }
-      # Spread across zones: two replicas on one node is one node's worth of HA,
-      # and a single Spot-adjacent node loss would then take out the whole
-      # scanner while the fail-closed client blocks every upload. ScheduleAnyway,
-      # not DoNotSchedule — a scanner that will not schedule is worse than one not
-      # perfectly spread.
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: clamd
+      # ONE node in the ai pool: no zone spread (single node, nothing to spread over).
+      # Pinned to the ai pool like the TEI services (platform/ai): clamd's ~1 GB signature
+      # database and 2 GiB request belong on the big node, not on the k3s-01 CPU node (#114's
+      # intent, which never reached this file).
       nodeSelector:
+        qnsc.vn/pool: ai
         # arch: amd64 (§3.2 — ClamAV has no arm64 image).
         kubernetes.io/arch: amd64
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      priorityClassName: ai
       containers:
         - name: clamd
           # Pinned in versions.yaml under images.clamav. NOT :latest — the
@@ -121,6 +125,8 @@ spec:
           # This one image runs BOTH freshclam (the updater) and clamd (the
           # daemon). The sidecar exporter below reads the database this process
           # keeps fresh; it does not run freshclam itself.
+          # NOT the image's default `/init` (root entrypoint, chowns): the non-root twin.
+          command: ["/init-unprivileged"]
           ports:
             - { name: clamd, containerPort: 3310, protocol: TCP }
           securityContext:
@@ -151,10 +157,12 @@ spec:
             # mirror on every pod start (§4c rejected owning the image; it does
             # not own the database either). A fresh pod does an initial freshclam.
             - { name: clamav-db, mountPath: /var/lib/clamav }
-            # clamd's pid file and unix socket, and freshclam's lock. On a
-            # read-only root these must be writable or the daemon fails to start
-            # with a cryptic "cannot create /run/clamav/clamd.pid" and CrashLoops.
-            - { name: run, mountPath: /run/clamav }
+            # clamd.log and freshclam.log: clamd.conf `LogFile` and freshclam.conf
+            # `UpdateLogFile` both point at /var/log/clamav, which does not exist as a
+            # writable path on a read-only root (clamd refuses to start when it cannot open
+            # its log file, freshclam fails its logger). /init-unprivileged needs no /run/clamav
+            # (the socket is /tmp/clamd.sock), so that mount is gone.
+            - { name: logs, mountPath: /var/log/clamav }
             # scan work area — clamd unpacks archives to /tmp.
             - { name: tmp, mountPath: /tmp }
           startupProbe:
@@ -200,8 +208,10 @@ spec:
             # Emit clamav_signature_age_seconds = now - newest(.cvd/.cld mtime),
             # in the Prometheus text format, and serve it. No package installs on
             # a read-only rootfs: a tiny shell loop writing a file that a trivial
-            # nc-less HTTP responder would serve is fragile, so we use clamd's own
-            # base image which carries busybox `httpd`. The metric name and HELP
+            # HTTP responder would serve is fragile. The image's busybox has NO `httpd`
+            # applet (verified in clamav/clamav:1.5.4: `httpd: not found` crashed this
+            # container), but it has `nc`: a loop answers each scrape with the file. One
+            # connection at a time is plenty for a 60 s scrape. The metric name and HELP
             # match what the PrometheusRule in prometheusrule.yaml alerts on.
             - |
               set -eu
@@ -224,8 +234,15 @@ spec:
                 } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
                 sleep 60
               done &
-              # busybox httpd serving the textfile dir on 9101.
-              exec httpd -f -p 9101 -h /run/metrics
+              # Serve the file on 9101: one HTTP/1.1 response per connection (busybox nc, no httpd).
+              until [ -s "$OUT" ]; do sleep 1; done
+              while true; do
+                len=$(wc -c < "$OUT")
+                {
+                  printf 'HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: %s\r\nConnection: close\r\n\r\n' "$len"
+                  cat "$OUT"
+                } | nc -l -p 9101 > /dev/null 2>&1 || sleep 1
+              done
           ports:
             - { name: metrics, containerPort: 9101, protocol: TCP }
           securityContext:
@@ -244,7 +261,7 @@ spec:
             - { name: metrics, mountPath: /run/metrics }
       volumes:
         - { name: clamav-db, emptyDir: {} }
-        - { name: run, emptyDir: {} }
+        - { name: logs, emptyDir: { sizeLimit: 64Mi } }
         - { name: tmp, emptyDir: {} }
         - { name: metrics, emptyDir: {} }
 ---
