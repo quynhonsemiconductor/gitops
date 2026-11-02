@@ -12,8 +12,8 @@
 #
 # Two containers, one emptyDir: the init container dumps (pg_dump 18 from the CNPG image,
 # as rova_readonly: pg_read_all_data is enough to dump everything), the main container
-# uploads (aws-cli with the R2 checksum variables, the same credential barman uses:
-# Secret pg-rova-r2-backup). Success is two log lines: `DUMP-READY ...` and `DUMP-OK <key> ...`.
+# uploads (aws-cli with the R2 checksum variables, with ITS OWN R2 token: Secret pg-rova-r2-dump,
+# not the one barman uses). Success is two log lines: `DUMP-READY ...` and `DUMP-OK <key> ...`.
 #
 # rova_readonly has statement_timeout 30 s as a role setting (the ad-hoc-query guard in
 # pg-rova.yaml); the dump overrides it for ITS session with PGOPTIONS, which a role may do.
@@ -22,6 +22,29 @@
 #
 # Run on demand:  kubectl -n data-prod create job --from=cronjob/pg-rova-dump pg-rova-dump-manual-1
 # Restore:        pg_restore -d <empty db> --no-owner <file>   (after download with any S3 client)
+# The dump job's own credential (audit G-02/G-06 plan: R2 tokens cannot be limited to a prefix or to
+# write-only, so the control is one token per job: a leak or a rotation of one never touches the other).
+# The OWNER creates an R2 API token `pg-dump-onprem`, bucket qnsc-backups only, Object Read & Write
+# (the CronJob only needs put/head; R2 has no narrower grant), and stores it in kv-qnsc-prod as two
+# plain strings:  r2-dump-rw-access-key-id (32 hex)  and  r2-dump-rw-secret-access-key (64 hex).
+# Dumps are written under the locked dumps/ prefix, write-once, so what this token can still delete
+# outside the lock is the base backups (G-02 is decided separately).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-rova-r2-dump
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-rova-r2-dump
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-dump-rw-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-dump-rw-secret-access-key }
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -93,9 +116,9 @@ spec:
                 - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
                 - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
                 - name: AWS_ACCESS_KEY_ID
-                  valueFrom: { secretKeyRef: { name: pg-rova-r2-backup, key: ACCESS_KEY_ID } }
+                  valueFrom: { secretKeyRef: { name: pg-rova-r2-dump, key: ACCESS_KEY_ID } }
                 - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom: { secretKeyRef: { name: pg-rova-r2-backup, key: ACCESS_SECRET_KEY } }
+                  valueFrom: { secretKeyRef: { name: pg-rova-r2-dump, key: ACCESS_SECRET_KEY } }
               command:
                 - bash
                 - -c
