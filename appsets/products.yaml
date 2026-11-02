@@ -44,7 +44,7 @@ spec:
           # per value, db-migrator / db-worker passwords, graph cert).
           # 0.15.0 adds the cluster-CIDR egress exclusion and allow-egress-data (dev network policies are ON).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.15.0" }
+          - { product: rova,   env: dev, chartVersion: "0.15.1" }
           - { product: opshub, env: dev, chartVersion: "0.15.0" }
           # kb-dev: DISABLED until the owner has created its kv-qnsc-dev secrets (values/kb/dev.secrets.yaml)
           # and chart-v0.16.0 exists; the move PR uncomments this row.
