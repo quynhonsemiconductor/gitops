@@ -84,6 +84,18 @@ platform:
     chart: prometheus-operator-crds
     repo: https://prometheus-community.github.io/helm-charts
     version: "32.0.2"          # CRDs only (apps/platform-prometheus-crds.yaml); goes when k8s-monitoring lands
+  nvidia-device-plugin:
+    # The AI node's GPU resource, time-sliced (ONPREM-PLAN §9.1). Verified
+    # 2026-10-31 against the chart index at
+    # nvidia.github.io/k8s-device-plugin: 0.20.1 is the newest release
+    # (created 2026-09-22, appVersion 0.20.1 — inside the 14-day floor), and
+    # `helm template` at this version renders the time-slicing ConfigMap and
+    # the pool taint toleration in platform/ai/device-plugin.values.yaml.
+    # The chart's NFD/GFD dependencies stay disabled (no NodeFeatureDiscovery
+    # on ai-01); scheduling is the pool nodeSelector, not NFD labels.
+    chart: nvidia-device-plugin
+    repo: https://nvidia.github.io/k8s-device-plugin
+    version: "0.20.1"
   postgresql:
     # ImageCatalog pin (§6.3) — `standard` = the flavour carrying pgvector
     # (pg-dev's `kb` database needs it). Digest verified 2026-10-20 against
