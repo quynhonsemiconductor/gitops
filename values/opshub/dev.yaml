@@ -75,7 +75,8 @@ defaults:
     # §6.4 — the shared dev cache (rova + opshub). opshub keeps database index 2
     # (rova 0; the allocation lives in the platform plan). Plain redis:// — the
     # on-prem Valkey has no TLS, unlike the rediss:// ElastiCache endpoint.
-    - { name: VALKEY_URL, value: "redis://valkey-dev.data-dev.svc:6379/2" }
+    # VALKEY_URL is NOT here: valkey-dev requires a login now (kv-qnsc-dev/opshub-dev-redis-url, secrets.env
+    # below; database index 2 is part of that URL).
     - { name: OTEL_ENABLED, value: "true" }
     # Entra — public identifiers (§7.2): the "OpsHub Dev" sign-in app. The
     # redirect URI is derived by identity v8 from APP_URL; no override here.
@@ -112,6 +113,7 @@ secrets:
     # api AND worker validate the same schema (libs/platform/src/config/env.schema.ts).
     COOKIE_SECRET: opshub-dev-cookie-secret
     CSRF_SECRET: opshub-dev-csrf-secret
+    VALKEY_URL: opshub-dev-redis-url   # redis://opshub:<hex>@valkey-dev.data-dev.svc:6379/2; valkey-dev's ACL derives from it
     # R2 S3 credentials (:107-108). Optional in the schema, required in practice
     # for attachments; the bucket name is plain env above.
     STORAGE_ACCESS_KEY_ID: opshub-dev-storage-access-key-id

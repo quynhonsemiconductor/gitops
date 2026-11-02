@@ -43,6 +43,8 @@ spec:
             - ""      # (empty string: disable RDB)
             - --appendonly
             - "no"
+            - --aclfile
+            - /etc/valkey-acl/users.acl     # `default` is OFF in that file: no anonymous access
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -55,14 +57,17 @@ spec:
             limits: { memory: 128Mi }
           # §9j — liveness is the process: valkey-cli ping answers without
           # touching persistence or replication.
+          env:
+            - name: EXPORTER_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-dev-acl, key: exporter-password } }
           livenessProbe:
             exec:
-              command: ["valkey-cli", "--no-auth-warning", "ping"]
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             exec:
-              command: ["valkey-cli", "--no-auth-warning", "ping"]
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
             periodSeconds: 5
             failureThreshold: 3
           volumeMounts:
@@ -70,8 +75,11 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
-        # §12 — the one Alloy scrapes valkey metrics here (9121); data-dev has
-        # no NetworkPolicy yet (per-namespace default-deny is §9 work).
+            - name: acl
+              mountPath: /etc/valkey-acl
+              readOnly: true
+        # §12 — the one Alloy scrapes valkey metrics here (9121); data-dev-admit
+        # (platform/networkpolicy/data-dev.yaml) admits platform on exactly this port.
         - name: exporter
           image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820   # versions.yaml (verified 2026-10-21, Docker Hub; v1.94.0 is <14 days old)
           securityContext:
@@ -82,6 +90,9 @@ spec:
             - { name: metrics, containerPort: 9121 }
           env:
             - { name: REDIS_ADDR, value: "redis://localhost:6379" }
+            - { name: REDIS_USER, value: exporter }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-dev-acl, key: exporter-password } }
           resources:
             requests: { cpu: 10m, memory: 32Mi }
             limits: { memory: 32Mi }
@@ -90,6 +101,46 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        - name: acl
+          secret: { secretName: valkey-dev-acl, defaultMode: 0440 }
+---
+# ── valkey-dev ACL (audit "valkey-dev has no auth"; same design as valkey-rova) ───────────────
+# `default` is off. Users: `rova` and `opshub` (the two products sharing this instance; each its own
+# password, all keys, every command except @admin and @dangerous, plus INFO and CLIENT
+# SETNAME/SETINFO that ioredis sends; EVAL stays for platform-cache's Lua), and `exporter` for the
+# metrics sidecar and the probes. Each app's WHOLE credential is ONE kv-qnsc-dev secret holding its
+# URL (rova-dev-redis-url = redis://rova:<hex>@valkey-dev.data-dev.svc:6379, opshub-dev-redis-url =
+# redis://opshub:<hex>@valkey-dev.data-dev.svc:6379/2): the app reads it as its Redis URL (chart
+# secrets.env) and this ExternalSecret derives the ACL file from the SAME values, so they cannot
+# disagree. The exporter password is a hash of both URLs (derived). The ACL is read at START: after a
+# rotation, restart the pod (kubectl -n data-dev rollout restart sts/valkey-dev).
+# Separation between the two products is by user and by db index, not by key pattern: they share
+# keys' namespace on this instance, which is dev-grade (app-level prefixes still apply).
+# valkey-kb-dev is NOT covered here: kb has no dev row yet; it joins with kb's move (data-dev-admit
+# already restricts who can reach it).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: valkey-dev-acl
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: valkey-dev-acl
+    template:
+      data:
+        exporter-password: '{{ printf "%s|%s" .rova .opshub | sha256sum }}'
+        users.acl: |
+          user default off
+          user rova on >{{ index (splitList ":" (urlParse .rova).userinfo) 1 }} ~* &* +@all -@admin -@dangerous +info +client|setname +client|setinfo
+          user opshub on >{{ index (splitList ":" (urlParse .opshub).userinfo) 1 }} ~* &* +@all -@admin -@dangerous +info +client|setname +client|setinfo
+          user exporter on >{{ printf "%s|%s" .rova .opshub | sha256sum }} +ping +info +config|get +dbsize +slowlog +latency +memory +client|setname +client|setinfo
+  data:
+    - secretKey: rova
+      remoteRef: { key: rova-dev-redis-url }
+    - secretKey: opshub
+      remoteRef: { key: opshub-dev-redis-url }
 ---
 apiVersion: v1
 kind: Service

@@ -171,8 +171,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: dev
-            - name: VALKEY_URL
-              value: redis://valkey-dev.data-dev.svc:6379/2
             - name: OTEL_ENABLED
               value: "true"
             - name: ENTRA_TENANT_ID
@@ -305,8 +303,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: dev
-            - name: VALKEY_URL
-              value: redis://valkey-dev.data-dev.svc:6379/2
             - name: OTEL_ENABLED
               value: "true"
             - name: ENTRA_TENANT_ID
@@ -443,8 +439,6 @@ spec:
               value: production
             - name: DEPLOYMENT_ENV
               value: dev
-            - name: VALKEY_URL
-              value: redis://valkey-dev.data-dev.svc:6379/2
             - name: OTEL_ENABLED
               value: "true"
             - name: ENTRA_TENANT_ID
@@ -617,6 +611,9 @@ spec:
     - secretKey: STORAGE_SECRET_ACCESS_KEY
       remoteRef:
         key: opshub-dev-storage-secret-access-key
+    - secretKey: VALKEY_URL
+      remoteRef:
+        key: opshub-dev-redis-url
 
 ---
 # Source: qnsc-service/templates/externalsecret.yaml

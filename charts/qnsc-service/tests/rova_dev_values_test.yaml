@@ -19,6 +19,7 @@ tests:
             - { secretKey: COOKIE_SECRET, remoteRef: { key: rova-dev-cookie-secret } }
             - { secretKey: CSRF_SECRET, remoteRef: { key: rova-dev-csrf-secret } }
             - { secretKey: ENTRA_CLIENT_SECRET, remoteRef: { key: rova-dev-entra-client-secret } }
+            - { secretKey: REDIS_URL, remoteRef: { key: rova-dev-redis-url } }
             - { secretKey: STORAGE_ACCESS_KEY_ID, remoteRef: { key: rova-dev-storage-access-key-id } }
             - { secretKey: STORAGE_SECRET_ACCESS_KEY, remoteRef: { key: rova-dev-storage-secret-access-key } }
         documentSelector: { path: metadata.name, value: rova-env }
@@ -39,6 +40,14 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].envFrom
           content: { secretRef: { name: rova-env-api } }
+
+  - it: REDIS_URL carries a password, so it is never a plain env value
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: REDIS_URL, value: "redis://valkey-dev.data-dev.svc:6379" }
 
   - it: the worker logs in as rova_worker with its own password and never sees the api-only secret
     template: templates/deployment.yaml

@@ -71,10 +71,8 @@ defaults:
   env:
     - { name: NODE_ENV, value: "production" }
     - { name: DEPLOYMENT_ENV, value: "dev" }
-    # §6.4 — the shared dev cache. rova keeps database index 0 and no explicit
-    # /0 suffix (the schema default appends nothing; parity with the ECS env).
-    # Plain redis:// — the on-prem Valkey has no TLS, unlike rediss:// ElastiCache.
-    - { name: REDIS_URL, value: "redis://valkey-dev.data-dev.svc:6379" }
+    # REDIS_URL is NOT here: valkey-dev requires a login now, so the URL carries a password and comes
+    # from kv-qnsc-dev/rova-dev-redis-url (secrets.env below). rova keeps database index 0.
     - { name: OTEL_ENABLED, value: "true" }
     # §8.2 — SAME-ORIGIN: one hostname per app. The SPA (Workers static assets)
     # and this API share rova-dev.qnsc.vn; the Tunnel routes /api/auth/*, /v1/*
@@ -128,6 +126,7 @@ secrets:
     COOKIE_SECRET: rova-dev-cookie-secret
     CSRF_SECRET: rova-dev-csrf-secret
     ENTRA_CLIENT_SECRET: rova-dev-entra-client-secret
+    REDIS_URL: rova-dev-redis-url   # redis://rova:<hex>@valkey-dev.data-dev.svc:6379; valkey-dev's ACL derives from it
     # R2 S3 credentials (env.schema.ts:208-209);
     # STORAGE_PUBLIC_* stay unset: the public bucket reuses this credential.
     STORAGE_ACCESS_KEY_ID: rova-dev-storage-access-key-id
