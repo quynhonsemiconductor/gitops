@@ -1,0 +1,62 @@
+name: policy-test
+
+# ValidatingAdmissionPolicy is evaluated by the API server, so the only honest test of
+# platform/policy/*.yaml is a real one: a throwaway k3d cluster, the ExternalSecret CRD from the
+# pinned ESO chart, and scripts/test-policy.sh (allow/deny cases, and every ExternalSecret the chart
+# renders for an enabled product row must still be admitted).
+#
+# Not a required check yet (it needs Docker Hub for the k3s image); the SA can promote it.
+on:
+  pull_request:
+    paths:
+      - "platform/policy/**"
+      - "charts/**"
+      - "values/**"
+      - "rendered/**"
+      - "appsets/**"
+      - "scripts/test-policy.sh"
+      - ".github/workflows/policy-test.yaml"
+
+permissions:
+  contents: read
+
+env:
+  K3D_VERSION: v5.9.0
+  # sha256 of k3d-linux-amd64 from the release's checksums.txt
+  K3D_SHA256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
+  # keep in step with apps/platform-eso.yaml
+  ESO_CHART_VERSION: "2.11.0"
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+
+      - name: Install k3d (pinned, checksum verified)
+        run: |
+          curl -fsSLo /tmp/k3d "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
+          echo "${K3D_SHA256}  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+
+      - name: Throwaway cluster with the ExternalSecret CRD
+        run: |
+          pip install --quiet pyyaml
+          k3d cluster create policytest --no-lb --wait --timeout 300s \
+            --k3s-arg "--disable=traefik@server:0" --k3s-arg "--disable=servicelb@server:0"
+          helm template eso external-secrets --repo https://charts.external-secrets.io \
+            --version "${ESO_CHART_VERSION}" --set installCRDs=true --include-crds > /tmp/eso.yaml
+          python3 - <<'PY'
+          import yaml
+          keep = [d for d in yaml.safe_load_all(open("/tmp/eso.yaml"))
+                  if d and d.get("kind") == "CustomResourceDefinition"
+                  and d["metadata"]["name"] == "externalsecrets.external-secrets.io"]
+          assert len(keep) == 1, "ExternalSecret CRD not found in the chart"
+          yaml.safe_dump_all(keep, open("/tmp/externalsecret-crd.yaml", "w"))
+          PY
+          kubectl --context k3d-policytest apply --server-side -f /tmp/externalsecret-crd.yaml
+
+      - name: Policy tests
+        run: ./scripts/test-policy.sh k3d-policytest

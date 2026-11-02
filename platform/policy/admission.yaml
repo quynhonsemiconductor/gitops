@@ -148,6 +148,11 @@ spec:
 #
 # `dataFrom.find` is refused outright: it selects keys by pattern, which is the
 # opposite of naming the ones you are allowed to read.
+#
+# EVERY way an ExternalSecret names a vault key is checked (audit G-01): `data[].remoteRef.key`
+# AND `dataFrom[].extract.key` (the chart itself uses extract for `<product>-<env>-app`).
+# `sourceRef` (on data[] and dataFrom[]) is refused: it swaps in another store or a generator,
+# which is a way around both the key prefix and the store's namespace rules.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -162,18 +167,27 @@ spec:
         resources: ["externalsecrets"]
   variables:
     - name: keys
-      expression: "has(object.spec.data) ? object.spec.data.map(d, d.remoteRef.key) : []"
+      expression: >-
+        (has(object.spec.data) ? object.spec.data.map(d, d.remoteRef.key) : []) +
+        (has(object.spec.dataFrom) ? object.spec.dataFrom.filter(d, has(d.extract)).map(d, d.extract.key) : [])
   validations:
     - expression: >-
         variables.keys.all(k, k.startsWith(request.namespace + '-') || k.matches('^pg-[a-z0-9]+-ca-pub$'))
       message: >-
         An ExternalSecret may only read keys named <namespace>-… (this namespace's
-        own Key Vault prefix). The public CNPG CA mirror pg-<cluster>-ca-pub is the
-        only exemption.
+        own Key Vault prefix), in data[].remoteRef and dataFrom[].extract alike. The
+        public CNPG CA mirror pg-<cluster>-ca-pub is the only exemption.
       reason: Forbidden
     - expression: >-
         !has(object.spec.dataFrom) || !object.spec.dataFrom.exists(d, has(d.find))
       message: >-
         dataFrom.find is forbidden in a product namespace: it selects keys by
         pattern instead of naming them, which defeats the key-prefix rule.
+      reason: Forbidden
+    - expression: >-
+        !(has(object.spec.data) && object.spec.data.exists(d, has(d.sourceRef))) &&
+        !(has(object.spec.dataFrom) && object.spec.dataFrom.exists(d, has(d.sourceRef)))
+      message: >-
+        sourceRef is forbidden in a product namespace: it selects another store or a
+        generator, which bypasses the key-prefix rule.
       reason: Forbidden
