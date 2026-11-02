@@ -64,7 +64,10 @@ spec:
   # node loss never leaves the scanner with zero answers while the FAIL-CLOSED
   # client is blocking uploads. One replica in dev accepts a brief scan outage on
   # restart because the only client is a developer, not a paying customer.
-  replicas: 2   # ENV: prod=2, dev=1
+  # ONE replica: it runs on the single ai-01 node, where a second replica adds a second ~1 GB
+  # signature database and no availability. A rolling restart still surges the new pod first
+  # (maxUnavailable 0 below), so a restart is a blip, not a gap. The client fails closed.
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: clamd
@@ -114,7 +117,7 @@ spec:
           # admission policy qnsc-image-tags rejects it, and a moving antivirus
           # tag is how an unreviewed engine reaches prod. The digest/tag moving is
           # stopped by ECR immutability; naming :latest is stopped by policy.
-          image: clamav/clamav:1.5   # versions.yaml → images.clamav
+          image: clamav/clamav:1.5.4@sha256:6d87c712e3391e13c1ba6e05dfb074d4b1ddb5a6834b23bb9da990d2a4ef042a   # versions.yaml → images.clamav (digest read from the Docker Hub registry 2026-11-02)
           # This one image runs BOTH freshclam (the updater) and clamd (the
           # daemon). The sidecar exporter below reads the database this process
           # keeps fresh; it does not run freshclam itself.
@@ -191,7 +194,7 @@ spec:
         # style, and serves it on 9101. It shares the clamav-db mount read-only so
         # it can stat the files without any capability or write access.
         - name: freshclam-age-exporter
-          image: clamav/clamav:1.5   # versions.yaml → images.clamav (same image, has sh + stat)
+          image: clamav/clamav:1.5.4@sha256:6d87c712e3391e13c1ba6e05dfb074d4b1ddb5a6834b23bb9da990d2a4ef042a   # versions.yaml → images.clamav (digest read from the Docker Hub registry 2026-11-02) (same image, has sh + stat)
           command: ["/bin/sh", "-c"]
           args:
             # Emit clamav_signature_age_seconds = now - newest(.cvd/.cld mtime),
