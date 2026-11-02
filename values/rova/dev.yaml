@@ -62,6 +62,11 @@ services:
       # pg-dev runs max_connections=100 shared across all dev products; 10 per
       # service leaves headroom for kb's pool, the migrators and managed roles.
       - { name: DATABASE_POOL_MAX, value: "10" }
+      # MCP (/mcp) is served by the API only: ON in dev (MCP-PLAN P1). MCP_CF_TEAM_DOMAIN is the Access
+      # team origin the JWT `iss` must equal. The AUD tag of the "rova-dev MCP server" Access app is the
+      # Key Vault secret rova-dev-mcp-access-aud (secrets.envApiOnly): it exists only after the edge apply.
+      - { name: MCP_ENABLED, value: "true" }
+      - { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
 
   worker:
     resources: { cpu: 50m, memory: 480Mi }
@@ -142,6 +147,10 @@ secrets:
     # Required at API boot when NODE_ENV=production (rova apps/api/src/bootstrap/platform-admin-emails.ts:11-17).
     # A staff email roster: kept in Key Vault, not here (public-repo identifier policy). API only.
     PLATFORM_ADMIN_EMAILS: rova-dev-platform-admin-emails
+    # AUD tag of the Access app "rova-dev MCP server" (infra live/edge/mcp.tf). Not a credential (it is in
+    # every Access JWT), but it is only known after the edge apply, so the owner supplies it to the vault
+    # once; no second values PR. A token minted for another Access app is rejected against it. API only.
+    MCP_ACCESS_AUD: rova-dev-mcp-access-aud
   db: rova-dev-db-app
   dbMigrator: rova-dev-db-migrator
   dbWorker: rova-dev-db-worker
