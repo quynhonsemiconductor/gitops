@@ -43,6 +43,14 @@ services:
       - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
       # pg-rova serves rova only (max_connections 100): 20 + 10 + a migrator leaves headroom.
       - { name: DATABASE_POOL_MAX, value: "20" }
+      # MCP (/mcp) is served by the API only: ON in prod (MCP-PLAN P2, behind the portal `qnsc`).
+      # MCP_CF_TEAM_DOMAIN is the Access team origin the JWT `iss` must equal. The AUD tag of the
+      # "rova-prod MCP server" Access app is the Key Vault secret rova-prod-mcp-access-aud
+      # (secrets.envApiOnly): it exists only after the edge apply. MERGE ORDER: infra live/edge apply,
+      # the owner copies the AUD into the vault, THEN this change (MCP_ENABLED=true without the audience
+      # refuses to boot).
+      - { name: MCP_ENABLED, value: "true" }
+      - { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
   worker:
     replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
     resources: { cpu: 100m, memory: 512Mi }
@@ -115,6 +123,7 @@ secrets:
     BETTER_AUTH_SECRET: rova-prod-better-auth-secret
     PLATFORM_ADMIN_EMAILS: rova-prod-platform-admin-emails   # staff roster: Key Vault, not this public repo
     GITHUB_WEBHOOK_SECRET: rova-prod-github-webhook-secret   # the webhook endpoint answers 503 without it
+    MCP_ACCESS_AUD: rova-prod-mcp-access-aud   # AUD tag of the Access app "rova-prod MCP server" (infra live/edge/mcp_rova_prod.tf); not a credential
   db: rova-prod-db-app
   dbMigrator: rova-prod-db-migrator
   dbWorker: rova-prod-db-worker

@@ -32,12 +32,36 @@ tests:
           value:
             - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-prod-better-auth-secret } }
             - { secretKey: GITHUB_WEBHOOK_SECRET, remoteRef: { key: rova-prod-github-webhook-secret } }
+            - { secretKey: MCP_ACCESS_AUD, remoteRef: { key: rova-prod-mcp-access-aud } }
             - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-prod-platform-admin-emails } }
         documentSelector: { path: metadata.name, value: rova-env-api }
       - equal:
           path: spec.secretStoreRef.name
           value: kv-qnsc-prod
         documentSelector: { path: metadata.name, value: rova-env }
+
+  - it: MCP is on for the api only, the audience comes from the vault and never from plain env
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: MCP_ENABLED, value: "true" }
+        documentSelector: { path: metadata.name, value: api }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
+        documentSelector: { path: metadata.name, value: api }
+      # the worker has no /mcp: it must not carry the switch
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: MCP_ENABLED, value: "true" }
+        documentSelector: { path: metadata.name, value: worker }
+      # the audience is a vault reference on the api-only ExternalSecret, not a literal in the Deployment
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content: { name: MCP_ACCESS_AUD }
+        documentSelector: { path: metadata.name, value: api }
 
   - it: the api talks to pg-rova and valkey-rova, with JIT off and every debug switch absent
     template: templates/deployment.yaml
