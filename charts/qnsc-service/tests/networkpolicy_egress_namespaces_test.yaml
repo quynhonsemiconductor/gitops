@@ -1,0 +1,42 @@
+suite: network policy egress to other namespaces
+# kb calls the shared embedding service in `ai`. The CIDR exclusion cuts pod IPs, so the call needs
+# an explicit allow by namespace and port; the default renders nothing.
+templates:
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+
+tests:
+  - it: renders no extra egress policy by default
+    asserts:
+      - hasDocuments:
+          count: 6
+  - it: renders one allow-egress-<namespace> per entry, by namespace and port only
+    set:
+      networkPolicy.egressNamespaces:
+        - { namespace: ai, ports: [80] }
+        - { namespace: other, ports: [8080, 8443] }
+    documentSelector: { path: metadata.name, value: allow-egress-ai }
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: ai }
+              ports:
+                - { protocol: TCP, port: 80 }
+  - it: a second entry gets its own policy with both ports
+    set:
+      networkPolicy.egressNamespaces:
+        - { namespace: ai, ports: [80] }
+        - { namespace: other, ports: [8080, 8443] }
+    documentSelector: { path: metadata.name, value: allow-egress-other }
+    asserts:
+      - equal:
+          path: spec.egress[0].ports
+          value:
+            - { protocol: TCP, port: 8080 }
+            - { protocol: TCP, port: 8443 }
