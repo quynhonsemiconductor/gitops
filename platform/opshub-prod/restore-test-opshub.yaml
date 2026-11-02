@@ -135,7 +135,7 @@ data:
         requests: { cpu: 250m, memory: 1Gi }
         limits: { memory: 1Gi }
       postgresql:
-        parameters: { timezone: UTC, shared_buffers: 256MB }
+        parameters: { timezone: UTC, shared_buffers: 256MB, io_method: sync }   # see pg-rova.yaml (incident 2026-11-03)
       bootstrap:
         recovery:
           source: pg-opshub
