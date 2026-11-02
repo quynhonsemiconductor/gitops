@@ -226,8 +226,7 @@ spec:
                    pooler in front (`pooling: none` is the on-prem decision; the
                    opshub worker needs a session-level LISTEN connection anyway).
                    Otherwise an explicit `host` wins; the old pgbouncer branch is
-                   gone — the Bitnami image no longer exists upstream and static
-                   pooler credentials were incompatible with RDS IAM auth. */}}
+                   gone — the Bitnami image no longer exists upstream. */}}
             {{- if and $.Values.data $.Values.data.postgres }}
             {{- $pg := $.Values.data.postgres }}
             {{- if eq $pg.mode "cnpg" }}
@@ -240,9 +239,8 @@ spec:
                    DATABASE_HOST used to be emitted ONLY for pgbouncer, so
                    `pooling: none` rendered an application with no database host
                    at all. The pooler was not optional in practice, it was the
-                   only way the connection got configured — and PgBouncer cannot
-                   do IAM auth, nor does its image still exist upstream.
-                   Connecting directly is now a first-class mode. */}}
+                   only way the connection got configured, and its image no
+                   longer exists upstream. Connecting directly is a first-class mode. */}}
             - name: DATABASE_HOST
               value: {{ $pg.host | quote }}
             - name: DATABASE_PORT
@@ -271,11 +269,8 @@ spec:
             - name: DATABASE_SSL_CA
               value: {{ . | quote }}
             {{- end }}
-            {{- /* §8 — under IAM there is NO password to inject. The app mints a
-                   token per connection from its IRSA identity, so this one
-                   variable is the difference between a secret that must exist
-                   and one that must not. Under `password` (on-prem CNPG managed
-                   roles) the credential arrives through the app secret bundle. */}}
+            {{- /* `password` (CNPG managed roles) is the only mode: the credential arrives
+                   through the <product>-db-* Secret. */}}
             {{- with $pg.auth }}
             - name: DATABASE_AUTH
               value: {{ . | quote }}
@@ -346,7 +341,7 @@ spec:
                    the shared one, so its keys win any collision. See
                    externalsecret.yaml for why a product needs this. */}}
             {{- $sb := ($.Values.secrets).serviceBundles | default dict }}
-            {{- if and (include "qnsc.onpremStore" $) (index $sb $name) }}
+            {{- if (index $sb $name) }}
             - secretRef:
                 name: {{ printf "%s-%s-bundle" (include "qnsc.product" $) $name }}
             {{- end }}
@@ -355,7 +350,7 @@ spec:
                    worker reads <product>-db-worker when the product has a worker
                    role (secrets.dbWorker), every other service <product>-db-app.
                    The migrator Job gets its own (job.yaml). */}}
-            {{- if and (include "qnsc.onpremStore" $) $.Values.data.postgres (ne $.Values.data.postgres.mode "none") }}
+            {{- if and $.Values.data.postgres (ne $.Values.data.postgres.mode "none") }}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-db-{{ if and (eq $svc.kind "worker") ($.Values.secrets).dbWorker }}worker{{ else }}app{{ end }}
             {{- end }}

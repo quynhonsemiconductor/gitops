@@ -8,14 +8,13 @@ drift.
 
 A name encodes exactly the dimensions the thing varies on:
 
-  product only          ECR repository      rova-api
+  product only          image repository    rova-api
                         (NO environment — promotion is "the same image gets a
                         second tag", so a per-env repository would mean copying
                         bytes and the attestation would stop covering prod)
   product               namespace           rova        (the cluster IS the env)
   service               Deployment          api         (the namespace IS the product)
-  product + env + svc   IRSA role           qnsc-prod-rova-api
-  env + product + name  secret path         qnsc/prod/rova/database-url
+  env + product + name  Key Vault secret    rova-prod-db-app
 ────────────────────────────────────────────────────────────────────────────────
 */}}
 
@@ -38,18 +37,7 @@ A name encodes exactly the dimensions the thing varies on:
 {{- index . 1 -}}
 {{- end -}}
 
-{{/* IRSA role name: qnsc-prod-rova-api. Must be globally unique in the account. */}}
-{{- define "qnsc.roleName" -}}
-{{- $root := index . 0 -}}
-{{- printf "qnsc-%s-%s-%s" (include "qnsc.env" $root) (include "qnsc.product" $root) (index . 1) -}}
-{{- end -}}
-
-{{/* Secrets Manager prefix: qnsc/prod/rova — a path, so one IAM wildcard scopes it (§8). */}}
-{{- define "qnsc.secretPrefix" -}}
-{{- printf "qnsc/%s/%s" (include "qnsc.env" .) (include "qnsc.product" .) -}}
-{{- end -}}
-
-{{/* ECR image reference. Deliberately NO env — see the header. */}}
+{{/* Image reference. Deliberately NO env — see the header. */}}
 {{- define "qnsc.image" -}}
 {{- $root := index . 0 -}}
 {{- $svc := index . 1 -}}
@@ -233,11 +221,9 @@ used exclusively by the Job may be hooks:
 
 Argo's built-in health check holds wave 0 until each ExternalSecret is Ready.
 Deliberately NOT hooked (shared with running workloads): the api/worker
-ServiceAccounts (new UID -> bound tokens invalidated), the SecretStore (the
-<product>-app ExternalSecret would go NotReady each sync), the shared
-<product>-db-ca (its Secret is mounted by running Deployments). AWS-era gap: the
-SecretStore is a normal resource, so a never-synced AWS namespace has no store at
-PreSync; on-prem uses a platform ClusterSecretStore and is unaffected.
+ServiceAccounts (new UID -> bound tokens invalidated) and the shared
+<product>-db-ca (its Secret is mounted by running Deployments). The chart renders
+no SecretStore: every ExternalSecret reads the platform's ClusterSecretStore.
 */}}
 {{- define "qnsc.presyncPrereq" -}}
 argocd.argoproj.io/hook: PreSync
@@ -246,23 +232,12 @@ argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 {{- end }}
 
 {{/*
-ON-PREM SECRET SHAPE (ONPREM-PLAN §5.6). `secrets.clusterSecretStore` set -> the
-ExternalSecrets read that platform-owned ClusterSecretStore (kv-qnsc-<env>) and the
-chart renders NO SecretStore of its own; unset -> the AWS shape (per-namespace
-SecretStore on IRSA, find+rewrite). Returns "true" or "" for use as a condition.
+Every ExternalSecret reads the platform-owned ClusterSecretStore (kv-qnsc-<env>); the chart renders no
+SecretStore of its own. `secrets.clusterSecretStore` is required (the schema says so too).
 */}}
-{{- define "qnsc.onpremStore" -}}
-{{- if and .Values.secrets .Values.secrets.clusterSecretStore -}}true{{- end -}}
-{{- end }}
-
 {{- define "qnsc.storeRef" -}}
-{{- if include "qnsc.onpremStore" . -}}
-name: {{ .Values.secrets.clusterSecretStore }}
+name: {{ required "secrets.clusterSecretStore is required (the platform ClusterSecretStore, e.g. kv-qnsc-dev)" (.Values.secrets).clusterSecretStore }}
 kind: ClusterSecretStore
-{{- else -}}
-name: {{ include "qnsc.product" . }}
-kind: SecretStore
-{{- end -}}
 {{- end }}
 
 {{/* Remote key per role (ONPREM-PLAN §6.3, §7.1). "app" -> secrets.bundle
@@ -287,11 +262,10 @@ kind: SecretStore
 {{- end }}
 
 {{/*
-PER-VALUE APP SECRETS (ON-PREM, chart 0.14.0). `secrets.env` and `secrets.envApiOnly` are maps
+PER-VALUE APP SECRETS (chart 0.14.0). `secrets.env` and `secrets.envApiOnly` are maps
 ENV_VAR_NAME: <Key Vault secret name>, one Key Vault secret per VALUE (the JSON `secrets.bundle`
 is deprecated). Returns "true" when either map is non-empty, and fails the render on the
 combinations that cannot work:
-  - no secrets.clusterSecretStore (per-value secrets are the on-prem shape only)
   - secrets.bundle set at the same time: a bundle's keys are opaque to the chart, so it cannot tell
     whether the two overlap; a product uses ONE mechanism
   - the same variable in secrets.env and secrets.envApiOnly
@@ -301,7 +275,6 @@ combinations that cannot work:
 {{- $env := $sec.env | default dict -}}
 {{- $api := $sec.envApiOnly | default dict -}}
 {{- if or $env $api -}}
-{{- if not (include "qnsc.onpremStore" .) -}}{{- fail "secrets.env / secrets.envApiOnly require secrets.clusterSecretStore (the on-prem secret shape)" -}}{{- end -}}
 {{- if $sec.bundle -}}{{- fail "secrets.bundle is deprecated and cannot be combined with secrets.env / secrets.envApiOnly: move every key of the bundle to secrets.env (one Key Vault secret per value) and remove secrets.bundle" -}}{{- end -}}
 {{- range $k, $_ := $api -}}{{- if hasKey $env $k -}}{{- fail (printf "%s is set in both secrets.env and secrets.envApiOnly" $k) -}}{{- end -}}{{- end -}}
 true

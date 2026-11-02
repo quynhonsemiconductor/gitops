@@ -91,23 +91,17 @@ defaults:
 # products name the same concept seven ways and no dashboard is portable.
 otel:
   # ONPREM-PLAN §12 — one Alloy in `platform` (k8s-monitoring chart) receives
-  # OTLP on 4318 (HTTP). The EKS two-tier collector (alloy-gateway:4317) is gone.
+  # OTLP on 4318 (HTTP). The old two-tier collector (alloy-gateway:4317) is gone.
   # The k8s-monitoring release names the service; if it differs from this
   # default, base values override it (M-2/M-3).
   endpoint: http://alloy-receiver.platform.svc:4318
-accountId: "608983206583"
-region: ap-southeast-1
 # Third-party images. Mirrors versions.yaml at the repo root — §2b keeps component
 # versions in one place so the quarterly compatibility check is one diff.
 images: {}
-# ── On-prem toggle (ONPREM-PLAN §5.6) ────────────────────────────────────────
+# ── NetworkPolicy toggle (ONPREM-PLAN §5.6, §9) ──────────────────────────────
 #
-# Defaults to TRUE so the existing (EKS-era) values keep rendering exactly what
-# they rendered before this key existed. An on-prem product sets it false:
-#
-#   networkPolicy.enabled: false — per-namespace default-deny is §9 work with its
-#     own trigger; on one node, the ONE NetworkPolicy that matters is the
-#     `data-prod` one, which lives in gitops/platform, not in this chart.
+# Defaults to TRUE: default-deny ingress and egress per product namespace. A product may set
+# `networkPolicy.enabled: false` only with a reason in its values file.
 #
 # There is no httpRoute toggle: the HTTPRoute/GRPCRoute templates are DELETED
 # (2026-10-21). The Gateway API is gone from the platform — no Gateway on-prem,
@@ -129,8 +123,8 @@ secrets:
   workerOnly: {}
   # store / remoteKey / migrator: see below
 
-# ONPREM-PLAN §5.6 — on-prem selects its secret source by setting
-# secrets.clusterSecretStore; unset = the AWS shape. On-prem values:
+# ONPREM-PLAN §5.6 — a product selects its secret source by setting
+# secrets.clusterSecretStore (required). Values:
 #   secrets:
 #     clusterSecretStore: kv-qnsc-<env>
 #     bundle: <product>-<env>-app        # DEPRECATED. Key Vault secret (JSON) -> <product>-app. Use env.
@@ -140,7 +134,6 @@ secrets:
 #     dbWorker: <product>-<env>-db-worker  # optional -> <product>-db-worker (worker only)
 #     dbMigrator: <product>-<env>-db-migrator  # -> <product>-migrator (PreSync Job only)
 #     serviceBundles: { api: <product>-<env>-api }   # optional per-service split
-# bundle and db default to those names when omitted. serviceBundles is on-prem
-# only: one extra ExternalSecret per named service, attached by envFrom AFTER
+# bundle and db default to those names when omitted. serviceBundles: one extra ExternalSecret per named service, attached by envFrom AFTER
 # the shared bundle (later wins) — for products whose worker env schema
 # refuses api-only secrets (opshub) and vice versa (GRAPH_*).
