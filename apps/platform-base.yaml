@@ -28,6 +28,10 @@ spec:
       targetRevision: main
       path: platform/networkpolicy
       directory: { include: "*.yaml" }
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/storage
+      directory: { include: "*.yaml" }
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true]

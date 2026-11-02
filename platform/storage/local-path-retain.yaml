@@ -1,0 +1,21 @@
+# ── local-path-retain: the StorageClass for data that must outlive its claim (audit G-03) ──
+#
+# k3s's built-in `local-path` has reclaimPolicy Delete: deleting a PVC (or the CNPG Cluster that
+# owns it, or an Application that was pruned) deletes the PV and the data directory on the node.
+# This class is the same provisioner with reclaimPolicy Retain: the PV goes to `Released` and the
+# directory stays on disk until a human deletes both on purpose.
+#
+# Used by pg-rova (storage and walStorage). It only affects PVCs created AFTER it exists; PVs that
+# already exist keep their own policy, patched by hand (runbooks/pv-retain.md).
+# valkey-rova has no PVC (emptyDir cache, no persistence), so there is nothing to retain there.
+#
+# WaitForFirstConsumer is what local-path itself uses (a local volume binds to the node the pod
+# lands on); allowVolumeExpansion stays off because local-path cannot expand volumes.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: false

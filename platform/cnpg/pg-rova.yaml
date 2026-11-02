@@ -31,10 +31,16 @@ spec:
     kind: ImageCatalog
     name: postgresql
     major: 18
+  # local-path-retain (platform/storage): PVs of NEW PVCs survive the deletion of the PVC or the
+  # Cluster. The live PVCs were created on `local-path` (reclaimPolicy Delete) and are NOT
+  # recreated: CNPG leaves existing PVCs alone, so their PVs are set to Retain once by hand
+  # (runbooks/pv-retain.md). A rebuilt cluster picks this class up.
   storage:
     size: 20Gi
+    storageClass: local-path-retain
   walStorage:
     size: 8Gi
+    storageClass: local-path-retain
   resources:
     requests: { cpu: 500m, memory: 2Gi }
     limits: { memory: 2Gi }
