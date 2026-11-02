@@ -12,11 +12,11 @@ values:
   # touches, and the values files above carry reasoning transcribed from the live
   # OpenTofu. CI writes only this one.
   - ../../../values/rova/tags.prod.yaml
-# base + tags + `env: prod` ONLY: the EKS-era shape these invariants were written for
-# (what values/rova/prod.yaml used to contribute was exactly `env: prod`). The real
+# base + tags + `env: prod` + the store ONLY: the shape these invariants were written for. The real
 # on-prem prod values are asserted in rova_prod_values_test.yaml.
 set:
   env: prod
+  secrets.clusterSecretStore: kv-qnsc-prod
 
 tests:
   # ── §15d ────────────────────────────────────────────────────────────────────

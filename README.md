@@ -74,14 +74,13 @@ An `if eq .Values.env "prod"` in a template duplicates a merge Helm already did.
 crosses the repository boundary, so nothing can drift.
 
 ```
-ECR repository    rova-api                      product + service. NO environment —
+Image repository  rova-api                      product + service. NO environment —
                                                 promotion is "the same image gets a
                                                 second tag", and a per-env repository
                                                 would mean copying bytes
 namespace         rova                          the cluster IS the environment
 Deployment        api                           the namespace IS the product
-IRSA role         qnsc-prod-rova-api
-secret path       qnsc/prod/rova/database-url   a path, so one IAM wildcard scopes it
+Key Vault secret  rova-prod-db-app              one plain-string secret per value, per env
 ```
 
 Exactly one fact is declared in both repositories — `size` — and CI fails if the two

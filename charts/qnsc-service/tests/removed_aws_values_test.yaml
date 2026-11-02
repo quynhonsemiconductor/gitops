@@ -1,0 +1,29 @@
+suite: AWS-era values are rejected
+# 0.17.0 removed the IAM/IRSA/ECR/Secrets Manager shape. A values file that still carries it must FAIL
+# at the schema, not render something half-right.
+templates:
+  - templates/serviceaccount.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+
+tests:
+  - it: rejects data.postgres.auth iam
+    set:
+      data.postgres.auth: iam
+    asserts:
+      - failedTemplate:
+          errorPattern: "auth"
+  - it: rejects accountId and region
+    set:
+      accountId: "123456789012"
+    asserts:
+      - failedTemplate:
+          errorPattern: "accountId"
+  - it: rejects pooling rdsproxy
+    set:
+      data.postgres.pooling: rdsproxy
+    asserts:
+      - failedTemplate:
+          errorPattern: "pooling"

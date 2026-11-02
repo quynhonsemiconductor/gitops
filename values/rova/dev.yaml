@@ -37,8 +37,7 @@ data:
     # TLS verify-full: the server CA arrives as the rova-db-ca Secret (via the
     # cnpg-ca-dev store), the chart mounts it and exports DATABASE_SSL_CA; the
     # app connects to pg-dev-rw.data-dev.svc — a SAN on CNPG's server cert.
-    # The EKS-era values pointed at the RDS endpoint with `auth: iam`; on-prem
-    # the credential is a CNPG managed-role password (secrets.db / dbWorker / dbMigrator).
+    # The credential is a CNPG managed-role password (secrets.db / dbWorker / dbMigrator).
     mode: cnpg
     cluster: pg-dev
     namespace: data-dev

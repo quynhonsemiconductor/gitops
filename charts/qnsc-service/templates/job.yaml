@@ -90,18 +90,11 @@ spec:
                    role. */}}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-migrator
-                {{- /* ── OPTIONAL, BECAUSE UNDER IAM AUTH IT IS LEGITIMATELY EMPTY ──
-                       §7c gives the migrator its own secret PATH, and under
-                       `auth: iam` there is nothing to put in it: the role is a member
-                       of `rds_iam` and has no password. ESO finds zero secrets, so it
-                       reports SecretSynced and creates NO Secret at all — and a
-                       required secretRef then fails with
-
-                         Error: secret "rova-migrator" not found
-
-                       while the ExternalSecret beside it reports Ready=True. Marking
-                       it optional is what lets "no credential" be a valid state
-                       rather than a broken one. */}}
+                {{- /* STILL `optional: true`, but the reason is gone: it was the IAM-auth era,
+                       when the migrator legitimately had no password. Under `password` a
+                       missing Secret should fail the Job with a clear error. Making it
+                       required changes every product's render, so it is its own change
+                       (audit G2), not part of dropping the AWS branches. */}}
                 optional: true
           volumeMounts:
             - name: tmp
@@ -117,8 +110,7 @@ spec:
           env:
             {{- /* ── THE MIGRATOR HAD NO WAY TO FIND THE DATABASE ────────────────
                    This Job emitted no DATABASE_* at all, so the only route to a host
-                   was the secret above — which is empty under IAM auth. It therefore
-                   could not connect by any means.
+                   was the secret above. It therefore could not connect by any means.
                    DATABASE_USER is the MIGRATOR role, never the application's: §5d
                    gives the app statement_timeout = 30s, which would kill the 600s
                    migration this Job exists to run, and DDL rights have no business

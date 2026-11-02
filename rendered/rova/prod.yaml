@@ -53,7 +53,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 169.254.169.254/32   # IMDS — pods use IRSA, never the node role
+              - 169.254.169.254/32   # IMDS — pods never use a node role
               - 10.42.0.0/16
               - 10.43.0.0/16
 
@@ -120,7 +120,6 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-api
 automountServiceAccountToken: false
 
 ---
@@ -141,7 +140,6 @@ metadata:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-migrator
 automountServiceAccountToken: false
 
 ---
@@ -159,7 +157,6 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-worker
 automountServiceAccountToken: false
 
 ---

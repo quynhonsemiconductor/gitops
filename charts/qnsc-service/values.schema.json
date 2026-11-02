@@ -31,13 +31,6 @@
       ],
       "description": "A CRITICALITY tier, not a resource size. rova is L and the smallest workload in the estate (\u00a75)."
     },
-    "accountId": {
-      "type": "string",
-      "pattern": "^[0-9]{12}$"
-    },
-    "region": {
-      "type": "string"
-    },
     "presets": {
       "type": "object"
     },
@@ -68,7 +61,6 @@
             },
             "pooling": {
               "enum": [
-                "rdsproxy",
                 "none"
               ]
             },
@@ -87,14 +79,13 @@
             },
             "auth": {
               "enum": [
-                "password",
-                "iam"
+                "password"
               ],
-              "description": "Credential mechanism. `iam` mints a short-lived token per connection and needs no stored password \u2014 which is the only mode an `rds_iam` role can accept. `password` expects DATABASE_URL or DATABASE_PASSWORD in the product secret."
+              "description": "Credential mechanism. `password`: the credential is a CNPG managed-role password synced from Key Vault (secrets.db / dbWorker / dbMigrator). Token-per-connection (`iam`) was removed with the AWS estate."
             },
             "host": {
               "type": "string",
-              "description": "RDS endpoint. NOT a secret \u2014 an endpoint is not a credential, and keeping it in values rather than Secrets Manager is what lets `auth: iam` store no secret at all."
+              "description": "Database host. NOT a secret \u2014 an endpoint is not a credential."
             },
             "name": {
               "type": "string",
@@ -414,10 +405,6 @@
     "images": {
       "type": "object"
     },
-    "secretsReaderServiceAccount": {
-      "type": "string",
-      "description": "ServiceAccount the namespace's SecretStore authenticates as. Defaults to `api`; must be an account this chart creates and whose IRSA role reads the product's secret prefix."
-    },
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
@@ -449,9 +436,10 @@
     "secrets": {
       "type": "object",
       "additionalProperties": false,
-      "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db/dbWorker/dbMigrator: on-prem ExternalSecret source (ONPREM-PLAN \u00a75.6); unset clusterSecretStore = AWS shape.",
+      "description": "workerOnly: Graph cert mount. clusterSecretStore/bundle/db/dbWorker/dbMigrator: the ExternalSecret source (ONPREM-PLAN \u00a75.6).",
+      "required": ["clusterSecretStore"],
       "properties": {
-        "clusterSecretStore": { "type": "string", "minLength": 1, "description": "On-prem: the platform ClusterSecretStore (kv-qnsc-<env>) the ExternalSecrets read. Setting it selects the on-prem shape; unset = AWS shape." },
+        "clusterSecretStore": { "type": "string", "minLength": 1, "description": "The platform ClusterSecretStore (kv-qnsc-<env>) every ExternalSecret reads. Required: the chart renders no SecretStore of its own." },
         "bundle": { "type": "string", "description": "DEPRECATED (use env). Key Vault secret (JSON object) behind <product>-app. Default <product>-<env>-app. Cannot be combined with env / envApiOnly." },
         "env": {
           "type": ["object", "null"],
@@ -475,7 +463,7 @@
             "api": { "type": "string", "minLength": 1, "description": "Key Vault secret (JSON) rendered as <product>-api-bundle and attached by envFrom to the api ONLY, after the shared bundle (later wins). For products whose worker env schema refuses api-only secrets (opshub: BETTER_AUTH_SECRET, ENTRA_CLIENT_SECRET, EDGE_CLIENT_IP_SECRET) and vice versa (GRAPH_*)." },
             "worker": { "type": "string", "minLength": 1, "description": "Same, for the worker: <product>-worker-bundle." }
           },
-          "description": "ON-PREM SHAPE ONLY (secrets.clusterSecretStore set); renders nothing on the AWS shape. The shared `bundle` keeps what both services genuinely share."
+          "description": "One extra ExternalSecret per named service. The shared `bundle` keeps what both services genuinely share."
         },
         "workerOnly": {
           "type": "object",
