@@ -111,3 +111,13 @@ tests:
       - equal:
           path: spec.policyTypes
           value: [Ingress, Egress]
+
+  - it: product egress excludes the pod/Service CIDRs and all of RFC1918
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-egress-external }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].ipBlock
+          value:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32, 10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
