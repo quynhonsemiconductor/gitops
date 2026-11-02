@@ -60,6 +60,32 @@ run "suffix look-alike path fails" 1 "no current approval"
 newcase botempty "[]"
 run "empty file list fails closed" 1 "no current approval"
 
+# 3e. the bump action re-renders in the same commit: rendered/<product>/dev.yaml passes ONLY with that product's tags.dev.yaml
+newcase rtags "$(files values/rova/tags.dev.yaml rendered/rova/dev.yaml)"
+run "tags + rendered, same product, passes" 0 "matching rendered"
+newcase rtags2 "$(files values/rova/tags.dev.yaml values/opshub/tags.dev.yaml rendered/rova/dev.yaml rendered/opshub/dev.yaml)"
+run "two products, each with its own rendered file, passes" 0 "matching rendered"
+newcase ralone "$(files rendered/rova/dev.yaml)"
+run "rendered alone fails" 1 "no current approval"
+newcase rother "$(files values/rova/tags.dev.yaml rendered/opshub/dev.yaml)"
+run "rendered of ANOTHER product fails" 1 "no current approval"
+newcase rprod "$(files values/rova/tags.dev.yaml rendered/rova/prod.yaml)"
+run "prod rendered file fails even with a dev tags file" 1 "no current approval"
+newcase rprodtags "$(files values/rova/tags.prod.yaml rendered/rova/prod.yaml)"
+run "prod tags + prod rendered fails" 1 "no current approval"
+newcase rnested "$(files values/rova/tags.dev.yaml rendered/rova/x/dev.yaml)"
+run "nested rendered look-alike fails" 1 "no current approval"
+newcase rsuffix "$(files values/rova/tags.dev.yaml rendered/rova/dev.yaml.bak)"
+run "suffix rendered look-alike fails" 1 "no current approval"
+newcase rplus "$(files values/rova/tags.dev.yaml rendered/rova/dev.yaml charts/qnsc-service/Chart.yaml)"
+run "tags + rendered + a chart file fails" 1 "no current approval"
+newcase rren '[{"filename":"rendered/rova/dev.yaml","previous_filename":"rendered/rova/old.yaml"},{"filename":"values/rova/tags.dev.yaml"}]'
+run "a rename out of an unlisted path fails" 1 "no current approval"
+# a human approval still rescues an out-of-scope bot PR that includes rendered files
+newcase rappr "$(files values/rova/tags.prod.yaml rendered/rova/prod.yaml)" "$(reviews "$(rev alice APPROVED aaa111 2026-11-02T10:00:00Z)")"
+perm alice write
+run "prod render + prod tags pass with a writer's approval" 0 "approved by alice"
+
 # 4. approval by write user on head passes
 newcase appr "$(files values/rova/tags.prod.yaml)" "$(reviews "$(rev alice APPROVED aaa111 2026-11-02T10:00:00Z)")"
 perm alice write
