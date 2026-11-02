@@ -41,3 +41,9 @@ noreply-kb-dev@qnsc\.vn
 # exclusion in the chart: documented upstream defaults, not this site's topology.
 10\.42\.0\.0
 10\.43\.0\.0
+# The three RFC1918 network addresses, as NetworkPolicy egress exclusions in the product values
+# (a product pod must not reach the LAN or the node): the standard private ranges, not this
+# site's addressing plan.
+10\.0\.0\.0
+172\.16\.0\.0
+192\.168\.0\.0

@@ -11,10 +11,17 @@
 env: dev
 size: s
 
-# §5.6/§6.2 — the chart's per-namespace default-deny set is OFF on-prem; the
-# one NetworkPolicy that matters (data-prod) lives in gitops/platform.
+# Default-deny ingress AND egress, ON for dev as for prod (audit G-05, audit 2026-11-01 #2). What the
+# chart renders: DNS, egress to `platform` (OTLP at alloy-receiver:4318, kb's clamd) and to this
+# product's data namespace (Postgres 5432, Valkey 6379), plus the internet minus the CIDRs below,
+# and ingress to an exposed service only from `platform` (cloudflared, Alloy). The excluded
+# CIDRs are the k3s pod/Service ranges and ALL of RFC1918: the LAN, the hypervisor, PBS, the router
+# and the node itself (kubelet, k3s API) are unreachable from a product pod; R2, Entra, Graph and GHCR
+# are public addresses and stay reachable. (A pod reaches another namespace by its pod IP, which is
+# inside 10.42.0.0/16: that is what the exclusion closes.)
 networkPolicy:
-  enabled: false
+  enabled: true
+  clusterCidrs: [10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 
 data:
   postgres:
