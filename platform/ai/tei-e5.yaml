@@ -1,0 +1,347 @@
+# ── tei-e5 — the shared e5 embedding service (ONPREM-PLAN §9.1, AI-1) ────────
+#
+# Hugging Face text-embeddings-inference serving
+# `intfloat/multilingual-e5-large-instruct` — THE SAME MODEL qnsc-kb embeds
+# with in-process today, so switching KB to this Service re-embeds nothing.
+# Model and revision are pinned; the model identity is stored with the data and
+# a change is a planned migration (§9.1 rule 2).
+#
+# ── THE IMAGE ───────────────────────────────────────────────────────────────
+# ghcr.io/huggingface/text-embeddings-inference:120-1.9.4@sha256:bd8e…
+# The `120-` line is the CUDA 12.9 build for Blackwell sm_120 (RTX 5060 Ti);
+# upstream marks it EXPERIMENTAL. Tag and index digest verified on GHCR
+# 2026-10-31. `120-1.9` and `120-1.9.4` currently resolve to the same digest —
+# the digest is the pin, the tag is documentation.
+#
+# ── THE THREE THINGS THAT DECIDE VECTOR PARITY ──────────────────────────────
+# 1. dtype float32. KB writes fp32 vectors today (ONNX fp32 export, ~2.3 GB);
+#    int8 quantisation lost the parity gate (cosine 0.972–0.987) in KB's own
+#    tests, and fp16-on-GPU-vs-fp32-on-CPU is unproven. fp32 on the GPU is the
+#    only dtype that does not need a re-embedding decision. Cost: ~2.24 GB of
+#    VRAM for the 560M-parameter model (see the budget in README.md).
+# 2. pooling mean — KB's EMBEDDING_ONNX_POOLING default. TEI would otherwise
+#    read 1_Pooling/config.json; being explicit means a model-card change
+#    cannot silently move the vectors.
+# 3. NO PROMPT. TEI never decorates the input: the client sends the exact
+#    string it wants embedded. KB's instruct convention is applied on the kb
+#    side (`Instruct: …\nQuery: …` for queries, raw text for passages) and must
+#    be sent AS TEXT to this API. `--default-prompt` stays unset.
+#
+# ── EGRESS: PRE-PULL, THEN DENY ─────────────────────────────────────────────
+# The model is seeded into the PVC by tei-e5-model-pull.yaml before the
+# Deployment starts; this pod then runs with HF_HUB_OFFLINE=1 and a
+# NetworkPolicy that allows DNS only. Rationale: a NetworkPolicy cannot name
+# huggingface.co (it matches IPs), so "allow HF" in policy is really "allow the
+# whole internet on 443"; the seed Job is the one short-lived pod that gets
+# that egress, and it is suspended when not in use.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tei-e5-model-cache
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5
+    app.kubernetes.io/part-of: ai
+spec:
+  # local-path (the k3s default, the AI node's data disk): the pod is pinned to
+  # the ai pool, so the volume is provisioned on that node. RWO is enough —
+  # Recreate strategy means one consumer at a time.
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tei-e5
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5
+    app.kubernetes.io/component: gpu
+    app.kubernetes.io/part-of: ai
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: the PVC is RWO and a second pod would reload
+  # ~2.3 GB of weights for a rollout that the client (KB, with its keyword
+  # fallback) already tolerates as a short blip.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5
+      app.kubernetes.io/component: gpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-e5
+        app.kubernetes.io/component: gpu
+        app.kubernetes.io/part-of: ai
+    spec:
+      # The whole AI node is tainted; this toleration is what allows scheduling
+      # there at all. The nodeSelector keeps it off the CPU node.
+      nodeSelector:
+        qnsc.vn/pool: ai
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      runtimeClassName: nvidia
+      priorityClassName: ai
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: tei-e5
+          image: ghcr.io/huggingface/text-embeddings-inference:120-1.9.4@sha256:bd8e5b1954146f7fe8590b64b959bc194433c6c38c036592a84d736841ca9400
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model-id=intfloat/multilingual-e5-large-instruct
+            - --revision=274baa43b0e13e37fafa6428dbc7938e62e5c439
+            - --dtype=float32
+            - --pooling=mean
+            - --max-client-batch-size=32
+            - --max-batch-tokens=16384
+            - --auto-truncate
+            - --huggingface-hub-cache=/data/hub
+            # TEI defaults to 3000; 80 keeps the Service URL plain.
+            - --port=80
+          env:
+            # The cache is seeded by tei-e5-model-pull.yaml. Offline mode turns
+            # a missing/incomplete cache into a startup error instead of a
+            # silent download attempt that the egress policy would block.
+            - { name: HF_HUB_OFFLINE, value: "1" }
+            - { name: HF_HUB_DISABLE_TELEMETRY, value: "1" }
+          ports:
+            - { name: http, containerPort: 80, protocol: TCP }
+            - { name: metrics, containerPort: 9000, protocol: TCP }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60          # 10 min: model load from local disk
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+              nvidia.com/gpu: "1"
+            limits:
+              memory: 4Gi
+              nvidia.com/gpu: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: model-cache, mountPath: /data }
+            # The router writes its UDS under /tmp; keep it off the read-only
+            # root path in case the image later sets one.
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: tei-e5-model-cache
+        - name: tmp
+          emptyDir: {}
+---
+# ── The CPU fallback (ONPREM-PLAN §9.1 phase A) ─────────────────────────────
+# Off by default: replicas 0. It exists so a GPU problem days after the KB move
+# is two replica counts plus one labelless Service (same DNS name), not a new
+# manifest written under pressure. It must run on the NON-AI node: local-path
+# volumes are node-local, so it has its own cache PVC, and the affinity keeps
+# it off the pool (whose taint it does not tolerate anyway).
+#
+# ENABLING IT: scale tei-e5 to 0 and this to 1. The Service selects on
+# app.kubernetes.io/name only, so exactly one variant must ever be up — two
+# would split traffic between fp32 GPU and fp32 CPU, which is not a parity
+# failure but is a load-balancing surprise nobody needs.
+#
+# The CPU image is the same 1.9.4 release on the CPU line (digest verified
+# 2026-10-31). fp32 is the fallback's whole point, so no dtype change.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tei-e5-model-cache-cpu
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5
+    app.kubernetes.io/part-of: ai
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tei-e5-cpu
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5
+    app.kubernetes.io/component: cpu
+    app.kubernetes.io/part-of: ai
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5
+      app.kubernetes.io/component: cpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tei-e5
+        app.kubernetes.io/component: cpu
+        app.kubernetes.io/part-of: ai
+    spec:
+      priorityClassName: ai
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            # Anything that is NOT the AI pool. The pool label exists on
+            # the GPU node; the CPU node has none. Two terms (OR): DoesNotExist is the
+            # explicit "no pool label" case, NotIn keeps the pod off a pool
+            # node even if a future CPU node carries a different pool label.
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: qnsc.vn/pool
+                    operator: DoesNotExist
+              - matchExpressions:
+                  - key: qnsc.vn/pool
+                    operator: NotIn
+                    values: [ai]
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: tei-e5-cpu
+          image: ghcr.io/huggingface/text-embeddings-inference:1.9.4@sha256:02864b69c15e4f247b8306b0be8801d6800fed97702185fb19d98170e956fab1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model-id=intfloat/multilingual-e5-large-instruct
+            - --revision=274baa43b0e13e37fafa6428dbc7938e62e5c439
+            - --dtype=float32
+            - --pooling=mean
+            - --max-client-batch-size=32
+            # CPU: cap the merged batch so one request cannot monopolise the
+            # node's CPU ahead of rova prod (§5.7).
+            - --max-batch-tokens=4096
+            - --auto-truncate
+            - --huggingface-hub-cache=/data/hub
+            - --port=80
+          env:
+            - { name: HF_HUB_OFFLINE, value: "1" }
+            - { name: HF_HUB_DISABLE_TELEMETRY, value: "1" }
+          ports:
+            - { name: http, containerPort: 80, protocol: TCP }
+            - { name: metrics, containerPort: 9000, protocol: TCP }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 90          # CPU load is slower than the GPU
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: model-cache, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: tei-e5-model-cache-cpu
+        - name: tmp
+          emptyDir: {}
+---
+# ── Service: tei-e5.ai.svc, ClusterIP only ──────────────────────────────────
+# The selector carries the app name ONLY, so it follows whichever variant is
+# running (see the CPU fallback note above). No ExternalName, no Gateway
+# route, never reachable from outside the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tei-e5
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-e5
+    app.kubernetes.io/part-of: ai
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: tei-e5
+  ports:
+    - { name: http, port: 80, targetPort: http, protocol: TCP }
+---
+# ── NetworkPolicy: clients ──────────────────────────────────────────────────
+# Ingress only from the product namespaces that consume embeddings (kb-dev
+# today, kb-prod when it exists) and from the parity Job on the same node.
+# No other namespace in the cluster can call the embedding API — including
+# rova-dev, which has no embedding client.
+#
+# The kubelet's readiness/liveness probes come from the node itself and are not
+# subject to pod-level NetworkPolicy in k3s's controller, so they keep working
+# while everything else is denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-e5-clients
+  namespace: ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [kb-dev, kb-prod]
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tei-e5-parity
+      ports:
+        - { protocol: TCP, port: 80 }
+---
+# ── NetworkPolicy: the service's own egress is DNS only ─────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-e5-egress
+  namespace: ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-e5
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

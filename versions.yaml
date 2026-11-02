@@ -125,6 +125,27 @@ images:
   # §12 collector binary, digest-pinned (Docker Hub API, verified 2026-11-01).
   alloy: "docker.io/grafana/alloy:v1.13.0@sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221"
 
+  # §9.1 — text-embeddings-inference. The `120-` line is the CUDA 12.9 /
+  # Blackwell sm_120 build (RTX 5060 Ti), marked EXPERIMENTAL upstream; the
+  # plain tag is the CPU line used by the phase-A fallback. Both index digests
+  # verified anonymously on GHCR 2026-10-31 (tags 120-1.9.4 and 1.9.4).
+  tei-gpu: "ghcr.io/huggingface/text-embeddings-inference:120-1.9.4@sha256:bd8e5b1954146f7fe8590b64b959bc194433c6c38c036592a84d736841ca9400"
+  tei-cpu: "ghcr.io/huggingface/text-embeddings-inference:1.9.4@sha256:02864b69c15e4f247b8306b0be8801d6800fed97702185fb19d98170e956fab1"
+
+# Model pins for the AI services (§9.1). Model identity is part of the data:
+# changing a line here changes the vector space and is a planned migration.
+models:
+  embedding:
+    id: intfloat/multilingual-e5-large-instruct
+    revision: "274baa43b0e13e37fafa6428dbc7938e62e5c439"
+    dimension: 1024
+    dtype: float32
+    pooling: mean
+  reranker:
+    id: BAAI/bge-reranker-v2-m3
+    revision: "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+    dtype: float32
+
 # ── Toolchain, for CI and for humans ─────────────────────────────────────────
 tools:
   # 4.3.0, not 3.18. gitops/.github/workflows/chart-ci.yaml pins 4.3.0, and the
