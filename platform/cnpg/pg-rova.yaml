@@ -25,10 +25,9 @@ metadata:
   name: pg-rova
   namespace: data-prod
 spec:
-  # TEMPORARILY 2 while the volumes move to local-path-retain (runbooks/pg-rova-storage-move.md): the new
-  # instance pg-rova-2 gets retain PVCs, is promoted, then the follow-up PR returns this to 1 and CNPG
-  # removes the old pg-rova-1. Do not leave it at 2: two instances on one node are a migration tool, not HA.
-  instances: 2
+  # One instance again after the move to local-path-retain (runbooks/pg-rova-storage-move.md, 2026-11-03):
+  # pg-rova-2 is primary on retain PVCs; CNPG removes the non-primary pod, the old pg-rova-1.
+  instances: 1
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ImageCatalog
