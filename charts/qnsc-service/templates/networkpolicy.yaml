@@ -100,6 +100,28 @@ spec:
         - { protocol: TCP, port: 5432 }
         - { protocol: TCP, port: 6379 }
 {{- end }}
+{{- range .Values.networkPolicy.egressNamespaces }}
+---
+{{- /* A product that calls a service in ANOTHER namespace (kb -> tei-e5 in `ai`) names it here.
+       The CIDR exclusion above also cuts the way to that namespace's pods, so without an entry the
+       call times out. By namespace and port, nothing else; the destination namespace still has to
+       admit this one in ITS ingress policy (tei-e5-clients admits kb-dev/kb-prod). */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-{{ .namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .namespace | quote }} }
+      ports:
+        {{- range .ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}

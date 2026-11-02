@@ -1,0 +1,71 @@
+suite: migrator job name (tag vs digest)
+# The Job name changes per image so a PreSync hook never reuses an immutable pod
+# template. Digest-only values (what release promotion writes) must still render.
+templates:
+  - templates/job.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+tests:
+  - it: names the Job from the tag when only a tag is set
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            tag: sha-aaaaaaaaaaaa
+        worker:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-worker
+            tag: sha-aaaaaaaaaaaa
+        migrator:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-migrator
+            tag: sha-aaaaaaaaaaaa
+    asserts:
+      - equal:
+          path: metadata.name
+          value: migrator-sha-aaaaaaaaaaaa
+
+  - it: names the Job from the first 12 hex of a digest when only a digest is set (no tag at all)
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+        worker:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-worker
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+        migrator:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-migrator
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+    asserts:
+      - equal:
+          path: metadata.name
+          value: migrator-aaaa0000bbbb
+
+  - it: digest wins over the tag, matching the image reference
+    set:
+      services:
+        api:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-api
+            tag: v0.8.0
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+        worker:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-worker
+            tag: v0.8.0
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+        migrator:
+          image:
+            repo: ghcr.io/quynhonsemiconductor/rova-migrator
+            tag: v0.8.0
+            digest: sha256:aaaa0000bbbb1111cccc2222dddd3333eeee4444ffff5555aaaa6666bbbb7777
+    asserts:
+      - equal:
+          path: metadata.name
+          value: migrator-aaaa0000bbbb

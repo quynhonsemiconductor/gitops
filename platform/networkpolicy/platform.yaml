@@ -1,0 +1,32 @@
+# ── platform: ingress default-deny with the three calls that are real (audit G-05) ──
+#
+# `platform` holds cloudflared (the only internet-facing component), the one Alloy, clamd and
+# kube-state-metrics. Nothing needs to reach into it except:
+#   - its own pods (Alloy scraping cloudflared and KSM, cloudflared metrics);
+#   - the product namespaces, on exactly the ports products use:
+#       4317/4318  Alloy's OTLP receiver (`alloy-receiver.platform.svc`, the chart's otel.endpoint)
+#       3310       clamd (kb's MALWARE_SCANNER_HOST=clamd.platform.svc)
+# Every other pod in the cluster is refused. Host-network pods (node-exporter) and the kubelet's
+# probes are not subject to pod ingress policy. Egress is NOT restricted here: cloudflared must reach
+# Cloudflare and the apps, Alloy must reach Grafana Cloud, the kubelet and every scrape target.
+#
+# Product namespaces are selected by the label the admission policies already use
+# (qnsc.vn/tenant=product, ../namespaces/onprem.yaml).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-admit
+  namespace: platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels: { qnsc.vn/tenant: product }
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
+        - { protocol: TCP, port: 3310 }

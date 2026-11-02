@@ -23,7 +23,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
-  project: default
+  project: platform   # was `default` (audit G-04). Every rendered object lives in `platform` (checked: helm template of k8s-monitoring 4.5.3 with these values) plus cluster-scoped CRD/ClusterRole kinds, which the project allows.
   destination:
     server: https://kubernetes.default.svc
     namespace: platform
@@ -38,7 +38,9 @@ spec:
       targetRevision: main
       ref: values
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    # prune: false (audit G-03 pattern, see platform-cnpg.yaml): the chart ships the Alloy CRD, and pruning
+    # a CRD deletes every Alloy object. Removals are manual; do not `argocd app sync --prune` this app.
+    automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
     retry:
       limit: 5

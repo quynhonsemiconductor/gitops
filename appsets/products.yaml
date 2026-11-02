@@ -42,9 +42,13 @@ spec:
           # rova dev and opshub dev. kb's row returns with its dev move; today it would
           # sit Degraded. Chart 0.14.0 is the on-prem secrets shape (one Key Vault secret
           # per value, db-migrator / db-worker passwords, graph cert).
+          # 0.15.0 adds the cluster-CIDR egress exclusion and allow-egress-data (dev network policies are ON).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.14.0" }
-          - { product: opshub, env: dev, chartVersion: "0.14.0" }
+          - { product: rova,   env: dev, chartVersion: "0.15.1" }
+          - { product: opshub, env: dev, chartVersion: "0.15.0" }
+          # kb-dev: DISABLED until the owner has created its kv-qnsc-dev secrets (values/kb/dev.secrets.yaml)
+          # and chart-v0.16.0 exists; the move PR uncomments this row.
+          # - { product: kb, env: dev, chartVersion: "0.16.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is
@@ -85,6 +89,10 @@ spec:
     - list:
         elements:
           - { product: rova, env: prod, chartVersion: "0.15.0" }
+          # opshub prod: DISABLED prep (values/opshub/prod.yaml, platform/opshub-prod/). The move PR
+          # uncomments it after the data layer is up, the secrets exist and no `<OPSHUB_PROD_...>`
+          # placeholder remains (scripts/check-prod-placeholders.sh).
+          # - { product: opshub, env: prod, chartVersion: "0.15.0" }
         template:
           metadata:
             name: "{{.product}}-{{.env}}"
