@@ -93,7 +93,13 @@ In Grafana Cloud:
 up{cluster="qnsc-onprem", job="node"}                              # 1 per node
 count by (job) ({cluster="qnsc-onprem", job=~"integrations/kubernetes/.*"})
 cnpg_collector_up{cluster="qnsc-onprem"}                           # once pg-* exist
+cnpg_pg_settings_setting{cluster="qnsc-onprem"}                    # ONLY name="max_connections"
+sum by (cnpg_cluster) (cnpg_backends_total{cluster="qnsc-onprem"})  # client backends
 ```
+
+Loki, node journal (kernel AppArmor denials only; empty is normal):
+`{cluster="qnsc-onprem", job="integrations/kubernetes/journal"}`. Any line
+that is NOT `apparmor="DENIED"` there means the filter regressed.
 
 Loki — one line from a product:
 `{cluster="qnsc-onprem", namespace="opshub-dev"} |= "api"` (Explore, last 15m).

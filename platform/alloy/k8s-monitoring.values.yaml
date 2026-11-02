@@ -157,6 +157,30 @@ podLogsViaLoki:
     - data-dev
   # No label-selector narrowing: the estate's pods have no common label.
 
+# Node journal: ONLY kernel AppArmor denials (incident 2026-11-03: a DENIED
+# profile went unseen). Two filters keep the volume near zero: the source keeps
+# only kernel/audit-transport entries (no unit logs), and the process stage
+# drops every line that is not `apparmor="DENIED"`. The infra alert
+# `k3s-apparmor-denied` (observability-alerting) reads
+# {job="integrations/kubernetes/journal"}. Widen deliberately, not by default.
+nodeLogs:
+  enabled: true
+  collector: alloy
+  journal:
+    maxAge: "1h"
+  extraDiscoveryRules: |
+    rule {
+      source_labels = ["__journal__transport"]
+      regex         = "kernel|audit"
+      action        = "keep"
+    }
+  extraLogProcessingStages: |
+    stage.match {
+      selector            = "{job=\"integrations/kubernetes/journal\"} !~ \"apparmor=\\\"DENIED\\\"\""
+      action              = "drop"
+      drop_counter_reason = "not_apparmor_denied"
+    }
+
 applicationObservability:
   enabled: true
   collector: alloy
@@ -632,8 +656,27 @@ collectors:
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|(cnpg_collector|barman_cloud_cloudnative_pg_io)_(last_available_backup_timestamp|last_failed_backup_timestamp|first_recoverability_point)|up|scrape_samples_scraped"
+          regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|(cnpg_collector|barman_cloud_cloudnative_pg_io)_(last_available_backup_timestamp|last_failed_backup_timestamp|first_recoverability_point)|cnpg_backends_total|cnpg_pg_settings_setting|up|scrape_samples_scraped"
           action        = "keep"
+        }
+        // Connection-slot alert (infra observability-alerting): backends over
+        // max_connections. pg_settings exports one series per setting; keep
+        // only max_connections (RE2 has no negative lookahead, so mark the
+        // keeper in a temp label, drop the rest, then drop the temp label).
+        rule {
+          source_labels = ["__name__", "name"]
+          regex         = "cnpg_pg_settings_setting;max_connections"
+          target_label  = "__tmp_keep"
+          replacement   = "1"
+        }
+        rule {
+          source_labels = ["__name__", "__tmp_keep"]
+          regex         = "cnpg_pg_settings_setting;"
+          action        = "drop"
+        }
+        rule {
+          regex  = "__tmp_keep"
+          action = "labeldrop"
         }
       }
 
