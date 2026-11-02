@@ -19,6 +19,9 @@ networkPolicy:
   # namespace on-prem; Alloy runs in `platform`.) data-prod already admits rova-prod
   # (platform/networkpolicy/data-prod.yaml).
   enabled: true
+  # Also block all of RFC1918 (LAN, hypervisor, PBS, router, the node: kubelet and the k3s API), audit G-05.
+  # R2, Entra, Graph and GHCR are public addresses and stay reachable; pg-rova/valkey-rova are allowed by name.
+  clusterCidrs: [10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 
 data:
   postgres:
