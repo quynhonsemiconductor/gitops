@@ -1,0 +1,60 @@
+suite: kb dev values (per-value secrets, tei-e5 path)
+# The real values/kb/dev.yaml, no fixture overlay: what ArgoCD will render when kb gets its row.
+templates:
+  - templates/externalsecret.yaml
+  - templates/deployment.yaml
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/kb/base.yaml
+  - ../../../values/kb/dev.yaml
+  - ../../../values/kb/tags.dev.yaml
+
+tests:
+  - it: maps every shared kb secret to its own kv-qnsc-dev secret
+    template: templates/externalsecret.yaml
+    documentSelector: { path: metadata.name, value: kb-env }
+    asserts:
+      - equal:
+          path: spec.data
+          value:
+            - { secretKey: DATA_ENCRYPTION_KEY, remoteRef: { key: kb-dev-data-encryption-key } }
+            - { secretKey: GEMINI_API_KEY, remoteRef: { key: kb-dev-gemini-api-key } }
+            - { secretKey: MICROSOFT_CLIENT_SECRET, remoteRef: { key: kb-dev-microsoft-client-secret } }
+            - { secretKey: R2_ACCESS_KEY_ID, remoteRef: { key: kb-dev-r2-access-key-id } }
+            - { secretKey: R2_SECRET_ACCESS_KEY, remoteRef: { key: kb-dev-r2-secret-access-key } }
+            - { secretKey: SECRET_KEY, remoteRef: { key: kb-dev-secret-key } }
+
+  - it: api and worker read the shared env and the app database password, no JSON bundle
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: kb-env } }
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: kb-db-app } }
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: kb-app } }
+
+  - it: egress reaches the embedding service namespace on port 80 only
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-egress-ai }
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: ai }
+              ports:
+                - { protocol: TCP, port: 80 }
+
+  - it: product egress still excludes the LAN and the node
+    template: templates/networkpolicy.yaml
+    documentSelector: { path: metadata.name, value: allow-egress-external }
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].ipBlock.except
+          value: [169.254.169.254/32, 10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
