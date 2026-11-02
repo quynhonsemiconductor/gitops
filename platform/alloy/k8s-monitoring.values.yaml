@@ -182,6 +182,110 @@ annotationAutodiscovery:
   enabled: true
   collector: alloy
 
+# ── OBI phase 1: eBPF RED metrics for what we cannot instrument ─────────────
+# OpenTelemetry eBPF Instrumentation via Grafana Beyla (chart feature
+# `autoInstrumentation`, the OBI distribution), decision: product-docs
+# platform/observability ADR "Instrumentation standard". Phase 1 = RED metrics
+# ONLY, for three third-party workloads that have no SDK: TEI (ai), clamd and
+# cloudflared (platform). Our own apps keep the OTel SDK; the discovery below
+# names its targets explicitly, so a new namespace is never instrumented by
+# accident.
+#
+# WHERE IT RUNS: the dedicated namespace `obi` (platform/namespaces/obi.yaml),
+# the only namespace labelled PSA `privileged` for this; the chart installs
+# into the release namespace by default, hence `namespaceOverride`. Because the
+# chart's own Alloy scrape only looks in the Alloy namespace (`own_namespace`),
+# the series are scraped by the `beyla` block in extraConfig below, with the
+# series budget enforced THERE. The feature's own scrape therefore finds no pod
+# and forwards nothing.
+#
+# SECURITY (the chart's `privileged: false` mode is NOT usable: it hardcodes
+# SYS_ADMIN, and NET_ADMIN with context propagation). The chart value named
+# `privileged: true` only means "use my `securityContext` verbatim"; the
+# securityContext below is NOT a privileged container: capabilities are
+# dropped to ALL and exactly these are added: BPF, PERFMON, NET_RAW,
+# SYS_PTRACE, DAC_READ_SEARCH, CHECKPOINT_RESTORE. No SYS_ADMIN, no
+# NET_ADMIN, no hostNetwork (context propagation is off), hostPID is on (the
+# `application` preset sets it; Beyla must see host processes), and
+# /sys/kernel/tracing is mounted read-only. Verified with `helm template`
+# (rendered/ is not generated for this chart; the review is the values diff).
+#
+# SERIES BUDGET (Grafana Cloud Free: 10k active series): features limited to
+# `application` + `application_service_graph` (no network, no span metrics, no
+# host/process metrics), `url_path` is never an attribute (route only), and the
+# allowlist in extraConfig keeps only duration histograms and service-graph
+# totals. Alert at 70% of 10k: infra live/observability-alerting.
+autoInstrumentation:
+  enabled: true
+  collector: alloy
+  beyla:
+    preset: application
+    # RED metrics only: no traces into the OTLP receiver.
+    deliverTracesToApplicationObservability: false
+    namespaceOverride: obi
+    privileged: true            # chart flag: use the securityContext below as is (see the header)
+    contextPropagation:
+      enabled: false            # would add NET_ADMIN + hostNetwork
+    image:
+      tag: "3.32.0"
+      digest: sha256:3ff0f7cf2bbf77db7c1c380f7d5cd018bacce7a40c2a4a596b8ce176af84adeb   # docker.io/grafana/beyla:3.32.0, verified 2026-11-02
+    k8sCache:
+      replicas: 1
+      image:
+        tag: "3.32.0"
+        digest: sha256:9e9aa16f462e0dddadb37aec541ff8976e666fa408efad81b88a804e672c86a8   # docker.io/grafana/beyla-k8s-cache:3.32.0, verified 2026-11-02
+    securityContext:
+      privileged: false          # the chart's default securityContext carries `privileged: true`; it MERGES, so say no here
+      runAsUser: 0
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+        add: [BPF, PERFMON, NET_RAW, SYS_PTRACE, DAC_READ_SEARCH, CHECKPOINT_RESTORE]
+    volumes:
+      - name: tracefs
+        hostPath:
+          path: /sys/kernel/tracing
+    volumeMounts:
+      - name: tracefs
+        mountPath: /sys/kernel/tracing
+        readOnly: true
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    config:
+      data:
+        discovery:
+          # ONLY these workloads. The explicit excludes below are belt and braces
+          # for the day someone widens the list.
+          instrument:
+            - k8s_namespace: ai
+              k8s_deployment_name: "tei-*"
+            - k8s_namespace: platform
+              k8s_deployment_name: clamd
+            - k8s_namespace: platform
+              k8s_deployment_name: cloudflared
+          exclude_instrument:
+            - exe_path: "{*alloy*,*otelcol*,*beyla*}"
+            - k8s_namespace: "{rova-*,opshub-*,kb-*,data-*,argocd,kube-system,monitoring}"
+          # Anything that already speaks OTel is skipped, including its span metrics.
+          exclude_otel_instrumented_services: true
+          exclude_otel_instrumented_services_span_metrics: true
+        routes:
+          unmatched: wildcard   # no raw paths as route values
+        prometheus_export:
+          features:
+            - application
+            - application_service_graph
+        attributes:
+          select:
+            "http_*":
+              include: ["*"]
+              exclude: ["url_path", "client_address"]
+            "rpc_*":
+              include: ["*"]
+              exclude: ["url_path", "client_address"]
+
 collectors:
   alloy:
     presets:
@@ -596,6 +700,71 @@ collectors:
           source_labels = ["__name__"]
           regex         = "externalsecret_status_condition|up|scrape_samples_scraped"
           action        = "keep"
+        }
+      }
+
+      // Beyla (OBI phase 1) in the dedicated `obi` namespace. The chart feature scrapes
+      // only its own namespace, so this block does it, with the series budget: duration
+      // histograms (server, client, rpc, db) and the service-graph totals, nothing else.
+      discovery.kubernetes "obi_pods" {
+        role = "pod"
+        namespaces {
+          names = ["obi"]
+        }
+      }
+
+      discovery.relabel "obi_pods" {
+        targets = discovery.kubernetes.obi_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "beyla"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "9090"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "instance"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/beyla"
+        }
+      }
+
+      prometheus.scrape "obi" {
+        targets         = discovery.relabel.obi_pods.output
+        forward_to      = [prometheus.relabel.obi.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+        honor_labels    = true
+      }
+
+      prometheus.relabel "obi" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "(http_server_request_duration_seconds|http_client_request_duration_seconds|rpc_server_duration_seconds|rpc_client_duration_seconds|db_client_operation_duration_seconds)_(bucket|sum|count)|traces_service_graph_request_(total|failed_total)|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+        // Belt and braces: the path is never a label (Beyla is told not to emit it too).
+        rule {
+          regex  = "url_path|url_full|client_address"
+          action = "labeldrop"
         }
       }
 
