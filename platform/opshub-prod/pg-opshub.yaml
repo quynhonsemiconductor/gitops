@@ -48,6 +48,11 @@ spec:
     parameters:
       timezone: UTC
       max_connections: "100"
+      # PG18 asynchronous I/O (io_method=worker, the default) lost a wakeup on pg-rova after the
+      # 2026-11-03 restart: backends waited forever for an io worker to read pg_authid, every login hung
+      # in "authentication" and 100 slots filled (incident 2026-11-03). sync = the pre-18 I/O path.
+      # Re-enable worker only after an upstream fix is verified on a restore-test cluster.
+      io_method: sync
       shared_buffers: 512MB
       work_mem: 8MB
       maintenance_work_mem: 256MB
