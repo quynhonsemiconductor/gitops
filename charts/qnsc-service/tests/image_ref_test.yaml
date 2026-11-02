@@ -2,12 +2,17 @@ suite: image reference (digest vs tag)
 # Rova's real values satisfy the schema (product/env/kind) and the full
 # services set; each test overrides only services.api.image. Document 0 is the
 # api Deployment.
+#
+# The image tags come from tests/fixtures/rova-tags.yaml, not from the live
+# values/rova/tags.dev.yaml: the bot rewrites that file on every build and it now
+# carries digests, which win over any tag a case sets. This suite must give the
+# same answer whatever the live file holds.
 templates:
   - templates/deployment.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/dev.yaml
-  - ../../../values/rova/tags.dev.yaml
+  - fixtures/rova-tags.yaml
 tests:
   - it: renders repo:tag when only tag is set
     documentIndex: 0
