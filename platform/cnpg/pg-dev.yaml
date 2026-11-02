@@ -375,11 +375,13 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-dev-rova-app, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-dev-rova-app, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-dev-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused. Every retry of
+          # a Job with restartPolicy Never is a NEW pod, so without this wait all attempts hit
+          # that window (5 instant failures on 2026-11-02, and the same bug pg-rova fixed in #91).
+          # Wait for the server (up to 2 min); psql still fails loudly on a missing role or a stale password.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE rova_app SET statement_timeout = '30s'; ALTER ROLE rova_app SET idle_in_transaction_session_timeout = '60s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: &restricted
@@ -395,11 +397,13 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-dev-rova-worker, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-dev-rova-worker, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-dev-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused. Every retry of
+          # a Job with restartPolicy Never is a NEW pod, so without this wait all attempts hit
+          # that window (5 instant failures on 2026-11-02, and the same bug pg-rova fixed in #91).
+          # Wait for the server (up to 2 min); psql still fails loudly on a missing role or a stale password.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE rova_worker SET statement_timeout = '300s'; ALTER ROLE rova_worker SET idle_in_transaction_session_timeout = '300s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: *restricted
@@ -412,11 +416,13 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-dev-opshub-app, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-dev-opshub-app, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-dev-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused. Every retry of
+          # a Job with restartPolicy Never is a NEW pod, so without this wait all attempts hit
+          # that window (5 instant failures on 2026-11-02, and the same bug pg-rova fixed in #91).
+          # Wait for the server (up to 2 min); psql still fails loudly on a missing role or a stale password.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE opshub_app SET statement_timeout = '30s'; ALTER ROLE opshub_app SET idle_in_transaction_session_timeout = '60s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: *restricted
@@ -429,11 +435,13 @@ spec:
               valueFrom: { secretKeyRef: { name: pg-dev-opshub-worker, key: username } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: pg-dev-opshub-worker, key: password } }
-          command: ["psql"]
+          # A new pod is admitted by data-dev-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused. Every retry of
+          # a Job with restartPolicy Never is a NEW pod, so without this wait all attempts hit
+          # that window (5 instant failures on 2026-11-02, and the same bug pg-rova fixed in #91).
+          # Wait for the server (up to 2 min); psql still fails loudly on a missing role or a stale password.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
           args:
-            - "-v"
-            - "ON_ERROR_STOP=1"
-            - "-c"
             - "ALTER ROLE opshub_worker SET statement_timeout = '120s'; ALTER ROLE opshub_worker SET idle_in_transaction_session_timeout = '180s';"
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
           securityContext: *restricted
