@@ -22,10 +22,13 @@
 services:
   api:
     image:
-      tag: sha-4fbadd698db3
+      tag: sha-dba4bc44f59d
+      digest: sha256:c71dd9f99f3efb20acf22ed40ec3792a7cf965cd383fcf471066319ea33ee32e
   migrator:
     image:
-      tag: sha-4fbadd698db3
+      tag: sha-dba4bc44f59d
+      digest: sha256:67eb19a63beefc609c860a08f5edbbc6c16fdf044618df7c7a4791f9464619fe
   worker:
     image:
-      tag: sha-4fbadd698db3
+      tag: sha-dba4bc44f59d
+      digest: sha256:523707cd58e09a098922f05c34d2b0cf143de29e2cae7b25f8d9f65fc04d4d0b
