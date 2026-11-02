@@ -46,10 +46,7 @@ spec:
       targetRevision: main
       path: platform/ai
       directory:
-        include:
-          - namespaces.yaml
-          - priorityclasses.yaml
-          - runtimeclass.yaml
+        include: "{namespaces.yaml,priorityclasses.yaml,runtimeclass.yaml}"
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true]
