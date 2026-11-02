@@ -32,6 +32,13 @@ kind: Job
 metadata:
   name: tei-e5-model-pull
   namespace: ai
+  annotations:
+    # Idle by design: suspended on purpose (an operator resumes it once); a
+    # suspended Job reports Suspended, which is not Healthy.
+    # Without this the Application never reports Healthy and the root
+    # app-of-apps (sync waves) waits on it forever. Affects Application health
+    # only; the resource is still synced and pruned normally.
+    argocd.argoproj.io/ignore-healthcheck: "true"
   labels:
     app.kubernetes.io/name: tei-e5-model-pull
     app.kubernetes.io/part-of: ai
@@ -92,6 +99,13 @@ kind: Job
 metadata:
   name: tei-e5-cpu-model-pull
   namespace: ai
+  annotations:
+    # Idle by design: suspended on purpose (an operator resumes it once); a
+    # suspended Job reports Suspended, which is not Healthy.
+    # Without this the Application never reports Healthy and the root
+    # app-of-apps (sync waves) waits on it forever. Affects Application health
+    # only; the resource is still synced and pruned normally.
+    argocd.argoproj.io/ignore-healthcheck: "true"
   labels:
     app.kubernetes.io/name: tei-e5-model-pull
     app.kubernetes.io/part-of: ai

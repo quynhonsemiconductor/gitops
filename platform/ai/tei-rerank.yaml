@@ -27,6 +27,13 @@ kind: PersistentVolumeClaim
 metadata:
   name: tei-rerank-model-cache
   namespace: ai
+  annotations:
+    # Idle by design: tei-rerank is replicas 0 until KB has a client, so nothing
+    # mounts this PVC and local-path leaves it Pending.
+    # Without this the Application never reports Healthy and the root
+    # app-of-apps (sync waves) waits on it forever. Affects Application health
+    # only; the resource is still synced and pruned normally.
+    argocd.argoproj.io/ignore-healthcheck: "true"
   labels:
     app.kubernetes.io/name: tei-rerank
     app.kubernetes.io/part-of: ai
@@ -187,6 +194,13 @@ kind: Job
 metadata:
   name: tei-rerank-model-pull
   namespace: ai
+  annotations:
+    # Idle by design: suspended on purpose (an operator resumes it once); a
+    # suspended Job reports Suspended, which is not Healthy.
+    # Without this the Application never reports Healthy and the root
+    # app-of-apps (sync waves) waits on it forever. Affects Application health
+    # only; the resource is still synced and pruned normally.
+    argocd.argoproj.io/ignore-healthcheck: "true"
   labels:
     app.kubernetes.io/name: tei-rerank-model-pull
     app.kubernetes.io/part-of: ai
