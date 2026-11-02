@@ -197,11 +197,22 @@ echo "== $VAULT_APP: $PRODUCT-$ENV generated app secrets"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
 openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
 openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
-# Valkey login for products whose values file lists it (prod): the WHOLE credential is this one URL,
-# and the valkey ACL file is derived from it (platform/valkey/valkey-rova.yaml). Hex is URL-safe.
+# Valkey login: the WHOLE credential is one URL, and the valkey ACL file is derived from it (platform/valkey/).
+# The URL shape (user, host, port, db) comes from the `template:` of the entry in the values secrets file, with
+# {pw} replaced by a fresh hex password, so dev (shared valkey-dev, db 0 / 2) and prod (valkey-rova) need no
+# special case here. Hex is URL-safe.
+redis_url_template() {
+  awk -v n="$PRODUCT-$ENV-redis-url" '
+    $1 == "-" && $2 == "name:" { inblk = ($3 == n) }
+    inblk && $1 == "template:" { gsub(/^"|"$/, "", $2); print $2; exit }
+  ' "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null
+}
 if grep -q "$PRODUCT-$ENV-redis-url" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
-  printf 'redis://%s:%s@valkey-%s.data-%s.svc:6379' "$PRODUCT" "$(openssl rand -hex 24)" "$PRODUCT" "$ENV" \
-    | put "$VAULT_APP" "$PRODUCT-$ENV-redis-url" "$EXP_1Y"
+  tmpl=$(redis_url_template)
+  [[ $tmpl == *"{pw}"* ]] || { echo "  ! $PRODUCT-$ENV-redis-url has no template: with {pw} in values/$PRODUCT/$ENV.secrets.yaml" >&2; exit 1; }
+  pw=$(openssl rand -hex 24)
+  printf '%s' "${tmpl//\{pw\}/$pw}" | put "$VAULT_APP" "$PRODUCT-$ENV-redis-url" "$EXP_1Y"
+  unset pw
 fi
 # GitHub webhook HMAC: only where the values file maps it (prod). The owner pastes the same value into the GitHub App.
 if grep -q "$PRODUCT-$ENV-github-webhook-secret" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
