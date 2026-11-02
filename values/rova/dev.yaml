@@ -98,10 +98,9 @@ defaults:
     - { name: SSO_JIT_ENABLED, value: "false" }
     - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
     # §7.3 — Graph mail: the dev mailbox and the "Rova Dev Service" app. The
-    # certificate is the worker-only FILE below, never an env var. MAIL_FROM_EMAIL
-    # keeps the ECS value (module default noreply@qnsc.vn).
+    # certificate is the worker-only FILE below, never an env var. (MAIL_FROM_EMAIL is
+    # not set: only the smtp/Mailpit provider reads it, rova#730.)
     - { name: EMAIL_PROVIDER, value: "graph" }
-    - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova-dev@qnsc.vn" }
     - { name: MAIL_GRAPH_CLIENT_ID, value: "ba917ac2-3580-43ef-a8c1-c8cb6288651a" }
     # The existing rova-develop-* buckets (infra live/storage-dev), kept under

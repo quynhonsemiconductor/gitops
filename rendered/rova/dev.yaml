@@ -299,8 +299,6 @@ spec:
               value: qnsc.vn
             - name: EMAIL_PROVIDER
               value: graph
-            - name: MAIL_FROM_EMAIL
-              value: noreply@qnsc.vn
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova-dev@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
@@ -443,8 +441,6 @@ spec:
               value: qnsc.vn
             - name: EMAIL_PROVIDER
               value: graph
-            - name: MAIL_FROM_EMAIL
-              value: noreply@qnsc.vn
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova-dev@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
@@ -593,8 +589,6 @@ spec:
               value: qnsc.vn
             - name: EMAIL_PROVIDER
               value: graph
-            - name: MAIL_FROM_EMAIL
-              value: noreply@qnsc.vn
             - name: MAIL_GRAPH_SENDER
               value: noreply-rova-dev@qnsc.vn
             - name: MAIL_GRAPH_CLIENT_ID
