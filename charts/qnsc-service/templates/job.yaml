@@ -9,7 +9,14 @@ kind: Job
 metadata:
   {{- /* A fresh name per revision: a Job's pod template is immutable, so reusing
          the name makes the second sync fail. */}}
+  {{- /* Digest wins (same rule as the image ref): name from its first 12 hex, so a
+         digest-only values file renders and a rollback to a digest names the same
+         Job again (BeforeHookCreation deletes the old one). */}}
+  {{- if $svc.image.digest }}
+  name: {{ $name }}-{{ $svc.image.digest | trimPrefix "sha256:" | trunc 12 }}
+  {{- else }}
   name: {{ $name }}-{{ $svc.image.tag | replace ":" "-" | trunc 20 | trimSuffix "-" }}
+  {{- end }}
   labels:
     {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
   annotations:
