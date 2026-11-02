@@ -1,0 +1,78 @@
+# Read-only cluster access for the SA and agents (owner-approved "ro-kubeconfig").
+#
+# WHAT IT GRANTS: the built-in ClusterRole `view` (namespaced read of workloads, services,
+# configmaps, events, ... in EVERY namespace; `view` deliberately excludes Secrets, Pod exec,
+# attach, port-forward, proxy and every write) plus `qnsc-readonly-extra` below: read of the
+# ArgoCD objects, the CloudNativePG kinds and the cluster-scoped kinds `view` lacks. NOTHING ELSE. In particular no
+# Secrets, no pods/exec, pods/attach, pods/portforward, no proxy subresources, no write verb.
+# scripts/test-ro-rbac.sh pins all of that (static) and policy-test proves it on a real API
+# server (`kubectl auth can-i`).
+#
+# The token is long-lived by design (a kubernetes.io/service-account-token Secret, filled in
+# by the token controller): the owner script stores it in 1Password and the kubeconfig reads it
+# through `op`, so it never sits on disk. To rotate: delete the Secret, ArgoCD recreates it, rerun
+# the owner script. To revoke: delete the ServiceAccount.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sa-readonly
+  namespace: platform-access
+automountServiceAccountToken: false   # nothing runs as it; only the explicit Secret below carries a token
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: sa-readonly-token
+  namespace: platform-access
+  annotations:
+    kubernetes.io/service-account.name: sa-readonly
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: qnsc-readonly-extra
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications", "applicationsets", "appprojects"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "persistentvolumes", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  # CloudNativePG: the clusters and what hangs off them (status, backups and their schedule, declared
+  # databases, poolers). Read only; the `*.postgresql.cnpg.io` kinds are not in `view`.
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters", "backups", "scheduledbackups", "databases", "poolers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sa-readonly-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: sa-readonly
+    namespace: platform-access
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sa-readonly-extra
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: qnsc-readonly-extra
+subjects:
+  - kind: ServiceAccount
+    name: sa-readonly
+    namespace: platform-access

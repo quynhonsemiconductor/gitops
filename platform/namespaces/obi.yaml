@@ -1,0 +1,17 @@
+# The OBI (eBPF instrumentation) namespace, platform/alloy/k8s-monitoring.values.yaml
+# `autoInstrumentation`. The ONLY namespace labelled PSA `privileged` for it:
+# Beyla needs hostPID, a hostPath mount (/sys/kernel/tracing) and eBPF
+# capabilities (BPF, PERFMON, SYS_PTRACE, ...), which neither `baseline` nor
+# `restricted` allow. Nothing else may run here: audit and warn stay at
+# `restricted` so a new pod that does not need the exception shows up in the
+# audit log. No qnsc.vn/tenant and no qnsc.vn/env on purpose: no admission policy
+# binds, no ExternalSecret can be created, no ClusterSecretStore selects it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: obi
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

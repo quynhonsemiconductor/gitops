@@ -5,11 +5,15 @@ name: policy-test
 # pinned ESO chart, and scripts/test-policy.sh (allow/deny cases, and every ExternalSecret the chart
 # renders for an enabled product row must still be admitted).
 #
+# It also runs scripts/test-ro-rbac.sh (platform/access: the read-only identity grants read and nothing else).
+#
 # Not a required check yet (it needs Docker Hub for the k3s image); the SA can promote it.
 on:
   pull_request:
     paths:
       - "platform/policy/**"
+      - "platform/access/**"
+      - "scripts/test-ro-rbac.sh"
       - "charts/**"
       - "values/**"
       - "rendered/**"
@@ -60,3 +64,7 @@ jobs:
 
       - name: Policy tests
         run: ./scripts/test-policy.sh k3d-policytest
+
+      # The read-only identity: static checks plus `kubectl auth can-i` against this API server.
+      - name: Read-only RBAC tests
+        run: ./scripts/test-ro-rbac.sh k3d-policytest
