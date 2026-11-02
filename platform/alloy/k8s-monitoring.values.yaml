@@ -98,6 +98,32 @@ telemetryServices:
 clusterMetrics:
   enabled: true
   collector: alloy
+  # kube-state-metrics: ONLY what the alert rules and the fast-track checks read
+  # (infra live/observability-alerting) plus restart/phase for triage. The chart
+  # default list (~100 families: replicasets, nodes, HPAs, PVC labels, resource
+  # requests...) was most of the series count. Add a name here when a rule or
+  # dashboard needs it.
+  kube-state-metrics:
+    metricsTuning:
+      useDefaultAllowList: false
+      includeMetrics:
+        - kube_pod_info
+        - kube_pod_status_phase
+        - kube_pod_status_ready
+        - kube_pod_container_status_waiting_reason
+        - kube_pod_container_status_restarts_total
+        - kube_pod_container_status_last_terminated_reason
+        - kube_job_failed
+        - kube_job_status_failed
+        - kube_cronjob_status_last_successful_time
+        - kube_cronjob_status_last_schedule_time
+        - kube_cronjob_spec_suspend
+        - kube_deployment_spec_replicas
+        - kube_deployment_status_replicas_available
+        - kube_statefulset_replicas
+        - kube_statefulset_status_replicas_ready
+        - kube_node_status_condition
+        - kube_persistentvolumeclaim_status_phase
 
 hostMetrics:
   enabled: true
@@ -242,7 +268,7 @@ collectors:
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          regex         = "redis_.*|up|scrape_samples_scraped"
+          regex         = "redis_up|redis_uptime_in_seconds|redis_connected_clients|redis_blocked_clients|redis_memory_used_bytes|redis_memory_max_bytes|redis_evicted_keys_total|redis_keyspace_hits_total|redis_keyspace_misses_total|redis_commands_processed_total|up|scrape_samples_scraped"
           action        = "keep"
         }
       }
@@ -500,7 +526,7 @@ collectors:
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|up|scrape_samples_scraped"
+          regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|(cnpg_collector|barman_cloud_cloudnative_pg_io)_(last_available_backup_timestamp|last_failed_backup_timestamp|first_recoverability_point)|up|scrape_samples_scraped"
           action        = "keep"
         }
       }
