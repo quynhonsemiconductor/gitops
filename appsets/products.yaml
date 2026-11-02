@@ -44,7 +44,7 @@ spec:
           # per value, db-migrator / db-worker passwords, graph cert).
           # 0.15.0 adds the cluster-CIDR egress exclusion and allow-egress-data (dev network policies are ON).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.15.0" }
+          - { product: rova,   env: dev, chartVersion: "0.15.1" }
           - { product: opshub, env: dev, chartVersion: "0.15.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
