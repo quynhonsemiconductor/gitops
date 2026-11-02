@@ -1,4 +1,5 @@
-# Namespaces (with their qnsc.vn labels), admission policies and the data-prod NetworkPolicy.
+# Namespaces (with their qnsc.vn labels), admission policies, the data-prod NetworkPolicy and the
+# read-only cluster identity (platform/access).
 # prune: false — pruning a Namespace deletes everything in it, so removals are manual.
 # Sync wave -3 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
 # each wave's Applications to be Healthy (argocd-cm Application health customization,
@@ -31,6 +32,10 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: platform/storage
+      directory: { include: "*.yaml" }
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/access
       directory: { include: "*.yaml" }
   syncPolicy:
     automated: { prune: false, selfHeal: true }

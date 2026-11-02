@@ -79,7 +79,6 @@ defaults:
     # (rova refuses a `<...>` value here at boot, rova#727, and scripts/check-prod-placeholders.sh
     # in chart-ci refuses to enable the prod ApplicationSet row while any placeholder remains.)
     - { name: EMAIL_PROVIDER, value: "graph" }
-    - { name: MAIL_FROM_EMAIL, value: "noreply@qnsc.vn" }
     - { name: MAIL_GRAPH_SENDER, value: "noreply-rova@qnsc.vn" }
     - { name: MAIL_GRAPH_CLIENT_ID, value: "a9fd92e0-6b76-474d-9f4e-daab4c503c4b" }
     # GitHub App (SCM backfill + authenticated REST; it must survive the move, owner 2026-11-01).
