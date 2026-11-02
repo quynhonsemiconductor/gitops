@@ -1,0 +1,24 @@
+# The `default` AppProject, locked down (audit G-04).
+#
+# ArgoCD ships `default` with sourceRepos `*`, destinations `*/*` and every cluster kind allowed:
+# any Application that lands in it can deploy anything anywhere. Nothing belongs in it any more
+# (platform Applications are in `platform`, products in `products`), so it is emptied: an
+# Application put there by mistake is refused ("not permitted in project default") instead of
+# being the widest door in the cluster. This is ArgoCD's documented lock-down, not a deletion:
+# `default` cannot be deleted.
+#
+# Wave 9, after every platform Application: platform-observability was the last one in `default`
+# and moves to `platform` in the same change; locking first would orphan it for one sync.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  description: Locked. Nothing may live here; use `platform` or `products`.
+  sourceRepos: []
+  destinations: []
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist: []
