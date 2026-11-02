@@ -21,7 +21,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-3"   # before the Applications that reference it
 spec:
-  description: Platform Applications — namespaces, policy, ESO, CNPG, cert-manager, ArgoCD's own secrets, cloudflared.
+  description: Platform Applications — namespaces, policy, ESO, CNPG, cert-manager, observability, ArgoCD's own secrets, cloudflared.
 
   sourceRepos:
     - https://github.com/quynhonsemiconductor/gitops
@@ -30,6 +30,7 @@ spec:
     - https://charts.external-secrets.io         # ESO
     - https://cloudnative-pg.github.io/charts    # CNPG + barman plugin
     - https://prometheus-community.github.io/helm-charts   # prometheus-operator-crds
+    - https://grafana.github.io/helm-charts      # k8s-monitoring (platform-observability)
 
   # Exactly the namespaces the platform Applications target. `argocd` is here
   # because root and every child Application object live there.
