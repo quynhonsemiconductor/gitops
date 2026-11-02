@@ -1,0 +1,13 @@
+# Home of the read-only cluster identity (platform/access/rbac.yaml). Holds one ServiceAccount
+# and its token Secret; no workloads, so the strictest Pod Security level costs nothing.
+# No qnsc.vn/env or qnsc.vn/tenant label: the ClusterSecretStores select on those, and nothing
+# here may be served a vault.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-access
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
