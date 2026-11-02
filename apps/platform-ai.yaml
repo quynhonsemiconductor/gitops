@@ -22,7 +22,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
 spec:
-  project: default
+  project: platform
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -39,7 +39,7 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       ref: values
-    # Namespaces, priority classes, the RuntimeClass and the ai-lab quota. The
+    # Namespaces, priority classes, and the RuntimeClass. The
     # include list is explicit because device-plugin.values.yaml lives in the
     # same directory and is NOT a manifest.
     - repoURL: https://github.com/quynhonsemiconductor/gitops
@@ -50,7 +50,6 @@ spec:
           - namespaces.yaml
           - priorityclasses.yaml
           - runtimeclass.yaml
-          - ai-lab-quota.yaml
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true]

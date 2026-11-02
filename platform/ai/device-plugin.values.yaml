@@ -80,7 +80,7 @@ mps:
 # gives FAIR SHARING OF TIME, NOT VRAM ISOLATION: each process may allocate the
 # whole 16 GB, so the VRAM budget (§9.1) is enforced by pod sizing and
 # monitoring, not by the device plugin. 4 replicas = TEI e5 (1),
-# reranker when enabled (1), whisper (1), one free for ai-lab.
+# reranker when enabled (1), whisper (1), one spare.
 #
 # Changing `replicas` re-registers the resource; running GPU pods keep their
 # allocation until restarted.
