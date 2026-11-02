@@ -10,6 +10,8 @@ values:
   - ../../../values/rova/tags.dev.yaml
 set:
   networkPolicy.enabled: true
+  # the chart default; the dev values override it with the RFC1918 ranges too (rova_dev_values_test.yaml)
+  networkPolicy.clusterCidrs: [10.42.0.0/16, 10.43.0.0/16]
 
 tests:
   - it: excludes IMDS and the k3s pod and Service CIDRs from the internet egress rule
