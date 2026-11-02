@@ -1,5 +1,6 @@
 # =============================================================================
-# bot-scope — the automation bot may merge on its own ONLY for values/*/tags.dev.yaml.
+# bot-scope — the automation bot may merge on its own ONLY for values/*/tags.dev.yaml (plus the same product's
+# rendered/<product>/dev.yaml, which the bump action re-renders in the same commit).
 #
 # gitops main needs a review for everything (main-review ruleset), except that the
 # `qnsc-automation` app may bypass it by pull request. This check is what keeps that bypass
