@@ -1,0 +1,13 @@
+# Test fixture, NOT the live tags file: the bot rewrites values/rova/tags.dev.yaml
+# on every build and it now carries digests, so a suite that wants "tag only" cannot
+# load it. These are fixed, tag-only images for the three rova services.
+services:
+  api:
+    image:
+      tag: sha-fixture00001
+  migrator:
+    image:
+      tag: sha-fixture00001
+  worker:
+    image:
+      tag: sha-fixture00001
