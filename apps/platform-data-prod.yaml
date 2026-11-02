@@ -10,6 +10,10 @@ metadata:
   name: platform-data-prod
   namespace: argocd
   annotations:
+    # Permanent OutOfSync (audit G-07): the CNPG webhook and the StatefulSet API default fields that
+    # git does not carry (managed.roles[].connectionLimit/inherit, volumeClaimTemplates apiVersion/kind/
+    # status), so a client-side diff never converges. Diff server-side, through the mutating webhooks.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
     argocd.argoproj.io/sync-wave: "3"
 spec:
   project: platform
