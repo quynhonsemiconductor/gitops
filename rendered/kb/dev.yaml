@@ -82,6 +82,22 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-egress-ai
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "ai" }
+      ports:
+        - { protocol: TCP, port: 80 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-ingress-api
   labels:
     app.kubernetes.io/name: api
@@ -341,7 +357,7 @@ spec:
               value: "false"
           envFrom:
             - secretRef:
-                name: kb-app
+                name: kb-env
             - secretRef:
                 name: kb-db-app
           volumeMounts:
@@ -495,7 +511,7 @@ spec:
               value: "3"
           envFrom:
             - secretRef:
-                name: kb-app
+                name: kb-env
             - secretRef:
                 name: kb-db-app
           volumeMounts:
@@ -664,23 +680,6 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: kb-app
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: kv-qnsc-dev
-    kind: ClusterSecretStore
-  target:
-    name: kb-app
-  dataFrom:
-    - extract:
-        key: kb-dev-app
-
----
-# Source: qnsc-service/templates/externalsecret.yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
   name: kb-migrator
   annotations:
     argocd.argoproj.io/hook: PreSync
@@ -777,6 +776,39 @@ spec:
     - secretKey: cert.pem
       remoteRef:
         key: kb-dev-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-dev
+    kind: ClusterSecretStore
+  target:
+    name: kb-env
+  data:
+    - secretKey: DATA_ENCRYPTION_KEY
+      remoteRef:
+        key: kb-dev-data-encryption-key
+    - secretKey: GEMINI_API_KEY
+      remoteRef:
+        key: kb-dev-gemini-api-key
+    - secretKey: MICROSOFT_CLIENT_SECRET
+      remoteRef:
+        key: kb-dev-microsoft-client-secret
+    - secretKey: R2_ACCESS_KEY_ID
+      remoteRef:
+        key: kb-dev-r2-access-key-id
+    - secretKey: R2_SECRET_ACCESS_KEY
+      remoteRef:
+        key: kb-dev-r2-secret-access-key
+    - secretKey: SECRET_KEY
+      remoteRef:
+        key: kb-dev-secret-key
 
 ---
 # Source: qnsc-service/templates/slo.yaml

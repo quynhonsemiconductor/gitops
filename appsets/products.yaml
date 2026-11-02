@@ -46,6 +46,9 @@ spec:
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
           - { product: rova,   env: dev, chartVersion: "0.15.0" }
           - { product: opshub, env: dev, chartVersion: "0.15.0" }
+          # kb-dev: DISABLED until the owner has created its kv-qnsc-dev secrets (values/kb/dev.secrets.yaml)
+          # and chart-v0.16.0 exists; the move PR uncomments this row.
+          # - { product: kb, env: dev, chartVersion: "0.16.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is
