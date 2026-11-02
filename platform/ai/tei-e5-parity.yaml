@@ -139,6 +139,13 @@ kind: Job
 metadata:
   name: tei-e5-parity
   namespace: ai
+  annotations:
+    # Idle by design: suspended on purpose (an operator resumes it for a parity
+    # run); a suspended Job reports Suspended, which is not Healthy.
+    # Without this the Application never reports Healthy and the root
+    # app-of-apps (sync waves) waits on it forever. Affects Application health
+    # only; the resource is still synced and pruned normally.
+    argocd.argoproj.io/ignore-healthcheck: "true"
   labels:
     app.kubernetes.io/name: tei-e5-parity
     app.kubernetes.io/part-of: ai
