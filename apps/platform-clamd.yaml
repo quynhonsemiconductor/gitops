@@ -1,0 +1,27 @@
+# clamd, the estate's shared antivirus daemon (platform/clamd), on the ai-01 node pool.
+# Until now no Application synced platform/clamd (audit 2026-11-02 #13); this one owns it. If the
+# Deployment was applied by hand, this adopts it (same names) and the nodeSelector reschedules it onto
+# ai-01. Wave 2 with cloudflared: after the platform, before anything needs a scan. prune: false.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-clamd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/clamd
+    directory: { include: "*.yaml" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

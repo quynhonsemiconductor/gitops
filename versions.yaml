@@ -133,7 +133,7 @@ images:
   # §11.4 — monthly release, pinned by digest (amd64 index on Docker Hub).
   # 2026.10.2 verified 2026-10-20: docker.io/cloudflare/cloudflared tag digest
   cloudflared: "2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2"
-  clamav: "1.5"               # amd64 only — the estate's one exception (§4c)
+  clamav: "1.5.4@sha256:6d87c712e3391e13c1ba6e05dfb074d4b1ddb5a6834b23bb9da990d2a4ef042a"   # amd64 only — the estate's one exception (§4c)
   # §12 collector binary, digest-pinned (Docker Hub API, verified 2026-11-01).
   alloy: "docker.io/grafana/alloy:v1.13.0@sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221"
 
