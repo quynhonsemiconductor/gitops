@@ -111,6 +111,12 @@ spec:
   template:
     metadata:
       name: "{{.product}}-{{.env}}"           # §7c — ArgoCD Application naming
+      # Consumed by the global deploy-notification subscriptions
+      # (platform/argocd/values.yaml): prod gets every trigger, dev only
+      # failures, and the Alert templates read the values for their titles/tags.
+      labels:
+        qnsc.vn/product: "{{.product}}"
+        qnsc.vn/env: "{{.env}}"
     spec:
       project: products
       # ONE k3s cluster; environments are namespaces (ONPREM-PLAN §6.2). The
