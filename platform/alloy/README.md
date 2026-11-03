@@ -20,6 +20,7 @@ mention the old allowlist in `agent.alloy`; that comment is now historical.
 |---|---|---|
 | Traces | apps' OTel SDK → OTLP `http://alloy-receiver.platform.svc:4318` (already set in the product chart base values; gRPC 4317 too) | Grafana Cloud Tempo |
 | Metrics — apps | the same OTLP export | Grafana Cloud Mimir |
+| Metrics — Proxmox host | the Proxmox host's PVE 9 OpenTelemetry metric server (OTLP/HTTP, no auth) → NodePort `alloy-otlp-host` 30418 → the same OTLP receiver; `proxmox_*` only | Mimir |
 | Metrics — cluster | kube-state-metrics + kubelet/cadvisor (chart `clusterMetrics`) | Mimir |
 | Metrics — node | node-exporter (chart `hostMetrics`, `job="node"` kept for the existing alert rules) | Mimir |
 | Metrics — CNPG | operator PodMonitor (CNPG `monitoring.podMonitorEnabled`, flipped in this PR) via `prometheusOperatorObjects` | Mimir |
@@ -34,6 +35,30 @@ The receiver Service is `alloy-receiver` in `platform` — release name `alloy` 
 `extraService.name: receiver`, with ports 4317/4318 from the `otel-receiver`
 preset. **The apps need no change**: the chart base values already point
 `OTEL_EXPORTER_OTLP_ENDPOINT` at that name.
+
+### The host door (`alloy-otlp-host`)
+
+The Proxmox host is not a cluster node and cannot resolve
+`alloy-receiver.platform.svc`, so the same receiver is published on a NodePort:
+Service `alloy-otlp-host` (`extraObjects` in the values file), `type: NodePort`,
+port 4318, `nodePort: 30418`, `externalTrafficPolicy: Cluster`, selecting the
+Alloy pods. OTLP/HTTP only — no gRPC NodePort (the PVE plugin posts to
+`/v1/metrics`). Point PVE's metric server at
+`http://<k3s node>:30418/v1/metrics` (the path is mandatory; PVE appends
+nothing).
+
+Two guards matter, because the port has no authentication:
+
+- the chart's `applicationObservability.metrics.filters` drops any metric from
+  `service.name=proxmox-ve` whose name is not `proxmox_*` (the families PVE 9's
+  `PVE::Metrics::Plugin::OpenTelemetry` builds: `proxmox_node_*`,
+  `proxmox_node_network_*`, `proxmox_node_storage_*`, `proxmox_vm_*`,
+  `proxmox_storage_*`). App metrics have other `service.name`s and are
+  untouched;
+- NetworkPolicy `alloy-otlp-host` admits 4318 to the Alloy pods from RFC1918
+  sources. That is defense in depth, not an allowlist: `Cluster` SNATs the
+  client to a node address. The real boundary is the server VLAN (upstream
+  firewall, owner-managed) plus the name filter.
 
 ## Credentials — the owner fills these, never Git
 
@@ -84,6 +109,8 @@ are likewise allowlisted (`redis_*`, `argocd_*`, `up`).
 ```bash
 kubectl -n platform get ds,pods -l app.kubernetes.io/instance=alloy
 kubectl -n platform get svc alloy-receiver          # 4317 + 4318 present
+kubectl -n platform get svc alloy-otlp-host         # NodePort 30418 -> 4318
+kubectl -n platform get networkpolicy alloy-otlp-host
 kubectl -n platform logs -l app.kubernetes.io/name=alloy --tail=20 | grep -i error
 ```
 
@@ -91,6 +118,7 @@ In Grafana Cloud:
 
 ```promql
 up{cluster="qnsc-onprem", job="node"}                              # 1 per node
+count by (__name__) ({cluster="qnsc-onprem", __name__=~"proxmox_.*"})  # PVE 9 host series
 count by (job) ({cluster="qnsc-onprem", job=~"integrations/kubernetes/.*"})
 cnpg_collector_up{cluster="qnsc-onprem"}                           # once pg-* exist
 cnpg_pg_settings_setting{cluster="qnsc-onprem"}                    # ONLY name="max_connections"
