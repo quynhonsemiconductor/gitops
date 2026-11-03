@@ -21,6 +21,43 @@
 
 size: s              # default preset; a service may override it
 
+# ── Optional SPA component (`web`) ───────────────────────────────────────────
+#
+# A product whose front end is a static SPA served from the cluster sets
+# `web.enabled: true` in its env values. It is NOT one of `services`: no HTTP
+# API, no OTEL env, no database, and probes that answer "is the file server
+# alive" (`/healthz`) rather than the API chart's `/livez` contract.
+#
+# The image (repo + tag/digest) arrives exactly like api/worker/migrator: the
+# repo in base/dev values, the generated tag/digest in values/<p>/tags.<env>.yaml
+# under the `web:` key. Runtime differences are config, never a rebuild:
+# `web.config` is rendered to <product>-web-config and mounted as
+# /srv/config.json (DELIVERY-DESIGN §3.1).
+#
+# Disabled by default: a product without a front end must not get an empty
+# Deployment, and the schema cannot say "the whole block is optional" on its own.
+#
+# ── IMAGE CONTRACT (the chart supplies the pod, the image must fit it) ──────
+#   filesystem   readOnlyRootFilesystem: true. The ONLY writable path is /tmp
+#                (an emptyDir); no other directory may be created or written.
+#   port         8080 (web.port). The container must listen on it and the
+#                Service targets the same number.
+#   doc root     /srv, with index.html at its root and the SPA's client-side
+#                routing served from it.
+#   health       GET /healthz, 200 when the server is serving. Both probes use it.
+#   config       read /srv/config.json (mounted from <product>-web-config) before
+#                bootstrapping; a missing/invalid file is a boot error, not a
+#                silent fallback.
+#   uid          any non-root uid works; the chart pins runAsUser 1001.
+#   egress       none. Default-deny egress is left in place: no DNS, no API calls.
+web:
+  enabled: false
+  port: 8080
+  replicas: 1          # a static server; dev turns it to 0 by schedule like any Deployment
+  pdb: false           # minAvailable 1 on one replica blocks every node drain
+  resources: { cpu: 50m, memory: 64Mi }   # small by design: bytes + a file descriptor
+  config: {}           # arbitrary JSON, rendered verbatim to /srv/config.json
+
 # services:
 #   api:
 #     kind: http                 # http · grpc · realtime · worker · job · cron

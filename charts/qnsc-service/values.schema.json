@@ -402,6 +402,59 @@
         }
       }
     },
+    "web": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional SPA served from the cluster (DELIVERY-DESIGN §3.1). Not a service: static files, /healthz probes, runtime config from web.config. The image repo lives in base/dev values and the generated tag/digest in tags.<env>.yaml (`web:`).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Off by default. Enabling it requires an image and renders Deployment + Service + ConfigMap (and a PDB when web.pdb is true)."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port the static server listens on (default 8080) and the Service exposes."
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pdb": {
+          "type": "boolean",
+          "description": "OFF by default: minAvailable 1 on a single replica blocks every node drain. Set true only with two or more replicas."
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu": { "type": ["string", "number"] },
+            "memory": { "type": "string" }
+          },
+          "description": "Requests. No CPU limit and memory limit == request, like every service (sizes small by design)."
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repo": { "type": "string" },
+            "tag": {
+              "type": "string",
+              "not": { "const": "latest" }
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          }
+        },
+        "config": {
+          "type": "object",
+          "description": "Runtime SPA config, rendered verbatim as JSON to <product>-web-config/config.json and mounted at /srv/config.json. Never put a secret here: every browser can fetch it."
+        }
+      }
+    },
     "images": {
       "type": "object"
     },

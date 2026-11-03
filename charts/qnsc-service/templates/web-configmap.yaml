@@ -1,0 +1,18 @@
+{{- /* The SPA's RUNTIME config (DELIVERY-DESIGN §3.1): one image per commit, and
+       everything that differs per environment arrives here. `web.config` is
+       product-shaped and opaque to the chart, so it is rendered verbatim as
+       JSON — the SPA fetches /config.json before bootstrapping. Values are
+       non-secret by construction; anything secret belongs in the API, not in a
+       file every browser can fetch. */}}
+{{- if .Values.web.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "qnsc.product" $ }}-web-config
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+data:
+  config.json: |-
+    {{- toJson (.Values.web.config | default dict) | nindent 4 }}
+{{- end }}
