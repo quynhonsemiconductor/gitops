@@ -1,0 +1,128 @@
+suite: pod port vs Service port (NetworkPolicies match the pod port)
+# kube-proxy DNATs Service traffic to the pod BEFORE a NetworkPolicy is
+# evaluated, so a policy `port` matches the pod's container port — the Service's
+# `targetPort` — never the Service `port`. The kubelet probes that pod port too.
+# `services.<name>.port` is the Service port and the default pod port;
+# `targetPort` overrides it. These tests pin the split: with port 3000 and
+# targetPort 8080 the policies and probes name 8080, while WEB_API_UPSTREAM (a
+# client URL) still dials the Service on 3000.
+templates:
+  - templates/networkpolicy.yaml
+  - templates/service.yaml
+  - templates/deployment.yaml
+  - templates/web.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+release:
+  name: rova
+  namespace: rova-dev
+
+tests:
+  - it: names the default pod port in the web egress rule when targetPort is unset
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      services.api.port: 3999
+    documentSelector:
+      path: metadata.name
+      value: allow-egress-web
+    asserts:
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 3999
+
+  - it: forwards the Service to the pod port when targetPort is set
+    template: templates/service.yaml
+    set:
+      services.api.port: 3000
+      services.api.targetPort: 8080
+    documentSelector:
+      path: metadata.name
+      value: api
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 3000
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8080
+
+  - it: admits the POD port, not the Service port, as web egress
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      services.api.port: 3000
+      services.api.targetPort: 8080
+    documentSelector:
+      path: metadata.name
+      value: allow-egress-web
+    asserts:
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 8080
+
+  - it: admits the POD port, not the Service port, in the web -> api ingress rule
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      services.api.port: 3000
+      services.api.targetPort: 8080
+    documentSelector:
+      path: metadata.name
+      value: allow-ingress-api
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: web
+                    app.kubernetes.io/instance: rova
+            ports:
+              - { protocol: TCP, port: 8080 }
+
+  - it: publishes the pod port as the container port and probes
+    template: templates/deployment.yaml
+    set:
+      services.api.port: 3000
+      services.api.targetPort: 8080
+    documentSelector:
+      path: metadata.name
+      value: api
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: 8080
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 8080
+
+  - it: keeps WEB_API_UPSTREAM on the Service port
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      services.api.port: 3000
+      services.api.targetPort: 8080
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: WEB_API_UPSTREAM, value: "http://api:3000" }

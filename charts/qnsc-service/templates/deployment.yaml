@@ -11,6 +11,9 @@ If you need a `if eq $svc.kind "..."` here, _kinds.tpl is missing a column.
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
+{{- /* The pod's port: the Service forwards to it (targetPort) and the kubelet
+       probes it. `port` is the Service port and the default. */}}
+{{- $podPort := $svc.targetPort | default $svc.port }}
 {{- if eq $caps.workload "Deployment" }}
 {{- $d := $.Values.defaults }}
 ---
@@ -98,7 +101,7 @@ spec:
           {{- if ne $caps.service "none" }}
           ports:
             - name: {{ if eq $svc.kind "grpc" }}grpc{{ else }}http{{ end }}
-              containerPort: {{ required (printf "service %q: `port` is required for kind %s" $name $svc.kind) $svc.port }}
+              containerPort: {{ required (printf "service %q: `port` is required for kind %s" $name $svc.kind) $podPort }}
           {{- end }}
 
           {{- /* ── §15d: the requests/limits rule ──────────────────────────────
@@ -175,23 +178,23 @@ spec:
           {{- if and (ne $caps.workload "Job") (ne $caps.service "none") }}
           livenessProbe:
             {{- if eq $svc.kind "grpc" }}
-            grpc: { port: {{ $svc.port }} }
+            grpc: { port: {{ $podPort }} }
             {{- else }}
-            httpGet: { path: {{ $d.probes.livenessPath }}, port: {{ $svc.port | default 8080 }} }
+            httpGet: { path: {{ $d.probes.livenessPath }}, port: {{ $podPort | default 8080 }} }
             {{- end }}
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             {{- if eq $svc.kind "grpc" }}
-            grpc: { port: {{ $svc.port }} }
+            grpc: { port: {{ $podPort }} }
             {{- else }}
-            httpGet: { path: {{ $svc.readinessPath | default $d.probes.readinessPath }}, port: {{ $svc.port | default 8080 }} }
+            httpGet: { path: {{ $svc.readinessPath | default $d.probes.readinessPath }}, port: {{ $podPort | default 8080 }} }
             {{- end }}
             periodSeconds: 5
             failureThreshold: 3
           {{- if $svc.startupPath }}
           startupProbe:
-            httpGet: { path: {{ $svc.startupPath }}, port: {{ $svc.port | default 8080 }} }
+            httpGet: { path: {{ $svc.startupPath }}, port: {{ $podPort | default 8080 }} }
             periodSeconds: 5
             failureThreshold: 60
           {{- end }}

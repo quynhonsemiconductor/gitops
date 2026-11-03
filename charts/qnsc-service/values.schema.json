@@ -165,7 +165,14 @@
           "port": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 65535
+            "maximum": 65535,
+            "description": "The Service port, and the default pod port. WEB_API_UPSTREAM dials this."
+          },
+          "targetPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "The pod port, when the image does not listen on `port`. NetworkPolicies and probes match THIS, not the Service port (evaluated after DNAT)."
           },
           "size": {
             "enum": [

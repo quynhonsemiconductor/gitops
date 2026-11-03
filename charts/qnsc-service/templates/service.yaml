@@ -31,7 +31,9 @@ spec:
   ports:
     - name: {{ if eq $svc.kind "grpc" }}grpc{{ else }}http{{ end }}
       port: {{ $svc.port }}
-      targetPort: {{ $svc.port }}
+      {{- /* The pod port. A NetworkPolicy is evaluated after DNAT and matches
+             THIS value, not `port`; qnsc.podPort is how the rules read it. */}}
+      targetPort: {{ $svc.targetPort | default $svc.port }}
       {{- if eq $svc.kind "grpc" }}
       appProtocol: kubernetes.io/h2c
       {{- end }}
