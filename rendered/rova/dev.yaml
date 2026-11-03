@@ -231,7 +231,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:f452a5d0662b9dfd7e2dee3b121770f2a3b172daf67d2d3e223cc297ce6a24be
+          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:13d37a5792137ccf9f0c3b4004576366275ec921cedb97dbf6fa9a8692329897
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -261,7 +261,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-7c36d2ef8e8f
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-c7b23bc9acca
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -386,7 +386,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:fa651ec27d35c347f2f8df4994ab6361b96baeff049e9427f9f70a040350f80b
+          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:6fabaa87d16cd6b711bbd6a7a1e85df9d1ce891d000613fbd4f72ad0b98086f3
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -405,7 +405,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-7c36d2ef8e8f
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-c7b23bc9acca
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -493,7 +493,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-d10c09dc9b96
+  name: migrator-662e95991fe5
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -532,7 +532,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/rova-migrator@sha256:d10c09dc9b96a1404ce502d6c720bc3850c23e18591979654df98ab712655f81
+          image: ghcr.io/quynhonsemiconductor/rova-migrator@sha256:662e95991fe52ac9c854d0685785bd688e2b5843c71d585a105dde374bf27e7d
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
