@@ -324,6 +324,23 @@ cnpg_ca
 # repo's values.yaml. A re-run must never "correct" a version the self-managed
 # Application already moved — that would be a surprise downgrade.
 step "ArgoCD"
+# argocd-secret is BOOTSTRAP-OWNED: the chart no longer renders it
+# (configs.secret.createSecret is false). Create the empty object here, before
+# the server starts, because ESO's Merge target must already exist; after that
+# argocd-server writes server.secretkey (util/settings/settings.go
+# saveSignatureAndCertificate) and ESO writes admin.password.
+if ! "${KUBECTL[@]}" -n argocd get secret argocd-secret >/dev/null 2>&1; then
+  "${KUBECTL[@]}" apply -f - >/dev/null <<'YAML'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-secret
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+YAML
+  say "  + argocd-secret created empty (server: server.secretkey, ESO: admin.password)"
+fi
 ARGO_VERSION=$(argo_cd_version)
 HELM=(helm)
 [[ -n $CONTEXT ]] && HELM+=(--kube-context "$CONTEXT")

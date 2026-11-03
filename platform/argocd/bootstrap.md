@@ -74,7 +74,8 @@ by the identity lane, not a plain secret.
 4  ArgoCD               helm upgrade --install, version from versions.yaml,
                         ONLY when the release does not exist. After the first
                         root sync, apps/platform-argocd.yaml owns the release:
-                        chart bumps are PRs, not helm runs.
+                        chart bumps are PRs, not helm runs. Also creates the
+                        EMPTY argocd-secret (the chart does not render it).
                         No yq: one awk reads `platform.argo-cd.version`
 5  root                 apps/project*.yaml first (root belongs to `platform`,
                         and an Application whose project does not exist is refused),
@@ -112,6 +113,16 @@ second one-line PR then turns on `automated` + `selfHeal`. From then on a chart
 or values change is a PR: `targetRevision` in that Application plus
 `platform/argocd/values.yaml`, with `versions.yaml` kept in step. `cluster.sh`
 installs ArgoCD only when the release is absent; it never upgrades one.
+
+`argocd-secret` has ONE object and no chart owner (`configs.secret.createSecret:
+false`). `cluster.sh` creates it empty at bootstrap (label
+`app.kubernetes.io/part-of=argocd`), `argocd-server` fills `server.secretkey`
+(`util/settings/settings.go`, saveSignatureAndCertificate — it also creates the
+Secret itself if absent, so bootstrap is not strictly required for the server),
+and ESO fills `admin.password` with Merge from `platform-secrets`. Rendering the
+Secret here made two Applications claim it: ESO copies the ExternalSecret's
+annotations (ArgoCD's tracking-id included) onto a Merge target that has no
+`target.template`, so each sync rewrote the other's tracking id.
 
 RISK: a bad values change here can break the controller and the server that would
 otherwise show you the error. Rollback, owner-run, IN THIS ORDER — a bare
