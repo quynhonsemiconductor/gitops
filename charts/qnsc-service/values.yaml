@@ -49,7 +49,10 @@ size: s              # default preset; a service may override it
 #                bootstrapping; a missing/invalid file is a boot error, not a
 #                silent fallback.
 #   uid          any non-root uid works; the chart pins runAsUser 1001.
-#   egress       none. Default-deny egress is left in place: no DNS, no API calls.
+#   egress       DNS (kube-system, 53) and this release's api pods on the api
+#                Service port — nothing else. The chart sets
+#                WEB_API_UPSTREAM=http://api:<rendered port> for the
+#                /guide-assets/* forward_auth gate.
 web:
   enabled: false
   port: 8080
