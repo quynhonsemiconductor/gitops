@@ -266,6 +266,12 @@ autoInstrumentation:
       capabilities:
         drop: [ALL]
         add: [BPF, PERFMON, NET_RAW, SYS_PTRACE, DAC_READ_SEARCH, CHECKPOINT_RESTORE]
+      # containerd's default AppArmor profile denies ptrace(read) on processes outside the container, which Beyla
+      # needs to inspect the workloads it instruments (~70 `apparmor="DENIED" operation="ptrace" comm="beyla"` per node,
+      # 2026-11-03). Unconfined for this one container only; the capability set above stays the boundary, and the obi
+      # namespace is the only PSA-privileged one.
+      appArmorProfile:
+        type: Unconfined
     volumes:
       - name: tracefs
         hostPath:
