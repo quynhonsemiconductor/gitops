@@ -318,6 +318,10 @@ spec:
               value: --max-old-space-size=512
             - name: DATABASE_POOL_MAX
               value: "20"
+            - name: MCP_ENABLED
+              value: "true"
+            - name: MCP_CF_TEAM_DOMAIN
+              value: https://qnsc.cloudflareaccess.com
           envFrom:
             - secretRef:
                 name: rova-env
@@ -790,6 +794,9 @@ spec:
     - secretKey: GITHUB_WEBHOOK_SECRET
       remoteRef:
         key: rova-prod-github-webhook-secret
+    - secretKey: MCP_ACCESS_AUD
+      remoteRef:
+        key: rova-prod-mcp-access-aud
     - secretKey: PLATFORM_ADMIN_EMAILS
       remoteRef:
         key: rova-prod-platform-admin-emails
