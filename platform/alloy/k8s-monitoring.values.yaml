@@ -208,21 +208,27 @@ applicationObservability:
   # matching telemetry is DROPPED.)
   #
   # The names below are the OTLP metric names — what this filter sees. The
-  # Prometheus exporter adds unit/type suffixes AFTERWARDS, so e.g.
-  # `proxmox_vm_netin` becomes `proxmox_vm_netin_bytes_total` in Grafana.
-  # Families from pve-manager `PVE::Metrics::Plugin::OpenTelemetry` +
+  # shipped plugin SUFFIXES the name of every series it classifies as a counter
+  # (`PVE::Status::OpenTelemetry::_classify_metric_type`; the name is built as
+  # `${metric_prefix}_${key}${suffix}`), so e.g. the OTLP name is
+  # `proxmox_vm_netin_total`, not `proxmox_vm_netin`; the Prometheus exporter
+  # then renders it `proxmox_vm_netin_bytes_total` in Grafana (unit + `_total`).
+  # Gauges keep the bare name (`proxmox_vm_uptime` -> `..._uptime_seconds`).
+  # Families from pve-manager `PVE::Status::OpenTelemetry` +
   # `PVE::Service::pvestatd`:
-  #   node    uptime; cpustat.{cpu,iowait,avg1};
+  #   node    uptime; cpustat.{cpu, iowait_total, avg1};
   #           memory.{memtotal,memused,memavailable,arcsize};
-  #           nics.<physical>.* -> network.{receive,transmit}
+  #           nics.* -> network.{receive,transmit}_total — one series per
+  #           interface the host reports (physical NICs, the bridge, loopback
+  #           and one tap per VM), not only physical NICs
   #   storage PVE::Storage::storage_info {total,used,avail,active} per store
-  #   VM      qemu/lxc status {uptime,cpu,mem,maxmem,netin,netout,diskread,
-  #           diskwrite,pressurecpusome,pressureiosome}
+  #   VM      qemu/lxc status {uptime,cpu,mem,maxmem, netin_total, netout_total,
+  #           diskread_total, diskwrite_total, pressurecpusome, pressureiosome}
   # App metrics carry other `service.name`s and are untouched.
   metrics:
     filters:
       metric:
-        - 'resource.attributes["service.name"] == "proxmox-ve" and not IsMatch(name, "^(proxmox_node_uptime|proxmox_node_cpustat_(cpu|iowait|avg1)|proxmox_node_memory_(memtotal|memused|memavailable|arcsize)|proxmox_node_network_(receive|transmit)|proxmox_storage_(total|used|avail|active)|proxmox_vm_(uptime|cpu|mem|maxmem|netin|netout|diskread|diskwrite|pressurecpusome|pressureiosome))$")'
+        - 'resource.attributes["service.name"] == "proxmox-ve" and not IsMatch(name, "^(proxmox_node_uptime|proxmox_node_cpustat_(cpu|iowait_total|avg1)|proxmox_node_memory_(memtotal|memused|memavailable|arcsize)|proxmox_node_network_(receive|transmit)_total|proxmox_storage_(total|used|avail|active)|proxmox_vm_(uptime|cpu|mem|maxmem|(netin|netout|diskread|diskwrite)_total|pressurecpusome|pressureiosome))$")'
 
 # CNPG's operator creates PodMonitors when its own `monitoring.podMonitorEnabled`
 # is on (flipped in the same PR, platform/cnpg/operator.yaml). ServiceMonitors

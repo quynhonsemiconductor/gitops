@@ -51,11 +51,14 @@ Two guards matter, because the port has no authentication:
 
 - the chart's `applicationObservability.metrics.filters` is an **allowlist** of
   OTLP metric names for `service.name=proxmox-ve`: node `uptime`,
-  `cpustat.{cpu,iowait,avg1}`, `memory.{memtotal,memused,memavailable,arcsize}`,
-  `network.{receive,transmit}`; storage `{total,used,avail,active}`; VM
-  `{uptime,cpu,mem,maxmem,netin,netout,diskread,diskwrite,pressurecpusome,pressureiosome}`.
-  Everything else the PVE plugin sends is dropped — it exports the raw
-  `pvestatd` hashes, and that was 843 `proxmox_*` series (mostly per-disk
+  `cpustat.{cpu,iowait_total,avg1}`,
+  `memory.{memtotal,memused,memavailable,arcsize}`,
+  `network.{receive,transmit}_total`; storage `{total,used,avail,active}`; VM
+  `{uptime,cpu,mem,maxmem,(netin,netout,diskread,diskwrite)_total,pressurecpusome,pressureiosome}`.
+  Counters carry `_total` in the OTLP name itself (the plugin suffixes the
+  name before the exporter sees it), which is why a bare `netin` never
+  matched. Everything else the PVE plugin sends is dropped — it exports the
+  raw `pvestatd` hashes, and that was 843 `proxmox_*` series (mostly per-disk
   `blockstat`) before the allowlist. App metrics have other `service.name`s and
   are untouched;
 - NetworkPolicy `alloy-otlp-host` admits 4318 to the Alloy pods from RFC1918
