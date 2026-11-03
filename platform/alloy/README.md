@@ -49,16 +49,19 @@ nothing).
 
 Two guards matter, because the port has no authentication:
 
-- the chart's `applicationObservability.metrics.filters` drops any metric from
-  `service.name=proxmox-ve` whose name is not `proxmox_*` (the families PVE 9's
-  `PVE::Metrics::Plugin::OpenTelemetry` builds: `proxmox_node_*`,
-  `proxmox_node_network_*`, `proxmox_node_storage_*`, `proxmox_vm_*`,
-  `proxmox_storage_*`). App metrics have other `service.name`s and are
-  untouched;
+- the chart's `applicationObservability.metrics.filters` is an **allowlist** of
+  OTLP metric names for `service.name=proxmox-ve`: node `uptime`,
+  `cpustat.{cpu,iowait,avg1}`, `memory.{memtotal,memused,memavailable,arcsize}`,
+  `network.{receive,transmit}`; storage `{total,used,avail,active}`; VM
+  `{uptime,cpu,mem,maxmem,netin,netout,diskread,diskwrite,pressurecpusome,pressureiosome}`.
+  Everything else the PVE plugin sends is dropped — it exports the raw
+  `pvestatd` hashes, and that was 843 `proxmox_*` series (mostly per-disk
+  `blockstat`) before the allowlist. App metrics have other `service.name`s and
+  are untouched;
 - NetworkPolicy `alloy-otlp-host` admits 4318 to the Alloy pods from RFC1918
   sources. That is defense in depth, not an allowlist: `Cluster` SNATs the
   client to a node address. The real boundary is the server VLAN (upstream
-  firewall, owner-managed) plus the name filter.
+  firewall, owner-managed) plus the name allowlist.
 
 ## Credentials — the owner fills these, never Git
 
