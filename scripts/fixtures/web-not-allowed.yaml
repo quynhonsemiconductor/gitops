@@ -1,0 +1,5 @@
+# Negative fixture for chart-ci's schema gate: `web` was added to this chart in
+# 0.18.0, so a chart pinned before that must reject it. The #163/#174 incident
+# was exactly this key reaching a 0.15.x Application and staying there.
+web:
+  enabled: false

@@ -143,13 +143,17 @@ DB credentials (`secrets.dbMigrator`).
 helm lint charts/qnsc-service -f values/rova/base.yaml -f values/rova/prod.yaml
 
 helm unittest charts/qnsc-service       # the platform invariants
-./scripts/render.sh                     # regenerate rendered/ — COMMIT THE RESULT
+./scripts/render.sh                     # regenerate rendered/ at the PINNED chart versions — COMMIT THE RESULT
+./scripts/render.sh --head /tmp/head    # preview the chart at HEAD (never commit this)
 ```
 
-**A chart change is reviewed on its rendered diff, not its template diff.** Unit
+**A change is reviewed on its rendered diff, not its template diff.** Unit
 tests pass while "this silently removes the PDB from every size-M service" ships;
-the golden render does not (§11c). CI fails if `rendered/` is stale, and prints the
-diff — which is what the change does to production.
+the golden render does not (§11c). `rendered/` is rendered with each
+Application's pinned chart from `appsets/products.yaml`, so it is what ArgoCD
+applies, and CI fails if it is stale. A chart PR cannot show in that diff until
+an Application pins it, so CI separately renders the chart at HEAD for every row
+into a throwaway directory and validates it.
 
 The invariants under `charts/qnsc-service/tests/` each guard a decision that was
 expensive to reach and would be cheap to undo by accident: no CPU limits, memory
