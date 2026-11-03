@@ -1,0 +1,61 @@
+# ── ArgoCD manages itself ────────────────────────────────────────────────────
+#
+# Until this Application existed, the installer was also the one thing no review
+# touched: a chart/values change reached the cluster only when someone ran
+# `helm upgrade` by hand (platform/argocd/bootstrap.md, step 4). This adopts that
+# hand-made release into ArgoCD.
+#
+# ADOPTION, NOT INSTALL: same release name (`argocd`), same namespace (`argocd`),
+# same chart (argo-cd 10.9.2 from versions.yaml) and the same values file the
+# hand upgrade used. Helm's ownership metadata (`meta.helm.sh/release-name`) on
+# every live object already matches, so the first sync updates in place; it does
+# not delete and recreate a Deployment. helm is still used ONCE at bootstrap,
+# before any ArgoCD Application exists to do it.
+#
+# WAVE 9, last: an ArgoCD upgrade restarts the controller, the repo-server and the
+# server — the processes evaluating this very sync. Running it after every other
+# Application means a chart bump cannot interrupt the platform waves mid-flight.
+# (Wave 9 is also where the locked `default` AppProject sits; neither depends on
+# the other, and a same-wave order is not needed.)
+#
+# MANUAL SYNC IN THIS PR, ON PURPOSE. The first sync adopts objects that Helm's
+# field manager already owns; a divergence there can surface as an SSA conflict
+# on a Service, RBAC object, ServiceAccount, PDB, NetworkPolicy, CRD or hook. The
+# SA runs a server-side `argocd app diff platform-argocd` and then the first sync
+# by hand; a second one-line PR turns on `automated: {prune: false, selfHeal: true}`.
+# prune stays false because the chart ships the three ArgoCD CRDs — pruning one
+# deletes every Application, ApplicationSet and AppProject with it.
+# ServerSideApply — the same option the other Helm Applications use; the chart's
+# large CRD and ConfigMap objects exceed the client-side annotation limit.
+#
+# RISK: a bad values change here can break the controller or the API server that
+# would otherwise show you the error. Rollback order is in
+# platform/argocd/bootstrap.md (suspend automation, revert or helm rollback,
+# re-enable), not a bare revert of a merge that ArgoCD itself cannot sync.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: "10.9.2"   # keep in step with versions.yaml
+      helm:
+        releaseName: argocd
+        valueFiles: [$values/platform/argocd/values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    # MANUAL for the adoption (see the header). The second PR adds
+    # `automated: {prune: false, selfHeal: true}` once the diff and one manual
+    # sync are proven clean.
+    syncOptions: [ServerSideApply=true]

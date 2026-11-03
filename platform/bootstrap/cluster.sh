@@ -319,17 +319,20 @@ step "CNPG CA ($ENV)"
 cnpg_ca
 
 # ══ 4. ArgoCD ═══════════════════════════════════════════════════════════════
-# The last Helm install by hand. Version pinned in versions.yaml, not here.
+# helm is BOOTSTRAP-ONLY. Once the release exists, apps/platform-argocd.yaml owns
+# it: a chart bump is a PR changing that Application's targetRevision + this
+# repo's values.yaml. A re-run must never "correct" a version the self-managed
+# Application already moved — that would be a surprise downgrade.
 step "ArgoCD"
 ARGO_VERSION=$(argo_cd_version)
 HELM=(helm)
 [[ -n $CONTEXT ]] && HELM+=(--kube-context "$CONTEXT")
 installed=$("${HELM[@]}" list -n argocd --filter '^argocd$' -o json 2>/dev/null \
   | jq -r '.[0].chart // empty' | sed 's/^argo-cd-//')
-if [[ $installed == "$ARGO_VERSION" ]]; then
-  say "  = argocd $ARGO_VERSION already installed, no upgrade"
+if [[ -n $installed ]]; then
+  say "  = argocd $installed installed; upgrades are PRs to apps/platform-argocd.yaml"
 else
-  say "  i argocd ${installed:-not installed} -> $ARGO_VERSION"
+  say "  i argocd not installed -> $ARGO_VERSION (bootstrap install)"
   helm repo list 2>/dev/null | grep -q '^argo[[:space:]]' || helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
   helm repo update argo >/dev/null
   "${HELM[@]}" upgrade --install argocd argo/argo-cd -n argocd --version "$ARGO_VERSION" \

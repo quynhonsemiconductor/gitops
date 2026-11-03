@@ -2,7 +2,7 @@
 
 ONPREM-PLAN §14. Git holds everything except the handful of things a cluster cannot
 create for itself: its namespaces' labels, the ESO service-principal Secrets, the
-static CNPG CA, ArgoCD, and the `root` Application. Everything after `root` — the
+static CNPG CA, ArgoCD's FIRST install, and the `root` Application. Everything after `root` — the
 platform operators, the databases, the products — is Applications in `apps/` and
 `appsets/`, ordered by sync wave (§11.2).
 
@@ -71,7 +71,10 @@ by the identity lane, not a plain secret.
 3  CNPG CA              ONE `az keyvault secret show` -> ca.crt + the SEC1
                         `EC PRIVATE KEY` block -> pg-<env>-ca and pg-<env>-ca-pub.
                         A PKCS#8 or RSA key is refused here, with the reason (#68)
-4  ArgoCD               helm upgrade --install, version from versions.yaml.
+4  ArgoCD               helm upgrade --install, version from versions.yaml,
+                        ONLY when the release does not exist. After the first
+                        root sync, apps/platform-argocd.yaml owns the release:
+                        chart bumps are PRs, not helm runs.
                         No yq: one awk reads `platform.argo-cd.version`
 5  root                 apps/project*.yaml first (root belongs to `platform`,
                         and an Application whose project does not exist is refused),
@@ -99,6 +102,45 @@ Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
 `--force NAME`, `--vault-admin`, `--ca-secret`, `--pg-cluster`, `--op-vault`,
 `--eso-item-*`, `--eso-client-id-*`.
 
+## ArgoCD upgrades after the first root sync
+
+ArgoCD manages itself in two steps. `apps/platform-argocd.yaml` (wave 9, after
+every wave that could be interrupted by its own restart) adopts the bootstrap
+release — same release name `argocd`, same namespace, same chart version — with
+AUTOMATION OFF: the SA diffs it server-side and runs the first sync by hand. A
+second one-line PR then turns on `automated` + `selfHeal`. From then on a chart
+or values change is a PR: `targetRevision` in that Application plus
+`platform/argocd/values.yaml`, with `versions.yaml` kept in step. `cluster.sh`
+installs ArgoCD only when the release is absent; it never upgrades one.
+
+RISK: a bad values change here can break the controller and the server that would
+otherwise show you the error. Rollback, owner-run, IN THIS ORDER — a bare
+`helm rollback` is undone on the next reconcile by self-heal, and `root` reverts
+manual edits to this Application:
+
+```
+argocd app set root --sync-policy none
+argocd app set platform-argocd --sync-policy none
+```
+
+Then revert the bad change in git (preferred), or roll the Helm release back:
+
+```
+helm rollback argocd 4 -n argocd
+```
+
+Finally re-enable automation, in the same order:
+
+```
+argocd app set root --sync-policy automated --self-heal --auto-prune=false
+argocd app set platform-argocd --sync-policy automated --self-heal --auto-prune=false
+```
+
+Helm history stops at revision 4 (2026-11-03). ArgoCD renders with `helm template`
+and records NO Helm revisions, so revision 4 is the only valid Helm rollback
+target, and every good state after the adoption lives in git — the git revert is
+the real rollback, `helm rollback` only buys the time to make it.
+
 ## Re-running it on a cluster that already exists
 
 The next real use is a re-run: k3s-01, after the ESO workload-identity change.
@@ -110,7 +152,8 @@ ESO credentials   kept when both keys exist; --force qnsc-eso-<store>-cert repla
 CNPG CA           created ONCE. A re-run never regenerates it, and a missing
                   -ca-pub mirror is rebuilt FROM the CA that is already there,
                   then compared byte for byte. --force pg-dev-ca replaces it
-ArgoCD            installed or upgraded ONLY when the pinned version differs
+ArgoCD            installed ONLY when absent; a chart bump is a PR to
+                  apps/platform-argocd.yaml (never a helm run)
 root              applied; a rehearsal leaves an existing root as the cluster has it
 ```
 
@@ -174,10 +217,13 @@ has ever been printed — the 2026-10-31 incident is why.
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
  2  platform-cloudflared     traffic arrives last
  3  platform-data-prod       valkey-rova, pg-rova (+ role timeouts); last, so an unready kv-qnsc-prod cannot hold earlier waves
+ 9  platform-argocd          ArgoCD adopts its own release; last, so an upgrade that
+                             restarts the controller cannot interrupt a platform wave
 ```
 
-`platform-base`, `platform-prometheus-crds` and `platform-data` have `prune: false`
-(a pruned Namespace or PVC deletes data). A failed wave holds the next one:
+`platform-base`, `platform-prometheus-crds`, `platform-data` and `platform-argocd`
+have `prune: false` (a pruned Namespace or PVC deletes data, and pruning ArgoCD's
+CRDs would delete every Application). A failed wave holds the next one:
 `platform-secrets` stays Degraded until the ESO stores are Valid, and that is the
 signal, not a bug. `pg-dev` needs the hand-applied `pg-dev-ca` secret (step 3) and
 the three `rova-dev-db-*` Key Vault secrets before wave 0. `pg-rova` (wave 3) needs `data-prod/pg-rova-ca`
