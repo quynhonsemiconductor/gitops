@@ -133,7 +133,161 @@ redis-ha:
 dex:
   enabled: false     # no SSO yet, so no broker (ONPREM-PLAN §9: SSO waits for its trigger)
 
+# ── Deploy notifications ─────────────────────────────────────────────────────
+#
+# The deploy event has ONE source: ArgoCD. It posts to the Teams Workflows
+# webhook as an Adaptive Card and writes a Grafana annotation, so "what is
+# running where" is visible without opening the cluster.
+#
+# TRIGGERS (global subscriptions below, selected by the labels the AppSet puts
+# on every Application):
+#   prod  sync Succeeded · sync Failed/Error · health Degraded
+#   dev   sync Failed/Error only — a successful dev sync is noise.
+#
+# The Teams payload is the message envelope Teams Workflows requires:
+#   {"type":"message","attachments":[{contentType: adaptive, content: <card>}]}
+# A plain {"text": ...} (the retired Office 365 Connector format) is accepted
+# with 202 and silently dropped, so it is built explicitly here instead of
+# relying on a notifier's idea of a card.
+#
+# The Grafana annotation is written through the generic webhook service rather
+# than the built-in `grafana` service: the built-in one takes its tags from the
+# subscription recipient string, which is static per Application, and the
+# annotation must carry the deployed version. `version` is the 7-character
+# gitops revision of the sync — the one version ArgoCD actually knows (prod
+# images are pinned by digest, so no image tag appears in the Application).
+#
+# US $teams-webhook-url / $grafana-annotations-url / $grafana-annotations-token
+# are expanded by the notifications controller from `argocd-notifications-secret`
+# (created by ESO from kv-qnsc-platform, platform/argocd/externalsecret-notifications.yaml).
+# No URL or token is in this file.
 notifications:
-  enabled: false     # §9e renders the alerts. ArgoCD notifying separately would
-                     # be a second alerting path with its own subscriber list —
-                     # and §8 records what happened the last time a topic had none
+  enabled: true
+  secret:
+    create: false          # ESO owns argocd-notifications-secret
+
+  notifiers:
+    service.webhook.teams: |
+      url: $teams-webhook-url
+      headers:
+        - name: Content-Type
+          value: application/json
+    # The Key Vault item platform-argocd-grafana-url holds the FULL annotations
+    # endpoint, e.g. https://<stack>.grafana.net/api/annotations — the webhook
+    # service posts to `url` verbatim, unlike the built-in grafana notifier it
+    # does not append `/annotations` itself.
+    service.webhook.grafana: |
+      url: $grafana-annotations-url
+      headers:
+        - name: Authorization
+          value: Bearer $grafana-annotations-token
+        - name: Content-Type
+          value: application/json
+
+  templates:
+    template.qnsc-deploy: |
+      webhook:
+        teams:
+          method: POST
+          body: |
+            {{- $op := .app.status.operationState | default dict -}}
+            {{- $sync := .app.status.sync | default dict -}}
+            {{- $health := .app.status.health | default dict -}}
+            {{- $labels := .app.metadata.labels | default dict -}}
+            {{- $product := index $labels "qnsc.vn/product" | default "" -}}
+            {{- $env := index $labels "qnsc.vn/env" | default "" -}}
+            {{- $phase := index $op "phase" | default "Unknown" -}}
+            {{- $status := index $health "status" | default "Unknown" -}}
+            {{- $revision := index $sync "revision" | default "" -}}
+            {{- $color := "Good" -}}
+            {{- if or (eq $phase "Error") (eq $phase "Failed") (eq $status "Degraded") -}}
+            {{- $color = "Attention" -}}
+            {{- end -}}
+            {
+              "type": "message",
+              "attachments": [
+                {
+                  "contentType": "application/vnd.microsoft.card.adaptive",
+                  "contentUrl": null,
+                  "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                      {
+                        "type": "TextBlock",
+                        "size": "Medium",
+                        "weight": "Bolder",
+                        "wrap": true,
+                        "color": "{{ $color }}",
+                        "text": "Deploy {{ $product }} {{ $env }}: {{ $phase }}"
+                      },
+                      {
+                        "type": "FactSet",
+                        "facts": [
+                          { "title": "Application", "value": {{ .app.metadata.name | toJson }} },
+                          { "title": "Sync", "value": {{ $phase | toJson }} },
+                          { "title": "Health", "value": {{ $status | toJson }} },
+                          { "title": "Revision", "value": {{ $revision | toJson }} }
+                        ]
+                      },
+                      {
+                        "type": "TextBlock",
+                        "wrap": true,
+                        "isSubtle": true,
+                        "text": {{ index $op "message" | default "" | toJson }}
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+        grafana:
+          method: POST
+          body: |
+            {{- $op := .app.status.operationState | default dict -}}
+            {{- $sync := .app.status.sync | default dict -}}
+            {{- $health := .app.status.health | default dict -}}
+            {{- $labels := .app.metadata.labels | default dict -}}
+            {{- $product := index $labels "qnsc.vn/product" | default "" -}}
+            {{- $env := index $labels "qnsc.vn/env" | default "" -}}
+            {{- $phase := index $op "phase" | default "Unknown" -}}
+            {{- $status := index $health "status" | default "Unknown" -}}
+            {{- $revision := index $sync "revision" | default "" -}}
+            {{- $version := $revision | trunc 7 | default "unknown" -}}
+            {
+              "text": {{ printf "deploy %s %s: %s (health %s, revision %s)" $product $env $phase $status $revision | toJson }},
+              "tags": ["deploy", {{ $product | toJson }}, {{ $env | toJson }}, {{ printf "version=%s" $version | toJson }}]
+            }
+
+  triggers:
+    trigger.on-qnsc-deploy-succeeded: |
+      - description: Sync succeeded
+        oncePer: app.status.sync.revision
+        send: [qnsc-deploy]
+        when: app.status.operationState.phase in ['Succeeded']
+    trigger.on-qnsc-deploy-failed: |
+      - description: Sync failed or errored
+        # One notification per sync attempt. `startedAt` changes on every retry, so
+        # a retry that fails again notifies; the same failed sync does not repeat on
+        # each controller resync.
+        oncePer: app.status.operationState.startedAt
+        send: [qnsc-deploy]
+        when: app.status.operationState.phase in ['Error', 'Failed']
+    trigger.on-qnsc-deploy-degraded: |
+      - description: Application health is Degraded
+        # One notification per health state, not per reconcile. Accepted trade: a
+        # second Degraded episode immediately after the first is suppressed until
+        # the app reports a different status once.
+        oncePer: app.status.health.status
+        send: [qnsc-deploy]
+        when: app.status.health.status == 'Degraded'
+
+  subscriptions:
+    - recipients: [webhook:teams, webhook:grafana]
+      triggers: [on-qnsc-deploy-succeeded, on-qnsc-deploy-failed, on-qnsc-deploy-degraded]
+      selector: qnsc.vn/env=prod
+    - recipients: [webhook:teams, webhook:grafana]
+      triggers: [on-qnsc-deploy-failed]
+      selector: qnsc.vn/env=dev
+

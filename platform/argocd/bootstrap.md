@@ -151,7 +151,7 @@ their formats are `values/<product>/<env>.secrets.yaml`; the vaults are:
 | Where | What | Written by |
 |---|---|---|
 | `kv-qnsc-dev` | one secret per rova-dev value (cookie/csrf/better-auth, entra, R2 pair, admin roster, db-app/worker/migrator) | `secrets.sh` |
-| `kv-qnsc-platform` | `platform-cloudflared-<site>-apps`, `platform-grafana-alloy` (JSON, keys ARE Alloy's env names), `platform-argocd-admin-bcrypt` | `secrets.sh` |
+| `kv-qnsc-platform` | `platform-cloudflared-<site>-apps`, `platform-grafana-alloy` (JSON, keys ARE Alloy's env names), `platform-argocd-admin-bcrypt`, `platform-argocd-teams-webhook`, `platform-argocd-grafana-url`, `platform-argocd-grafana-token` | `secrets.sh` for the first three; the three deploy-notification items are owner-created (vendor-issued) |
 | `kv-qnsc-admin` | `platform-cnpg-ca-<env>` (crt + SEC1 key), `admin-argocd-password` | `secrets.sh` |
 | 1Password | `eso-{platform,dev,prod}-combined-pem` Document items | identity lane |
 
@@ -168,7 +168,7 @@ has ever been printed — the 2026-10-31 incident is why.
 -3  products (AppProject)
 -2  platform-eso             operator in `external-secrets` + the ClusterSecretStores
 -2  platform-cert-manager
--1  platform-secrets         grafana-cloud, cloudflared, argocd admin hash (kv-qnsc-platform)
+-1  platform-secrets         grafana-cloud, cloudflared, argocd admin hash, deploy-notification credentials (kv-qnsc-platform)
 -1  platform-cnpg            operator + barman plugin in `cnpg-system`
  0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs, pg-dev (+ rova managed roles)
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
