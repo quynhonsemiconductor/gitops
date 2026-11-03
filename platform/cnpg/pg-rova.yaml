@@ -25,6 +25,8 @@ metadata:
   name: pg-rova
   namespace: data-prod
 spec:
+  # One instance again after the move to local-path-retain (runbooks/pg-rova-storage-move.md, 2026-11-03):
+  # pg-rova-2 is primary on retain PVCs; CNPG removes the non-primary pod, the old pg-rova-1.
   instances: 1
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
@@ -32,9 +34,9 @@ spec:
     name: postgresql
     major: 18
   # local-path-retain (platform/storage): PVs of NEW PVCs survive the deletion of the PVC or the
-  # Cluster. The live PVCs were created on `local-path` (reclaimPolicy Delete) and are NOT
-  # recreated: CNPG leaves existing PVCs alone, so their PVs are set to Retain once by hand
-  # (runbooks/pv-retain.md). A rebuilt cluster picks this class up.
+  # Cluster. pg-rova-1's PVCs were created on `local-path` (reclaimPolicy Delete) and CNPG never
+  # recreates a PVC, so the move is replace-by-replica: pg-rova-2 is built with this class
+  # (runbooks/pg-rova-storage-move.md); the old PVs are set to Retain by hand first (runbooks/pv-retain.md).
   storage:
     size: 20Gi
     storageClass: local-path-retain
