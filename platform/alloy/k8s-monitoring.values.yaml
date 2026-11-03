@@ -192,6 +192,26 @@ applicationObservability:
       http:
         enabled: true
         port: 4318
+  # The OTLP METRICS pipeline is already wired by the chart: the feature sends
+  # OTLP metrics to the `grafana-metrics` destination (rendered config:
+  # `metrics_destinations = [otelcol.exporter.prometheus.grafana_metrics.input]`),
+  # so nothing has to be enabled for the Proxmox host's pushes to reach Grafana Cloud.
+  # What this path DOES need is a ceiling: it listens unauthenticated on 4318
+  # and is now reachable from the host via `alloy-otlp-host` (extraObjects
+  # below), so every series arriving stamped `service.name=proxmox-ve` is kept
+  # only if it belongs to PVE's own metric namespace; anything else sent through
+  # that door is dropped. Filter processor: matching telemetry is DROPPED.
+  #
+  # Names from pve-manager `PVE::Metrics::Plugin::OpenTelemetry` (Proxmox VE 9
+  # admin guide, "External Metric Server" > OpenTelemetry): the resource carries
+  # `service.name = "proxmox-ve"` and the families are built as
+  # `<prefix>_<status field>` from `proxmox_node`, `proxmox_node_network`,
+  # `proxmox_node_storage`, `proxmox_vm` and `proxmox_storage`. App metrics have
+  # their own `service.name` (rova-api, opshub-api, …) and pass untouched.
+  metrics:
+    filters:
+      metric:
+        - 'resource.attributes["service.name"] == "proxmox-ve" and not IsMatch(name, "^proxmox_")'
 
 # CNPG's operator creates PodMonitors when its own `monitoring.podMonitorEnabled`
 # is on (flipped in the same PR, platform/cnpg/operator.yaml). ServiceMonitors
@@ -843,6 +863,88 @@ collectors:
     extraService:
       enabled: true
       name: receiver
+
+# ── Proxmox host → alloy: the host-OTLP door (PVE 9 OpenTelemetry) ──────────
+# The Proxmox host pushes host/VM/storage gauges itself (Datacenter > Metric
+# Server, type OpenTelemetry, OTLP/HTTP JSON, no auth, path `/v1/metrics`).
+# It is not a cluster node, so it cannot use `alloy-receiver.platform.svc`;
+# it needs a port on a k3s node. This is a NodePort on the SAME receiver port
+# (4318), not a second receiver: the chart's OTLP receiver already forwards
+# metrics, and the filter above bounds what the door may add. OTLP/HTTP only;
+# gRPC 4317 stays in-cluster (the PVE plugin never uses it).
+#
+# Rendered through the chart's `extraObjects` rather than a plain file next to
+# this one: `apps/platform-observability.yaml` has ONE Helm source and no git
+# directory source, so a loose manifest here would never be deployed, and
+# adding a second source to that Application would put CRD-adjacent plumbing
+# in two owners' hands for two objects.
+extraObjects:
+  # The host-facing Service. Selector is the chart's own (same as the rendered
+  # `alloy-receiver` Service): `app.kubernetes.io/name=alloy` +
+  # `app.kubernetes.io/instance=alloy`.
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: alloy-otlp-host
+      namespace: platform
+      labels:
+        app.kubernetes.io/name: alloy
+        app.kubernetes.io/instance: alloy
+        app.kubernetes.io/component: networking
+    spec:
+      type: NodePort
+      # Cluster, not Local. The DaemonSet does run on every node (it tolerates
+      # every taint above), so Local's precondition holds — but Local's only
+      # benefit is that the client IP survives, and nothing here reads it: no
+      # auth, no IP allowlist, the guard is the name filter above. Cluster also
+      # survives the entry node's Alloy pod rescheduling, which Local would
+      # turn into a dead 30418 on that node.
+      externalTrafficPolicy: Cluster
+      selector:
+        app.kubernetes.io/name: alloy
+        app.kubernetes.io/instance: alloy
+      ports:
+        - name: otlp-http
+          protocol: TCP
+          port: 4318
+          targetPort: 4318
+          nodePort: 30418
+
+  # `platform-admit` (platform/networkpolicy/platform.yaml) default-denies
+  # ingress into EVERY `platform` pod and admits only pod sources (its own
+  # namespace and product namespaces), so the host's NodePort traffic would be
+  # dropped at the pod even though kube-proxy delivered it. NetworkPolicies are
+  # additive: this one allows 4318 (the same port the products already may use
+  # in-cluster) to the Alloy pods. The source list is RFC1918 ranges and is
+  # DEFENSE IN DEPTH, not an allowlist of the Proxmox host:
+  # externalTrafficPolicy Cluster SNATs the client to a node address, so the
+  # pod sees a node IP, and no on-prem address or VLAN subnet is written here
+  # (those are Tier 1). The real boundary is the server VLAN plus the PVE-name
+  # filter above (a later upstream firewall rule is the owner's). The port
+  # carries no authentication (PVE's plugin has none), so the filter is what
+  # bounds what an accepted connection can add.
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: alloy-otlp-host
+      namespace: platform
+    spec:
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: alloy
+          app.kubernetes.io/instance: alloy
+      policyTypes: [Ingress]
+      ingress:
+        - from:
+            - ipBlock:
+                cidr: 10.0.0.0/8
+            - ipBlock:
+                cidr: 172.16.0.0/12
+            - ipBlock:
+                cidr: 192.168.0.0/16
+          ports:
+            - protocol: TCP
+              port: 4318
 
 # The operator is chart-managed (CRDs + one Deployment). It is the cost of
 # chart 4.x; the alternative (chart 3.x's five fixed collectors) was worse.
