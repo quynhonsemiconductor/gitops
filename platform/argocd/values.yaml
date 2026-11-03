@@ -4,6 +4,10 @@
 #   -n argocd -f values.yaml \
 #   --version <versions.yaml: platform.argo-cd.version>
 #
+# That command is BOOTSTRAP ONLY (cluster.sh step 4, when the release is absent).
+# After the first root sync, apps/platform-argocd.yaml owns the release: changes
+# here and a targetRevision bump there are the upgrade, reviewed as a PR.
+#
 # The `argocd` namespace is declared in ../namespaces/argocd.yaml (labels first,
 # so Helm adopts it). ONE k3s cluster: ArgoCD manages only the cluster it runs in
 # (https://kubernetes.default.svc), so there is no cluster registration.
