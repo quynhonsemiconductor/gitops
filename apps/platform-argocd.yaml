@@ -18,11 +18,10 @@
 # (Wave 9 is also where the locked `default` AppProject sits; neither depends on
 # the other, and a same-wave order is not needed.)
 #
-# MANUAL SYNC IN THIS PR, ON PURPOSE. The first sync adopts objects that Helm's
-# field manager already owns; a divergence there can surface as an SSA conflict
-# on a Service, RBAC object, ServiceAccount, PDB, NetworkPolicy, CRD or hook. The
-# SA runs a server-side `argocd app diff platform-argocd` and then the first sync
-# by hand; a second one-line PR turns on `automated: {prune: false, selfHeal: true}`.
+# AUTOMATION, after adoption was proven by hand: the first sync (2026-11-03)
+# came back Synced/Healthy with no pod restarts, the argocd-secret keys intact,
+# and the redis-secret-init hook Completed without a redis restart. Turning
+# self-heal on now would have raced the adoption; it does not race a no-op.
 # prune stays false because the chart ships the three ArgoCD CRDs — pruning one
 # deletes every Application, ApplicationSet and AppProject with it.
 # ServerSideApply — the same option the other Helm Applications use; the chart's
@@ -55,7 +54,6 @@ spec:
       targetRevision: main
       ref: values
   syncPolicy:
-    # MANUAL for the adoption (see the header). The second PR adds
-    # `automated: {prune: false, selfHeal: true}` once the diff and one manual
-    # sync are proven clean.
+    # prune: false — CRDs (and every Application object) survive a chart revision.
+    automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true]
