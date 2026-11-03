@@ -4,9 +4,9 @@
 product: rova
 size: l
 
-# No `web:` block yet: rova pins qnsc-service 0.15.x, whose values schema rejects
-# unknown keys (ArgoCD ComparisonError on rova-dev and rova-prod after #163).
-# The block comes back in the PR that moves rova to chart >= 0.18.0.
+# No `web:` block here yet: the prod row still pins qnsc-service 0.15.0, whose
+# values schema rejects unknown keys (the #163/#174 ComparisonError). The block
+# lives in dev.yaml for the 0.18.0 dev rows and moves here with the prod-row PR.
 
 services:
   api:
