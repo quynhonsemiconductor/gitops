@@ -13,6 +13,7 @@ values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/dev.yaml
   - ../../../values/rova/tags.dev.yaml
+  - values/web-repo.yaml
 release:
   name: rova
   namespace: rova-dev
