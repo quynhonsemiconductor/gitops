@@ -283,11 +283,15 @@ notifications:
         send: [qnsc-deploy]
         when: app.status.health.status == 'Degraded'
 
+  # A recipient is <service>[:<recipient>]. A webhook defined as
+  # `service.webhook.<name>` is the service `<name>` with no recipient, so it is
+  # listed as `teams`, not `webhook:teams` (the controller rejects that with
+  # "notification service 'webhook' is not supported").
   subscriptions:
-    - recipients: [webhook:teams, webhook:grafana]
+    - recipients: [teams, grafana]
       triggers: [on-qnsc-deploy-succeeded, on-qnsc-deploy-failed, on-qnsc-deploy-degraded]
       selector: qnsc.vn/env=prod
-    - recipients: [webhook:teams, webhook:grafana]
+    - recipients: [teams, grafana]
       triggers: [on-qnsc-deploy-failed]
       selector: qnsc.vn/env=dev
 
