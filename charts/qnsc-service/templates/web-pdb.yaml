@@ -1,0 +1,17 @@
+{{- /* OFF by default: one replica in dev, and a PDB with minAvailable 1 on a
+       single replica blocks node drains forever. A prod product that runs two
+       web replicas sets `web.pdb: true`. */}}
+{{- if and .Values.web.enabled .Values.web.pdb }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ "web") | nindent 6 }}
+{{- end }}

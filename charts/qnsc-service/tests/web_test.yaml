@@ -1,0 +1,196 @@
+suite: web component (optional SPA)
+# DELIVERY-DESIGN §3.1: the SPA is an ordinary Deployment serving static files
+# with runtime config, so the chart must prove BOTH states — off (no manifests,
+# no surprise workload for products without a front end) and on (one replica,
+# /healthz, a single-file config mount, and an ingress rule the tunnel needs).
+templates:
+  - templates/web.yaml
+  - templates/web-service.yaml
+  - templates/web-configmap.yaml
+  - templates/web-pdb.yaml
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+release:
+  name: rova
+  namespace: rova-dev
+
+tests:
+  - it: renders no web manifests when web is not enabled
+    template: templates/web.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders no web Service when web is not enabled
+    template: templates/web-service.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders no web ConfigMap when web is not enabled
+    template: templates/web-configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders no web PDB when web is not enabled
+    template: templates/web-pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails loudly when enabled without an image
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: 'service "web": `image` is required'
+
+  - it: renders one non-root replica with both probes on /healthz
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: metadata.name
+          value: web
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: [ALL]
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value: { path: /healthz, port: 8080 }
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: { path: /healthz, port: 8080 }
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 64Mi }
+
+  - it: pins the image by digest and mounts the config as a single file
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+        digest: sha256:f452a5d0662b9dfd7e2dee3b121770f2a3b172daf67d2d3e223cc297ce6a24be
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/rova-web@sha256:f452a5d0662b9dfd7e2dee3b121770f2a3b172daf67d2d3e223cc297ce6a24be
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: web-config
+            mountPath: /srv/config.json
+            subPath: config.json
+            readOnly: true
+      - equal:
+          path: spec.template.spec.volumes[1].configMap.name
+          value: rova-web-config
+
+  - it: exposes the static server on the web port
+    template: templates/web-service.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0]
+          value: { name: http, port: 8080, targetPort: 8080 }
+
+  - it: renders web.config verbatim as JSON
+    template: templates/web-configmap.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      web.config:
+        apiUrl: /api
+        appEnv: dev
+        devLogin: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: rova-web-config
+      - equal:
+          path: data["config.json"]
+          value: '{"apiUrl":"/api","appEnv":"dev","devLogin":true}'
+
+  - it: has no PDB by default, and one when web.pdb is true
+    template: templates/web-pdb.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the PDB when asked, with minAvailable 1
+    template: templates/web-pdb.yaml
+    set:
+      web.enabled: true
+      web.pdb: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  - it: admits cloudflared (platform) to the web Service
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentSelector:
+      path: metadata.name
+      value: allow-ingress-web
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels
+          value: { kubernetes.io/metadata.name: platform }
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8080

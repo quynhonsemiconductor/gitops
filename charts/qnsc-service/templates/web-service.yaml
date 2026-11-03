@@ -1,0 +1,22 @@
+{{- /* The tunnel routes everything that is not /api/*, /v1/* or /readyz to this
+       Service (DELIVERY-DESIGN §3.1), so it must be cluster-reachable from
+       `platform` (cloudflared), which networkpolicy.yaml admits below. */}}
+{{- if .Values.web.enabled }}
+{{- $w := .Values.web }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+spec:
+  type: ClusterIP
+  trafficDistribution: {{ .Values.defaults.trafficDistribution }}
+  selector:
+    {{- include "qnsc.selectorLabels" (list $ "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $w.port | default 8080 }}
+      targetPort: {{ $w.port | default 8080 }}
+{{- end }}

@@ -1,0 +1,95 @@
+{{- /* ── OPTIONAL SPA COMPONENT ───────────────────────────────────────────────
+       `web` is NOT a service in `services`: it is a static file server with no
+       HTTP API of its own, so the service table's kind/probes/OTEL env do not
+       apply. The contract with the image (owned by the product repo):
+
+         listens on 8080             (web.port)
+         doc root    /srv            (index.html at its root)
+         health      /healthz        (both probes)
+         config      /srv/config.json, mounted from the ConfigMap below
+         runs as an arbitrary non-root uid (the chart pins 1001)
+
+       The config file is mounted as a SINGLE FILE (subPath), not as a volume at
+       /srv: a ConfigMap volume mounted at the doc root would hide the image's
+       own dist/ files. The path is the one agreed with the rova web image.
+
+       The image comes from values/<product>/tags.<env>.yaml (`web:` key), the
+       same generated file that carries api/worker/migrator tags, so a promotion
+       is one more line in the same reviewed diff. */}}
+{{- if .Values.web.enabled }}
+{{- $w := .Values.web }}
+{{- $d := .Values.defaults }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+spec:
+  replicas: {{ $w.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "qnsc.labels" (list $ "web") | nindent 8 }}
+    spec:
+      # A static file server never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $d.runAsUser | default 1001 }}
+        runAsGroup: {{ $d.runAsGroup | default 1001 }}
+        fsGroup: {{ $d.runAsGroup | default 1001 }}
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: {{ $d.arch }}
+      terminationGracePeriodSeconds: {{ $d.terminationGracePeriodSeconds }}
+      containers:
+        - name: web
+          image: {{ include "qnsc.image" (list $ $w "web") }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ $w.port | default 8080 }}
+          resources:
+            requests:
+              cpu: {{ $w.resources.cpu }}
+              memory: {{ $w.resources.memory }}
+            limits:
+              memory: {{ $w.resources.memory }}
+          {{- /* The static server serves no API and depends on nothing, so one
+                 endpoint is honest for both probes. `/healthz` is the image's
+                 contract (unlike the API chart the chart cannot derive it from
+                 a service kind — there is no kind here). */}}
+          livenessProbe:
+            httpGet: { path: /healthz, port: {{ $w.port | default 8080 }} }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: {{ $w.port | default 8080 }} }
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: web-config
+              mountPath: /srv/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: web-config
+          configMap:
+            name: {{ include "qnsc.product" $ }}-web-config
+            items: [{ key: config.json, path: config.json }]
+{{- end }}

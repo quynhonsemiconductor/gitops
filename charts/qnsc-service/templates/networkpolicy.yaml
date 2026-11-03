@@ -122,6 +122,35 @@ spec:
         - { protocol: TCP, port: {{ . }} }
         {{- end }}
 {{- end }}
+{{- /* The optional SPA (`web`, templates/web*.yaml) is not in `services`, so the
+       loop below cannot emit its ingress rule. Cloudflared lives in `platform`,
+       and with default-deny on in dev an unlisted web pod is unreachable — the
+       tunnel would answer 503 with the pod healthy. Same shape as an `expose:
+       public` service, plus same-namespace traffic. */}}
+{{- if .Values.web.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-web
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ "web") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
+      ports:
+        - { protocol: TCP, port: {{ .Values.web.port | default 8080 }} }
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: {{ .Values.web.port | default 8080 }} }
+{{- end }}
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
