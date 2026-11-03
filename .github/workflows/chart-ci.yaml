@@ -90,6 +90,7 @@ jobs:
       # A schema check against HEAD says nothing about the chart ArgoCD pulls.
       - name: helm lint (pinned charts)
         run: |
+          set -euo pipefail
           fail=0
           tmp=$(mktemp -d)
           trap 'rm -rf "$tmp"' EXIT
@@ -219,10 +220,16 @@ jobs:
       # test ever written. The committed render makes it a line in a diff.
       - name: golden render is current
         run: |
+          set -euo pipefail
           ./scripts/render.sh
-          if ! git diff --exit-code --stat rendered/; then
+          # `git diff` alone MISSES an untracked render: a new Application's file
+          # would be written and the gate would pass. Status covers both
+          # modifications and untracked files.
+          changed=$(git status --porcelain --untracked-files=all rendered/)
+          if [ -n "$changed" ]; then
             echo "::error::rendered/ is stale. Run ./scripts/render.sh and commit the result."
-            echo "The diff above is what this change does to production."
+            echo "The diff below is what this change does to production."
+            echo "$changed"
             git diff rendered/
             exit 1
           fi
