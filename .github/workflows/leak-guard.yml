@@ -35,7 +35,7 @@ jobs:
       # The tree is scanned at HEAD only (gitleaks owns history). The runtime
       # identifiers disarm if their org variable is unset — the summary names
       # which patterns ran.
-      - uses: quynhonsemiconductor/ci/actions/leak-guard@810f707ebf426b13abedd4375b996d7e3348cb9b # v1.30.0
+      - uses: quynhonsemiconductor/ci/actions/leak-guard@abdf759277ba8a3d3bac2ba07ac1c73c642710b0 # v1.31.0
         with:
           entra-tenant-id: ${{ vars.ENTRA_TENANT_ID }}
           azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
