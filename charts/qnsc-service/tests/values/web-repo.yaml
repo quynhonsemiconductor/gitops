@@ -1,0 +1,4 @@
+# The web image repository the suite enables against. values/rova/base.yaml has
+# no `web:` block while rova pins a chart older than 0.18.0 (gitops#174).
+web:
+  image: { repo: ghcr.io/quynhonsemiconductor/rova-web }

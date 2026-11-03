@@ -4,14 +4,9 @@
 product: rova
 size: l
 
-# The SPA image repository, beside the api/worker/migrator repos. Still DISABLED:
-# dev turns it on once the web image exists and CI writes its tag/digest into
-# values/rova/tags.dev.yaml; prod turns on at the edge cutover. The chart also
-# defaults `enabled` to false — this block states the intent where a reader of
-# the product values looks for it.
-web:
-  enabled: false
-  image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
+# No `web:` block yet: rova pins qnsc-service 0.15.x, whose values schema rejects
+# unknown keys (ArgoCD ComparisonError on rova-dev and rova-prod after #163).
+# The block comes back in the PR that moves rova to chart >= 0.18.0.
 
 services:
   api:
