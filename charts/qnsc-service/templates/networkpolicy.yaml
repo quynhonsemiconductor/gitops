@@ -128,7 +128,9 @@ spec:
        tunnel would answer 503 with the pod healthy. Same shape as an `expose:
        public` service, plus same-namespace traffic. */}}
 {{- if .Values.web.enabled }}
-{{- $apiPort := include "qnsc.webApiPort" $ }}
+{{- /* The POD port, not the Service port: a NetworkPolicy is evaluated after
+       DNAT (qnsc.podPort). `services.api.targetPort` may split the two. */}}
+{{- $apiPodPort := include "qnsc.podPort" (list $ "api") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -164,9 +166,10 @@ spec:
                web-scoped copy keeps this rule set self-contained and testable.
          api   the only egress a static server makes: Caddy's forward_auth gate
                for /guide-assets/* asks GET /v1/auth/me on the api Service. The
-               destination is the api PODS (same namespace) on the port the chart
-               renders; allow-egress-external excludes the cluster CIDRs, so
-               without this rule the gate times out and answers 503. */}}
+               destination is the api PODS (same namespace) on the POD port —
+               not the Service port, see qnsc.podPort; allow-egress-external
+               excludes the cluster CIDRs, so without this rule the gate times
+               out and answers 503. */}}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -191,12 +194,14 @@ spec:
             matchLabels:
               {{- include "qnsc.selectorLabels" (list $ "api") | nindent 14 }}
       ports:
-        - { protocol: TCP, port: {{ $apiPort }} }
+        - { protocol: TCP, port: {{ $apiPodPort }} }
 {{- end }}
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
 {{- if ne $caps.service "none" }}
+{{- /* Policy ports are POD ports (after DNAT), never the Service port. */}}
+{{- $podPort := include "qnsc.podPort" (list $ $name) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -215,7 +220,7 @@ spec:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
       ports:
-        - { protocol: TCP, port: {{ $svc.port }} }
+        - { protocol: TCP, port: {{ $podPort }} }
     {{- end }}
     {{- if eq ($svc.expose | default "none") "cluster" }}
     {{- /* §4b — reachable from any PRODUCT namespace, never the internet. The
@@ -224,12 +229,12 @@ spec:
         - namespaceSelector:
             matchLabels: { qnsc.vn/tenant: product }
       ports:
-        - { protocol: TCP, port: {{ $svc.port }} }
+        - { protocol: TCP, port: {{ $podPort }} }
     {{- end }}
     - from:
         - podSelector: {}          # same namespace, service to service
       ports:
-        - { protocol: TCP, port: {{ $svc.port }} }
+        - { protocol: TCP, port: {{ $podPort }} }
     {{- if and $.Values.web.enabled (eq $name "api") }}
     {{- /* Scoped alongside the generic same-namespace rule above: the web pod's
            forward_auth gate calls the api Service directly, so the pairing is
@@ -239,7 +244,7 @@ spec:
             matchLabels:
               {{- include "qnsc.selectorLabels" (list $ "web") | nindent 14 }}
       ports:
-        - { protocol: TCP, port: {{ $svc.port }} }
+        - { protocol: TCP, port: {{ $podPort }} }
     {{- end }}
 {{- end }}
 {{- end }}

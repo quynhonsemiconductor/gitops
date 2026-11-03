@@ -31,6 +31,6 @@ The image must work inside the pod the chart creates:
 | health | `GET /healthz` → 200 while serving |
 | config | read `/srv/config.json` before bootstrapping; invalid/missing is a boot error |
 | uid | any non-root uid; the chart pins 1001 |
-| egress | DNS (`kube-system`, 53/UDP+TCP) and this release's `api` pods on the `api` Service port; nothing else. The chart sets `WEB_API_UPSTREAM=http://api:<rendered port>` for the `/guide-assets/*` forward-auth gate. |
+| egress | DNS (`kube-system`, 53/UDP+TCP) and this release's `api` pods on the api **pod port** (`targetPort`, defaulting to `port`) — a NetworkPolicy is evaluated after DNAT, so it never names the Service port; nothing else. The chart sets `WEB_API_UPSTREAM=http://api:<Service port>` for the `/guide-assets/*` forward-auth gate. |
 
 Default: disabled. Prod stays disabled until the edge/tunnel cutover.

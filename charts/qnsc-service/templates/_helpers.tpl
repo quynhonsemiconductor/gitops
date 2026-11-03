@@ -227,6 +227,29 @@ cannot authenticate anyone.
 {{- end -}}
 
 {{/*
+The port a POD listens on — the Service `targetPort`.
+
+kube-proxy DNATs Service traffic to the pod BEFORE a NetworkPolicy is evaluated,
+so a policy `port` matches the pod's container port, never the Service `port`.
+The kubelet probes the pod directly, so probes use the same number.
+
+`services.<name>.port` is the Service port and the default pod port;
+`services.<name>.targetPort` overrides the pod port (an image that listens on a
+fixed port behind a differently numbered Service). webApiPort is the other one:
+WEB_API_UPSTREAM dials the SERVICE, so it takes `port`, not this.
+*/}}
+{{- define "qnsc.podPort" -}}
+{{- $root := index . 0 -}}
+{{- $name := index . 1 -}}
+{{- $svc := index $root.Values.services $name -}}
+{{- if not $svc -}}
+{{- fail (printf "no service named %q in values.services" $name) -}}
+{{- end -}}
+{{- $port := required (printf "service %q: `port` is required (NetworkPolicies name the pod port)" $name) $svc.port -}}
+{{- $svc.targetPort | default $port -}}
+{{- end -}}
+
+{{/*
 PreSync prerequisites of the migrator Job (job.yaml). ArgoCD runs ALL hooks before
 ANY normal resource, so what the PreSync Job needs must be a hook, one wave before
 the Job (wave 0). A hook is DELETED and recreated every sync, so ONLY resources
