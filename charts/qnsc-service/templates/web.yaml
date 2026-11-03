@@ -19,6 +19,7 @@
 {{- if .Values.web.enabled }}
 {{- $w := .Values.web }}
 {{- $d := .Values.defaults }}
+{{- $apiPort := include "qnsc.webApiPort" $ }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -71,6 +72,12 @@ spec:
           ports:
             - name: http
               containerPort: {{ $w.port | default 8080 }}
+          env:
+            {{- /* Caddy's forward_auth gate for /guide-assets/* calls
+                   GET /v1/auth/me on this URL with the reader's cookie. Read the
+                   port from the api service above, never assume it. */}}
+            - name: WEB_API_UPSTREAM
+              value: {{ printf "http://api:%v" $apiPort | quote }}
           resources:
             requests:
               cpu: {{ $w.resources.cpu }}
