@@ -141,8 +141,21 @@ dex:
 #
 # TRIGGERS (global subscriptions below, selected by the labels the AppSet puts
 # on every Application):
-#   prod  sync Succeeded · sync Failed/Error · health Degraded
-#   dev   sync Failed/Error only — a successful dev sync is noise.
+#   prod  sync Succeeded · sync Failed/Error · health Degraded · sync broken
+#   dev   sync Failed/Error only — a successful dev sync is noise — plus sync broken
+#
+# `sync broken` is the one that was missing on 2026-11-03: rova-dev and rova-prod
+# sat in ComparisonError for ~1.5 h (values used a chart key the PINNED chart's
+# schema rejects) and nobody was told, because ComparisonError is not a failed
+# operation and the health check still said Healthy.
+#
+# Multi-source caveat: these Applications take the chart from an OCI source and
+# the values from git, so `.status.sync.revision` and
+# `.status.operationState.syncResult.revision` are EMPTY. The real revisions are
+# the lists `.status.sync.revisions[]` / `.status.operationState.syncResult.revisions[]`,
+# ordered as `sources[]`: [chartVersion, values commit]. Every oncePer and every
+# "version" below reads the list, not the empty scalar; verified against the live
+# rova-prod Application JSON.
 #
 # The Teams payload is the message envelope Teams Workflows requires:
 #   {"type":"message","attachments":[{contentType: adaptive, content: <card>}]}
@@ -191,14 +204,16 @@ notifications:
           method: POST
           body: |
             {{- $op := .app.status.operationState | default dict -}}
-            {{- $sync := .app.status.sync | default dict -}}
             {{- $health := .app.status.health | default dict -}}
             {{- $labels := .app.metadata.labels | default dict -}}
             {{- $product := index $labels "qnsc.vn/product" | default "" -}}
             {{- $env := index $labels "qnsc.vn/env" | default "" -}}
             {{- $phase := index $op "phase" | default "Unknown" -}}
             {{- $status := index $health "status" | default "Unknown" -}}
-            {{- $revision := index $sync "revision" | default "" -}}
+            {{- $sr := index $op "syncResult" | default dict -}}
+            {{- $revisions := index $sr "revisions" | default list -}}
+            {{- $revision := "" -}}
+            {{- if gt (len $revisions) 1 -}}{{- $revision = index $revisions 1 -}}{{- else if eq (len $revisions) 1 -}}{{- $revision = index $revisions 0 -}}{{- end -}}
             {{- $color := "Good" -}}
             {{- if or (eq $phase "Error") (eq $phase "Failed") (eq $status "Degraded") -}}
             {{- $color = "Attention" -}}
@@ -246,24 +261,91 @@ notifications:
           method: POST
           body: |
             {{- $op := .app.status.operationState | default dict -}}
-            {{- $sync := .app.status.sync | default dict -}}
             {{- $health := .app.status.health | default dict -}}
             {{- $labels := .app.metadata.labels | default dict -}}
             {{- $product := index $labels "qnsc.vn/product" | default "" -}}
             {{- $env := index $labels "qnsc.vn/env" | default "" -}}
             {{- $phase := index $op "phase" | default "Unknown" -}}
             {{- $status := index $health "status" | default "Unknown" -}}
-            {{- $revision := index $sync "revision" | default "" -}}
+            {{- $sr := index $op "syncResult" | default dict -}}
+            {{- $revisions := index $sr "revisions" | default list -}}
+            {{- $revision := "" -}}
+            {{- if gt (len $revisions) 1 -}}{{- $revision = index $revisions 1 -}}{{- else if eq (len $revisions) 1 -}}{{- $revision = index $revisions 0 -}}{{- end -}}
             {{- $version := $revision | trunc 7 | default "unknown" -}}
             {
               "text": {{ printf "deploy %s %s: %s (health %s, revision %s)" $product $env $phase $status $revision | toJson }},
               "tags": ["deploy", {{ $product | toJson }}, {{ $env | toJson }}, {{ printf "version=%s" $version | toJson }}]
             }
 
+    template.qnsc-sync-broken: |
+      webhook:
+        teams:
+          method: POST
+          body: |
+            {{- $labels := .app.metadata.labels | default dict -}}
+            {{- $product := index $labels "qnsc.vn/product" | default "" -}}
+            {{- $env := index $labels "qnsc.vn/env" | default "" -}}
+            {{- $sync := .app.status.sync | default dict -}}
+            {{- $health := .app.status.health | default dict -}}
+            {{- $syncStatus := index $sync "status" | default "Unknown" -}}
+            {{- $healthStatus := index $health "status" | default "Unknown" -}}
+            {{- $msgs := list -}}
+            {{- range .app.status.conditions -}}
+            {{- if has .type (list "ComparisonError" "InvalidSpecError" "SyncError") -}}
+            {{- $msgs = append $msgs (printf "%s: %s" .type .message) -}}
+            {{- end -}}
+            {{- end -}}
+            {{- $detail := join "; " $msgs -}}
+            {{- if not $detail -}}
+            {{- $detail = "OutOfSync for more than 10 minutes since the last sync" -}}
+            {{- end -}}
+            {
+              "type": "message",
+              "attachments": [
+                {
+                  "contentType": "application/vnd.microsoft.card.adaptive",
+                  "contentUrl": null,
+                  "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                      {
+                        "type": "TextBlock",
+                        "size": "Medium",
+                        "weight": "Bolder",
+                        "wrap": true,
+                        "color": "Attention",
+                        "text": {{ printf "Sync broken %s %s: %s" $product $env $syncStatus | toJson }}
+                      },
+                      {
+                        "type": "FactSet",
+                        "facts": [
+                          { "title": "Application", "value": {{ .app.metadata.name | toJson }} },
+                          { "title": "Sync", "value": {{ $syncStatus | toJson }} },
+                          { "title": "Health", "value": {{ $healthStatus | toJson }} }
+                        ]
+                      },
+                      {
+                        "type": "TextBlock",
+                        "wrap": true,
+                        "isSubtle": true,
+                        "text": {{ $detail | toJson }}
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+
   triggers:
     trigger.on-qnsc-deploy-succeeded: |
       - description: Sync succeeded
-        oncePer: app.status.sync.revision
+        # The LIST, not `status.sync.revision`: on a multi-source Application that
+        # scalar is empty, which made the controller log `already sent` for every
+        # rollout after the first (2026-11-03, the missing v0.8.6 card). The list
+        # is [chartVersion, values commit] and changes on every rollout.
+        oncePer: app.status.operationState.syncResult.revisions
         send: [qnsc-deploy]
         when: app.status.operationState.phase in ['Succeeded']
     trigger.on-qnsc-deploy-failed: |
@@ -282,6 +364,22 @@ notifications:
         oncePer: app.status.health.status
         send: [qnsc-deploy]
         when: app.status.health.status == 'Degraded'
+    trigger.on-qnsc-sync-broken: |
+      - description: Comparison, spec or sync error
+        # One card per condition episode. The conditions list renders to its
+        # type/message/lastTransitionTime, so a NEW error notices, while the same
+        # error on each controller resync does not.
+        oncePer: app.status.conditions
+        send: [qnsc-sync-broken]
+        when: any(app.status.conditions ?? [], {.type in ['ComparisonError', 'InvalidSpecError', 'SyncError']})
+      - description: OutOfSync for more than 10 minutes since the last sync
+        # ArgoCD has no "OutOfSync since" timestamp. finishedAt is the last sync
+        # operation: it suppresses the transient OutOfSync right after a sync and
+        # alerts immediately for an app that has been stable long enough that the
+        # drift is already older than the operation. One card per revision set.
+        oncePer: app.status.sync.revisions
+        send: [qnsc-sync-broken]
+        when: app.status.sync.status == 'OutOfSync' && (app.status.operationState == nil || time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() >= 10)
 
   # A recipient is <service>[:<recipient>]. A webhook defined as
   # `service.webhook.<name>` is the service `<name>` with no recipient, so it is
@@ -293,5 +391,14 @@ notifications:
       selector: qnsc.vn/env=prod
     - recipients: [teams, grafana]
       triggers: [on-qnsc-deploy-failed]
+      selector: qnsc.vn/env=dev
+    # Both environments: the 2026-11-03 break showed on dev first, and a broken
+    # Application is never "successful dev noise". Teams only — this is not a
+    # deploy event worth a Grafana annotation.
+    - recipients: [teams]
+      triggers: [on-qnsc-sync-broken]
+      selector: qnsc.vn/env=prod
+    - recipients: [teams]
+      triggers: [on-qnsc-sync-broken]
       selector: qnsc.vn/env=dev
 
