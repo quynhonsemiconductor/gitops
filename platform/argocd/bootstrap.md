@@ -104,23 +104,42 @@ Flags: `--context`, `--env`, `--revision`, `--until-wave`, `--wave-timeout`,
 
 ## ArgoCD upgrades after the first root sync
 
-ArgoCD manages itself. `apps/platform-argocd.yaml` (wave 9, after every wave that
-could be interrupted by its own restart) adopts the bootstrap release — same
-release name `argocd`, same namespace, same chart version — and from then on a
-chart or values change is a PR: `targetRevision` in that Application plus
+ArgoCD manages itself in two steps. `apps/platform-argocd.yaml` (wave 9, after
+every wave that could be interrupted by its own restart) adopts the bootstrap
+release — same release name `argocd`, same namespace, same chart version — with
+AUTOMATION OFF: the SA diffs it server-side and runs the first sync by hand. A
+second one-line PR then turns on `automated` + `selfHeal`. From then on a chart
+or values change is a PR: `targetRevision` in that Application plus
 `platform/argocd/values.yaml`, with `versions.yaml` kept in step. `cluster.sh`
 installs ArgoCD only when the release is absent; it never upgrades one.
 
 RISK: a bad values change here can break the controller and the server that would
-otherwise show you the error. Rollback, owner-run:
+otherwise show you the error. Rollback, owner-run, IN THIS ORDER — a bare
+`helm rollback` is undone on the next reconcile by self-heal, and `root` reverts
+manual edits to this Application:
 
 ```
-helm history argocd -n argocd
-helm rollback argocd <revision> -n argocd
+argocd app set root --sync-policy none
+argocd app set platform-argocd --sync-policy none
 ```
 
-Then revert the PR: while the bad values are on `main`, the Application's
-self-heal sync re-applies them.
+Then revert the bad change in git (preferred), or roll the Helm release back:
+
+```
+helm rollback argocd 4 -n argocd
+```
+
+Finally re-enable automation, in the same order:
+
+```
+argocd app set root --sync-policy automated --self-heal --auto-prune=false
+argocd app set platform-argocd --sync-policy automated --self-heal --auto-prune=false
+```
+
+Helm history stops at revision 4 (2026-11-03). ArgoCD renders with `helm template`
+and records NO Helm revisions, so revision 4 is the only valid Helm rollback
+target, and every good state after the adoption lives in git — the git revert is
+the real rollback, `helm rollback` only buys the time to make it.
 
 ## Re-running it on a cluster that already exists
 

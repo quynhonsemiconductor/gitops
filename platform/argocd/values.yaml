@@ -15,6 +15,13 @@
 # §2b — one of the THREE components whose API pins the Kubernetes version.
 
 configs:
+  # argocd-secret belongs to ESO (../argocd/externalsecret.yaml). Leave
+  # argocdServerAdminPassword, the webhook secrets and `extra` UNSET: setting a
+  # password makes the chart render `admin.passwordMtime: now`, which changes on
+  # EVERY render — self-heal then rewrites the Secret and resets admin sessions —
+  # and it would fight the bcrypt hash ESO syncs from kv-qnsc-platform. Unset, the
+  # chart renders the Secret with no data and ESO's Merge policy keeps the hash.
+  secret: {}
   cm:
     # LOCAL ADMIN, NO SSO (ONPREM-PLAN §9: ArgoCD SSO waits for "a second person
     # needs ArgoCD"; today the UI is behind Cloudflare Access with MFA). The admin
