@@ -3,26 +3,27 @@
 # FOUR ClusterSecretStore families, replacing the EKS-era per-namespace IRSA
 # SecretStore that the chart rendered (that one stays until the values move in
 # the dev cutover; this file is on-prem only, applied at bootstrap — §14 step 2
-# needs the hand-applied SP certificate Secrets BEFORE these can go Valid).
+# needs the hand-applied platform SP certificate Secret BEFORE that store can
+# go Valid; dev and prod authenticate with workload identity).
 #
-# One store per vault, each with its own identity (prod and platform: SP
-# certificate; dev: workload identity, infra#252 step 5), and a `conditions`
+# One store per vault, each with its own identity (platform: SP certificate;
+# dev and prod: workload identity, infra#252 step 5), and a `conditions`
 # namespaceSelector on `qnsc.vn/env` (../namespaces/onprem.yaml):
 #   - dev can never read prod
 #   - apps can never read platform credentials
 #   - kv-qnsc-admin has NO store on purpose — nobody automated reads it (§7.1)
 #
 # The SP credentials are NOT in Git (only the public certificate halves go to
-# infra/live/identity). Each SP's material is hand-applied at bootstrap
-# (§14 step 2) into the external-secrets namespace — ONE COMBINED PEM per SP
+# infra/live/identity). The platform SP's material is hand-applied at bootstrap
+# (§14 step 2) into the external-secrets namespace — ONE COMBINED PEM
 # (certificate + private key concatenated; that is what ESO's azure
 # `clientCertificate` authSecretRef reads — a single key, not a keypair), plus
 # the SP's clientId (an identifier, not a secret, but it still comes from the
 # operator's stdin, not Git):
 #
-#   kubectl -n external-secrets create secret generic qnsc-eso-dev-cert \
-#     --from-file=tls.pem=dev-combined.pem \
-#     --from-literal=client-id=<sp-application-id>   # same shape for prod / platform
+#   kubectl -n external-secrets create secret generic qnsc-eso-platform-cert \
+#     --from-file=tls.pem=platform-combined.pem \
+#     --from-literal=client-id=<sp-application-id>
 #
 # Values are never in Git and never in state — OpenTofu (infra/live/identity)
 # owns the vaults and the RBAC, never the secrets (§7).
@@ -89,13 +90,33 @@ spec:
         name: eso-dev
         namespace: external-secrets
 ---
+# ── prod identity: Entra workload identity (infra#252 step 5) ───────────────
+#
+# Same shape as dev (see the dev block above; the tenantId/audiences notes there
+# apply here too). The "QNSC ESO Prod" application carries a federated
+# credential with
+#   issuer  https://oidc.qnsc.vn/k3s-onprem
+#   subject system:serviceaccount:external-secrets:eso-prod
+#   audience api://AzureADTokenExchange
+#
+# client-id is the QNSC ESO Prod application (client) id — an identifier, not a
+# secret. ESO reads client-id and tenant-id from these annotations.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-prod
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: 9ccb7f4d-bcca-4eca-bf98-9772f3dc1a6f
+    azure.workload.identity/tenant-id: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: kv-qnsc-prod
   annotations:
-    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
-    # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
+    # Not ready at bootstrap (the workload identity has not been exchanged yet / the CNPG clusters do not exist):
+    # must not hold root's sync waves. A real failure shows on the ExternalSecrets that use the store.
     argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
   conditions:
@@ -104,18 +125,11 @@ spec:
           qnsc.vn/env: prod
   provider:
     azurekv:
-      authType: ServicePrincipal
-      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      authType: WorkloadIdentity
       vaultUrl: https://kv-qnsc-prod.vault.azure.net
-      authSecretRef:
-        clientId:
-          name: qnsc-eso-prod-cert
-          namespace: external-secrets
-          key: client-id
-        clientCertificate:
-          name: qnsc-eso-prod-cert
-          namespace: external-secrets
-          key: tls.pem
+      serviceAccountRef:
+        name: eso-prod
+        namespace: external-secrets
 ---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
