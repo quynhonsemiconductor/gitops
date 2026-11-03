@@ -159,7 +159,7 @@ dex:
 #
 # US $teams-webhook-url / $grafana-annotations-url / $grafana-annotations-token
 # are expanded by the notifications controller from `argocd-notifications-secret`
-# (created by ESO from kv-qnsc-platform, platform/argocd/externalsecret.yaml).
+# (created by ESO from kv-qnsc-platform, platform/argocd/externalsecret-notifications.yaml).
 # No URL or token is in this file.
 notifications:
   enabled: true
@@ -172,6 +172,10 @@ notifications:
       headers:
         - name: Content-Type
           value: application/json
+    # The Key Vault item platform-argocd-grafana-url holds the FULL annotations
+    # endpoint, e.g. https://<stack>.grafana.net/api/annotations — the webhook
+    # service posts to `url` verbatim, unlike the built-in grafana notifier it
+    # does not append `/annotations` itself.
     service.webhook.grafana: |
       url: $grafana-annotations-url
       headers:
@@ -264,10 +268,18 @@ notifications:
         when: app.status.operationState.phase in ['Succeeded']
     trigger.on-qnsc-deploy-failed: |
       - description: Sync failed or errored
+        # One notification per sync attempt. `startedAt` changes on every retry, so
+        # a retry that fails again notifies; the same failed sync does not repeat on
+        # each controller resync.
+        oncePer: app.status.operationState.startedAt
         send: [qnsc-deploy]
         when: app.status.operationState.phase in ['Error', 'Failed']
     trigger.on-qnsc-deploy-degraded: |
       - description: Application health is Degraded
+        # One notification per health state, not per reconcile. Accepted trade: a
+        # second Degraded episode immediately after the first is suppressed until
+        # the app reports a different status once.
+        oncePer: app.status.health.status
         send: [qnsc-deploy]
         when: app.status.health.status == 'Degraded'
 
