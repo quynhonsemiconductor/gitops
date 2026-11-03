@@ -5,7 +5,8 @@
 # the dev cutover; this file is on-prem only, applied at bootstrap — §14 step 2
 # needs the hand-applied SP certificate Secrets BEFORE these can go Valid).
 #
-# One store per vault, each with its own SP certificate, and a `conditions`
+# One store per vault, each with its own identity (prod and platform: SP
+# certificate; dev: workload identity, infra#252 step 5), and a `conditions`
 # namespaceSelector on `qnsc.vn/env` (../namespaces/onprem.yaml):
 #   - dev can never read prod
 #   - apps can never read platform credentials
@@ -40,6 +41,29 @@
 # a single secretKeySelector. The datreeio CRD catalog still carries the old
 # shape, so kubeconform with that catalog cannot validate this file.
 ---
+# ── dev identity: Entra workload identity (infra#252 step 5) ─────────────────
+#
+# The dev store below authenticates with a federated token instead of the SP
+# certificate. The ESO controller requests a token for THIS ServiceAccount
+# (serviceaccounts/token create, granted by the chart's
+# rbac.serviceAccountTokenCreate default), and Entra exchanges it because the
+# "QNSC ESO Dev" application carries a federated credential with
+#   issuer  https://oidc.qnsc.vn/k3s-onprem
+#   subject system:serviceaccount:external-secrets:eso-dev
+#   audience api://AzureADTokenExchange
+#
+# client-id is the QNSC ESO Dev application (client) id — an identifier, not a
+# secret. For a store that names this account in serviceAccountRef, ESO reads
+# client-id and tenant-id from these annotations.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-dev
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: d9d625c1-b856-4f1e-86fc-ce36bdf9d511
+    azure.workload.identity/tenant-id: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
@@ -51,18 +75,19 @@ spec:
           qnsc.vn/env: dev
   provider:
     azurekv:
-      authType: ServicePrincipal
-      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      authType: WorkloadIdentity
+      # NO tenantId here, deliberately: ESO 2.11.0 fails with "multiple tenantID
+      # found" when spec.provider.azurekv.tenantId and the ServiceAccount's
+      # azure.workload.identity/tenant-id annotation are both present
+      # (providers/v1/azure/keyvault/keyvault.go:1180). The annotation is the
+      # single source, as in the upstream referenced-service-account example.
+      # Do not add audiences: the token already asks for
+      # api://AzureADTokenExchange by default, and extra values are APPENDED
+      # (keyvault.go:1194-1197), not substituted.
       vaultUrl: https://kv-qnsc-dev.vault.azure.net
-      authSecretRef:
-        clientId:
-          name: qnsc-eso-dev-cert
-          namespace: external-secrets
-          key: client-id
-        clientCertificate:
-          name: qnsc-eso-dev-cert
-          namespace: external-secrets
-          key: tls.pem
+      serviceAccountRef:
+        name: eso-dev
+        namespace: external-secrets
 ---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
