@@ -27,7 +27,11 @@ metadata:
   labels:
     {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
 spec:
-  replicas: {{ $w.replicas | default 1 }}
+  # Direct read, like deployment.yaml:27 — NOT `| default 1`, which turns an
+  # explicit replicas: 0 (kube-downscaler, or a deliberately parked env) back
+  # into 1 because Sprig's default treats 0 as empty. web.replicas defaults to
+  # 1 in values.yaml, so an omitted key still renders 1.
+  replicas: {{ $w.replicas }}
   selector:
     matchLabels:
       {{- include "qnsc.selectorLabels" (list $ "web") | nindent 6 }}
@@ -35,6 +39,13 @@ spec:
     metadata:
       labels:
         {{- include "qnsc.labels" (list $ "web") | nindent 8 }}
+      annotations:
+        {{- /* A ConfigMap mounted through subPath is NOT updated in a running pod:
+               the kubelet resolves the path once, so a config change would leave
+               the SPA serving the old config until something else restarted it.
+               Hashing the config into the pod template makes every config change
+               a new ReplicaSet, which is what actually rolls the pod. */}}
+        checksum/config: {{ toJson ($w.config | default dict) | sha256sum }}
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false

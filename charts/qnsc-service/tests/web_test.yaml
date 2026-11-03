@@ -42,13 +42,13 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: fails loudly when enabled without an image
+  - it: fails loudly when enabled without a tag or digest
     template: templates/web.yaml
     set:
       web.enabled: true
     asserts:
       - failedTemplate:
-          errorMessage: 'service "web": `image` is required'
+          errorMessage: 'service "web": image.tag (or image.digest) is required — the chart never defaults a tag, because `latest` is how a develop build reached production (§11)'
 
   - it: renders one non-root replica with both probes on /healthz
     template: templates/web.yaml
@@ -62,6 +62,20 @@ tests:
       - equal:
           path: spec.replicas
           value: 1
+
+  - it: honors an explicit replicas 0 instead of defaulting it back to 1
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.replicas: 0
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 0
       - equal:
           path: metadata.name
           value: web
@@ -152,6 +166,40 @@ tests:
           path: data["config.json"]
           value: '{"apiUrl":"/api","appEnv":"dev","devLogin":true}'
 
+  - it: hashes web.config into the pod template so a config change rolls the pod (A)
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      web.config:
+        apiUrl: /api
+        appEnv: dev
+        devLogin: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: 8db8c48d78d20182ef433de52318cead64fcf0ec0ed4eb5c8c8b209bd8716912
+
+  - it: the pod checksum is different for a different web.config (B)
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      web.config:
+        apiUrl: /api
+        appEnv: dev
+        devLogin: false
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: ee6581111b23d01e7505c0f1c162d369d92bd02ce4433edfd0866310a6687c4d
+
   - it: has no PDB by default, and one when web.pdb is true
     template: templates/web-pdb.yaml
     set:
@@ -191,6 +239,9 @@ tests:
       - equal:
           path: spec.ingress[0].from[0].namespaceSelector.matchLabels
           value: { kubernetes.io/metadata.name: platform }
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels
+          value: { app.kubernetes.io/name: cloudflared }
       - equal:
           path: spec.ingress[0].ports[0].port
           value: 8080
