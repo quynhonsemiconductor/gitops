@@ -15,13 +15,22 @@
 # §2b — one of the THREE components whose API pins the Kubernetes version.
 
 configs:
-  # argocd-secret belongs to ESO (../argocd/externalsecret.yaml). Leave
-  # argocdServerAdminPassword, the webhook secrets and `extra` UNSET: setting a
-  # password makes the chart render `admin.passwordMtime: now`, which changes on
-  # EVERY render — self-heal then rewrites the Secret and resets admin sessions —
-  # and it would fight the bcrypt hash ESO syncs from kv-qnsc-platform. Unset, the
-  # chart renders the Secret with no data and ESO's Merge policy keeps the hash.
-  secret: {}
+  # argocd-secret is NOT rendered by this chart: one object, one owner chain.
+  # cluster.sh creates it EMPTY at bootstrap (label app.kubernetes.io/part-of=argocd);
+  # argocd-server then fills `server.secretkey` (util/settings/settings.go
+  # saveSignatureAndCertificate), and ESO fills `admin.password` with Merge from
+  # platform-secrets (../argocd/externalsecret.yaml).
+  #
+  # Rendering it here made platform-argocd and platform-secrets both claim the
+  # Secret (SharedResourceWarning). ESO copies the ExternalSecret's annotations
+  # onto a Merge target when no target.template is set, ArgoCD's tracking-id
+  # included, so each sync rewrote the other app's tracking id.
+  #
+  # Also leave argocdServerAdminPassword / the webhook secrets / `extra` UNSET:
+  # a password here makes the chart render `admin.passwordMtime: now` on every
+  # render, so self-heal resets sessions and fights ESO's hash.
+  secret:
+    createSecret: false
   cm:
     # LOCAL ADMIN, NO SSO (ONPREM-PLAN §9: ArgoCD SSO waits for "a second person
     # needs ArgoCD"; today the UI is behind Cloudflare Access with MFA). The admin
