@@ -24,7 +24,7 @@ replicaCount: 1        # a reconciler. A restart costs a refresh interval.
 
 serviceAccount:
   create: true
-  name: external-secrets    # no cloud-role annotation: the stores authenticate with a Key Vault SP certificate
+  name: external-secrets    # no cloud-role annotation: the stores name their own workload-identity ServiceAccounts
 
 resources:
   requests: { cpu: 50m, memory: 128Mi }

@@ -2,28 +2,26 @@
 #
 # FOUR ClusterSecretStore families, replacing the EKS-era per-namespace IRSA
 # SecretStore that the chart rendered (that one stays until the values move in
-# the dev cutover; this file is on-prem only, applied at bootstrap — §14 step 2
-# needs the hand-applied platform SP certificate Secret BEFORE that store can
-# go Valid; dev and prod authenticate with workload identity).
+# the dev cutover; this file is on-prem only, applied at bootstrap, and every
+# store authenticates with Entra workload identity — no hand-applied credential
+# Secret is read).
 #
-# One store per vault, each with its own identity (platform: SP certificate;
-# dev and prod: workload identity, infra#252 step 5), and a `conditions`
+# One store per vault, each with its own workload identity (infra#252 step 5),
+# and a `conditions`
 # namespaceSelector on `qnsc.vn/env` (../namespaces/onprem.yaml):
 #   - dev can never read prod
 #   - apps can never read platform credentials
 #   - kv-qnsc-admin has NO store on purpose — nobody automated reads it (§7.1)
 #
-# The SP credentials are NOT in Git (only the public certificate halves go to
-# infra/live/identity). The platform SP's material is hand-applied at bootstrap
-# (§14 step 2) into the external-secrets namespace — ONE COMBINED PEM
-# (certificate + private key concatenated; that is what ESO's azure
-# `clientCertificate` authSecretRef reads — a single key, not a keypair), plus
-# the SP's clientId (an identifier, not a secret, but it still comes from the
-# operator's stdin, not Git):
+# Each store names its own ServiceAccount below; the controller mints a token
+# for it (serviceaccounts/token create, granted by the chart's
+# rbac.serviceAccountTokenCreate default) and Entra exchanges it because that
+# application carries a federated credential for the subject
+# system:serviceaccount:external-secrets:eso-<env>.
 #
-#   kubectl -n external-secrets create secret generic qnsc-eso-platform-cert \
-#     --from-file=tls.pem=platform-combined.pem \
-#     --from-literal=client-id=<sp-application-id>
+# No store reads a certificate any more. The bootstrap-time
+# qnsc-eso-<env>-cert Secrets stay in the cluster untouched until infra#254
+# removes them after all three stores are proven.
 #
 # Values are never in Git and never in state — OpenTofu (infra/live/identity)
 # owns the vaults and the RBAC, never the secrets (§7).
@@ -131,6 +129,26 @@ spec:
         name: eso-prod
         namespace: external-secrets
 ---
+# ── platform identity: Entra workload identity (infra#252 step 5) ───────────
+#
+# Same shape as dev and prod (see those blocks; the tenantId/audiences notes
+# there apply here too). The "QNSC ESO Platform" application carries a federated
+# credential with
+#   issuer  https://oidc.qnsc.vn/k3s-onprem
+#   subject system:serviceaccount:external-secrets:eso-platform
+#   audience api://AzureADTokenExchange
+#
+# client-id is the QNSC ESO Platform application (client) id — an identifier,
+# not a secret. ESO reads client-id and tenant-id from these annotations.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-platform
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: bbdeecf7-0e6f-4e15-8825-5b03c97e4783
+    azure.workload.identity/tenant-id: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
@@ -142,18 +160,11 @@ spec:
           qnsc.vn/env: platform
   provider:
     azurekv:
-      authType: ServicePrincipal
-      tenantId: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+      authType: WorkloadIdentity
       vaultUrl: https://kv-qnsc-platform.vault.azure.net
-      authSecretRef:
-        clientId:
-          name: qnsc-eso-platform-cert
-          namespace: external-secrets
-          key: client-id
-        clientCertificate:
-          name: qnsc-eso-platform-cert
-          namespace: external-secrets
-          key: tls.pem
+      serviceAccountRef:
+        name: eso-platform
+        namespace: external-secrets
 ---
 # ── cnpg-ca: the KUBERNETES-provider stores (§5.6) ──────────────────────────
 #
@@ -250,7 +261,7 @@ kind: ClusterSecretStore
 metadata:
   name: cnpg-ca-prod
   annotations:
-    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
+    # Not ready at bootstrap (the CNPG clusters do not exist yet): must not hold
     # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
     argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
@@ -279,7 +290,7 @@ kind: ClusterSecretStore
 metadata:
   name: cnpg-ca-dev
   annotations:
-    # Not ready at bootstrap (no prod SP certificate yet / the CNPG clusters do not exist): must not hold
+    # Not ready at bootstrap (the CNPG clusters do not exist yet): must not hold
     # root's sync waves. A real failure shows on the ExternalSecrets that use the store.
     argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
