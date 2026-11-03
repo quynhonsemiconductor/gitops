@@ -297,7 +297,7 @@ notifications:
             {{- end -}}
             {{- $detail := join "; " $msgs -}}
             {{- if not $detail -}}
-            {{- $detail = "OutOfSync for more than 10 minutes since the last sync" -}}
+            {{- $detail = "no condition message; see the Application in ArgoCD" -}}
             {{- end -}}
             {
               "type": "message",
@@ -372,14 +372,6 @@ notifications:
         oncePer: app.status.conditions
         send: [qnsc-sync-broken]
         when: any(app.status.conditions ?? [], {.type in ['ComparisonError', 'InvalidSpecError', 'SyncError']})
-      - description: OutOfSync for more than 10 minutes since the last sync
-        # ArgoCD has no "OutOfSync since" timestamp. finishedAt is the last sync
-        # operation: it suppresses the transient OutOfSync right after a sync and
-        # alerts immediately for an app that has been stable long enough that the
-        # drift is already older than the operation. One card per revision set.
-        oncePer: app.status.sync.revisions
-        send: [qnsc-sync-broken]
-        when: app.status.sync.status == 'OutOfSync' && (app.status.operationState == nil || time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() >= 10)
 
   # A recipient is <service>[:<recipient>]. A webhook defined as
   # `service.webhook.<name>` is the service `<name>` with no recipient, so it is
