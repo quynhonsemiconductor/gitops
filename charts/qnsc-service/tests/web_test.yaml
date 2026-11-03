@@ -245,3 +245,111 @@ tests:
       - equal:
           path: spec.ingress[0].ports[0].port
           value: 8080
+
+  - it: sets WEB_API_UPSTREAM from the rendered api Service port, not a hardcoded 3000
+    template: templates/web.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+      services.api.port: 3999
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: WEB_API_UPSTREAM, value: "http://api:3999" }
+
+  - it: admits DNS and this release's api pods as web egress
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentSelector:
+      path: metadata.name
+      value: allow-egress-web
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: web
+            app.kubernetes.io/instance: rova
+      - equal:
+          path: spec.egress[0]
+          value:
+            to:
+              - namespaceSelector:
+                  matchLabels: { kubernetes.io/metadata.name: kube-system }
+            ports:
+              - { protocol: UDP, port: 53 }
+              - { protocol: TCP, port: 53 }
+      - equal:
+          path: spec.egress[1]
+          value:
+            to:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: api
+                    app.kubernetes.io/instance: rova
+            ports:
+              - { protocol: TCP, port: 3000 }
+
+  - it: admits the same-release web pods to the api on its port
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    documentSelector:
+      path: metadata.name
+      value: allow-ingress-api
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: web
+                    app.kubernetes.io/instance: rova
+            ports:
+              - { protocol: TCP, port: 3000 }
+
+  - it: renders neither web egress nor the web->api ingress rule when web is disabled
+    template: templates/networkpolicy.yaml
+    asserts:
+      # 6 policies are the pre-web set for rova dev; the two web policies would
+      # make 8. A count is the only assertion that can prove an ABSENT document.
+      - hasDocuments:
+          count: 6
+
+  - it: does not admit web pods to the api when web is disabled
+    template: templates/networkpolicy.yaml
+    documentSelector:
+      path: metadata.name
+      value: allow-ingress-api
+    asserts:
+      - notContains:
+          path: spec.ingress
+          content:
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: web
+                    app.kubernetes.io/instance: rova
+            ports:
+              - { protocol: TCP, port: 3000 }
+
+  - it: renders both web policies when web is enabled
+    template: templates/networkpolicy.yaml
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    asserts:
+      - hasDocuments:
+          count: 8

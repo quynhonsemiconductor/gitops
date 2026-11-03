@@ -128,6 +128,7 @@ spec:
        tunnel would answer 503 with the pod healthy. Same shape as an `expose:
        public` service, plus same-namespace traffic. */}}
 {{- if .Values.web.enabled }}
+{{- $apiPort := include "qnsc.webApiPort" $ }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -155,6 +156,42 @@ spec:
         - podSelector: {}
       ports:
         - { protocol: TCP, port: {{ .Values.web.port | default 8080 }} }
+---
+{{- /* web needs TWO egress destinations that the namespace-wide policies do
+       not give it:
+
+         DNS   `allow-dns` already covers every pod in the namespace, but a
+               web-scoped copy keeps this rule set self-contained and testable.
+         api   the only egress a static server makes: Caddy's forward_auth gate
+               for /guide-assets/* asks GET /v1/auth/me on the api Service. The
+               destination is the api PODS (same namespace) on the port the chart
+               renders; allow-egress-external excludes the cluster CIDRs, so
+               without this rule the gate times out and answers 503. */}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-web
+  labels:
+    {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "qnsc.selectorLabels" (list $ "web") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "qnsc.selectorLabels" (list $ "api") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $apiPort }} }
 {{- end }}
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
@@ -193,6 +230,17 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: {{ $svc.port }} }
+    {{- if and $.Values.web.enabled (eq $name "api") }}
+    {{- /* Scoped alongside the generic same-namespace rule above: the web pod's
+           forward_auth gate calls the api Service directly, so the pairing is
+           explicit and testable even if the generic rule is ever narrowed. */}}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "qnsc.selectorLabels" (list $ "web") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $svc.port }} }
+    {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

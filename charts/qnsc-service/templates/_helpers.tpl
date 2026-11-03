@@ -208,6 +208,25 @@ connected client on an unguarded node drain, and Karpenter drains eagerly.
 
 
 {{/*
+Port of the `api` Service the optional `web` component calls.
+
+web is a static server, but its Caddy forward_auth gate asks the API for
+GET /v1/auth/me before serving /guide-assets/*, so WEB_API_UPSTREAM must be the
+port this chart actually renders — never a hardcoded 3000 (a product may change
+it, and a wrong port fails as a 503 from the gate with a healthy web pod).
+
+Called only when web.enabled; fails loudly rather than rendering a web pod that
+cannot authenticate anyone.
+*/}}
+{{- define "qnsc.webApiPort" -}}
+{{- $api := index .Values.services "api" -}}
+{{- if not $api -}}
+{{- fail "web.enabled requires a service named \"api\": WEB_API_UPSTREAM points at it" -}}
+{{- end -}}
+{{- required "service \"api\": `port` is required when web is enabled (WEB_API_UPSTREAM)" $api.port -}}
+{{- end -}}
+
+{{/*
 PreSync prerequisites of the migrator Job (job.yaml). ArgoCD runs ALL hooks before
 ANY normal resource, so what the PreSync Job needs must be a hook, one wave before
 the Job (wave 0). A hook is DELETED and recreated every sync, so ONLY resources
