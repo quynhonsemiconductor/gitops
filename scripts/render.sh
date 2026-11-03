@@ -64,7 +64,11 @@ render_one() { # product env out chart [helm args...]
     [ -f "$f" ] || die "rendered row ${product}/${env} needs $f (the ApplicationSet names it)."
   done
   mkdir -p "$(dirname "$out")"
-  helm template "$product" "$chart" "$@" \
+  # ArgoCD's Helm release name is the Application name (`<product>-<env>`), not
+  # the product: the rova-prod ComparisonError log shows `--name-template
+  # rova-prod`. The chart derives every name from `.Values`, but the release name
+  # must still match so anything Helm itself stamps does too.
+  helm template "${product}-${env}" "$chart" "$@" \
     --namespace "${product}-${env}" \
     -f "$base" -f "$envfile" -f "$tags" \
     > "$out"

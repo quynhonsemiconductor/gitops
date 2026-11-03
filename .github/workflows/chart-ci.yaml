@@ -93,6 +93,13 @@ jobs:
           fail=0
           tmp=$(mktemp -d)
           trap 'rm -rf "$tmp"' EXIT
+          # Capture FIRST: `done < <(render.sh --rows)` would hide a parser
+          # failure — the loop would lint nothing and the step would pass.
+          rows=$(./scripts/render.sh --rows)
+          if [ -z "$rows" ]; then
+            echo "::error::appsets/products.yaml has no enabled chart row"
+            exit 1
+          fi
           while read -r product env version; do
             echo "::group::lint ${product}/${env} (chart ${version})"
             # THE SAME THREE FILES render.sh passes, in the same order. Linting a
@@ -113,8 +120,33 @@ jobs:
               -f "values/${product}/${env}.yaml" \
               -f "values/${product}/tags.${env}.yaml" || fail=1
             echo "::endgroup::"
-          done < <(./scripts/render.sh --rows)
+          done <<< "$rows"
           exit $fail
+
+      # The gate's own negative test: a values key the PINNED chart's schema does
+      # not know must abort the render with helm's schema error. This is the
+      # #163/#174 incident reduced to one file — the check is only real if a bad
+      # values file fails it.
+      - name: schema gate rejects an unknown values key
+        env:
+          NEGATIVE_CHART_VERSION: "0.15.1"   # before `web` existed; keeps testing the gate after the rows move on
+        run: |
+          if helm template mutation \
+               "oci://ghcr.io/quynhonsemiconductor/charts/qnsc-service" \
+               --version "$NEGATIVE_CHART_VERSION" \
+               -f values/rova/base.yaml \
+               -f values/rova/dev.yaml \
+               -f values/rova/tags.dev.yaml \
+               -f scripts/fixtures/web-not-allowed.yaml > /tmp/mutation.out 2>&1; then
+            echo "::error::the pinned chart accepted an unknown 'web' key — the schema gate is not working"
+            exit 1
+          fi
+          if ! grep -q "additional properties 'web' not allowed" /tmp/mutation.out; then
+            echo "::error::render failed, but not for the schema reason this test asserts"
+            sed -n '1,20p' /tmp/mutation.out
+            exit 1
+          fi
+          echo "schema gate ok: $(grep -o "additional properties 'web' not allowed" /tmp/mutation.out | head -1)"
 
       - name: helm unittest
         run: helm unittest charts/qnsc-service
