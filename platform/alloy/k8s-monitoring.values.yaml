@@ -196,22 +196,33 @@ applicationObservability:
   # OTLP metrics to the `grafana-metrics` destination (rendered config:
   # `metrics_destinations = [otelcol.exporter.prometheus.grafana_metrics.input]`),
   # so nothing has to be enabled for the Proxmox host's pushes to reach Grafana Cloud.
-  # What this path DOES need is a ceiling: it listens unauthenticated on 4318
-  # and is now reachable from the host via `alloy-otlp-host` (extraObjects
-  # below), so every series arriving stamped `service.name=proxmox-ve` is kept
-  # only if it belongs to PVE's own metric namespace; anything else sent through
-  # that door is dropped. Filter processor: matching telemetry is DROPPED.
+  # This is an ALLOWLIST, not a prefix filter. PVE's plugin exports the raw
+  # `pvestatd` status hashes, so the Proxmox host alone produced 843
+  # `proxmox_*` series — most of them `proxmox_vm_blockstat_*` (~50 per virtual
+  # disk: efidisk0/ide2/pflash0/scsi0/scsi1 on each VM), plus node `blockstat`
+  # variants and odd `*_percent_total` duplicates — against a 10k free-tier
+  # budget already at 59%. Keep only the families an alert or a dashboard
+  # needs, and drop every other metric arriving stamped `service.name=proxmox-ve`.
+  # (The `alloy-otlp-host` door below is unauthenticated, so the allowlist is
+  # also what bounds what an accepted connection can add. Filter processor:
+  # matching telemetry is DROPPED.)
   #
-  # Names from pve-manager `PVE::Metrics::Plugin::OpenTelemetry` (Proxmox VE 9
-  # admin guide, "External Metric Server" > OpenTelemetry): the resource carries
-  # `service.name = "proxmox-ve"` and the families are built as
-  # `<prefix>_<status field>` from `proxmox_node`, `proxmox_node_network`,
-  # `proxmox_node_storage`, `proxmox_vm` and `proxmox_storage`. App metrics have
-  # their own `service.name` (rova-api, opshub-api, …) and pass untouched.
+  # The names below are the OTLP metric names — what this filter sees. The
+  # Prometheus exporter adds unit/type suffixes AFTERWARDS, so e.g.
+  # `proxmox_vm_netin` becomes `proxmox_vm_netin_bytes_total` in Grafana.
+  # Families from pve-manager `PVE::Metrics::Plugin::OpenTelemetry` +
+  # `PVE::Service::pvestatd`:
+  #   node    uptime; cpustat.{cpu,iowait,avg1};
+  #           memory.{memtotal,memused,memavailable,arcsize};
+  #           nics.<physical>.* -> network.{receive,transmit}
+  #   storage PVE::Storage::storage_info {total,used,avail,active} per store
+  #   VM      qemu/lxc status {uptime,cpu,mem,maxmem,netin,netout,diskread,
+  #           diskwrite,pressurecpusome,pressureiosome}
+  # App metrics carry other `service.name`s and are untouched.
   metrics:
     filters:
       metric:
-        - 'resource.attributes["service.name"] == "proxmox-ve" and not IsMatch(name, "^proxmox_")'
+        - 'resource.attributes["service.name"] == "proxmox-ve" and not IsMatch(name, "^(proxmox_node_uptime|proxmox_node_cpustat_(cpu|iowait|avg1)|proxmox_node_memory_(memtotal|memused|memavailable|arcsize)|proxmox_node_network_(receive|transmit)|proxmox_storage_(total|used|avail|active)|proxmox_vm_(uptime|cpu|mem|maxmem|netin|netout|diskread|diskwrite|pressurecpusome|pressureiosome))$")'
 
 # CNPG's operator creates PodMonitors when its own `monitoring.podMonitorEnabled`
 # is on (flipped in the same PR, platform/cnpg/operator.yaml). ServiceMonitors
