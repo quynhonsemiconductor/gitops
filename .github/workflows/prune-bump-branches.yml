@@ -34,5 +34,16 @@ jobs:
           REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
+          # A merged PR is not proof the ref is free: another OPEN pull request may
+          # still name it as head or base (a stacked promotion PR is based on the
+          # bump branch, and a re-run can open a second PR from the same ref). The
+          # merged event alone would then delete a branch something still needs;
+          # skip and let that PR's own merge do it.
+          open_refs=$(gh pr list --repo "$REPO" --state open --limit 200 \
+                        --json headRefName,baseRefName --jq '.[] | .headRefName, .baseRefName')
+          if printf '%s\n' "$open_refs" | grep -qxF "$REF"; then
+            echo "::notice::$REF is still named by an open pull request; not deleting it."
+            exit 0
+          fi
           gh api -X DELETE "repos/$REPO/git/refs/heads/$REF"
           echo "deleted $REF"
