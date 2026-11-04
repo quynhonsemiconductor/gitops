@@ -1,0 +1,31 @@
+# Values for the web suite ONLY.
+#
+# The suite proves the component's own contract in BOTH states — off (no
+# manifests) and on (a non-root replica, /healthz, a single-file config mount) —
+# so it must not read an environment's values file: values/rova/dev.yaml turns
+# web ON with rova's real config.json, which makes the "off" cases impossible and
+# turns the verbatim-config assertions into a copy of rova's dev config.
+#
+# `web.image.repo` is here because the chart never defaults a repository, and the
+# "enabled without a tag or digest" case needs the repo present to prove the tag
+# is the thing that fails.
+env: dev
+web:
+  enabled: false
+  image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
+
+# The schema requires the secret-store shape; the suite renders no ExternalSecret assertions of
+# its own, so one store name is enough.
+secrets:
+  clusterSecretStore: kv-qnsc-dev
+
+# data.postgres drives the allow-egress-data policy; the suite counts policies, so the shape
+# has to be present. Values are the dev cluster's.
+data:
+  postgres:
+    mode: cnpg
+    cluster: pg-dev
+    namespace: data-dev
+    auth: password
+    pooling: none
+    name: rova

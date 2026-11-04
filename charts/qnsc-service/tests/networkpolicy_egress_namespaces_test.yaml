@@ -11,8 +11,10 @@ values:
 tests:
   - it: renders no extra egress policy by default
     asserts:
+      # 6 core policies + the two web policies: rova dev serves the SPA from the cluster
+      # (values/rova/dev.yaml). The web pair has its own suite, web_test.yaml.
       - hasDocuments:
-          count: 6
+          count: 8
   - it: renders one allow-egress-<namespace> per entry, by namespace and port only
     set:
       networkPolicy.egressNamespaces:
