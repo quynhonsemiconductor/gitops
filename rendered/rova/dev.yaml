@@ -382,7 +382,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-3939ab8b7a1a
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0b38caaa4c57
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -526,7 +526,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-3939ab8b7a1a
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0b38caaa4c57
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -660,7 +660,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/rova-web@sha256:a70bf0d1db0609e4340564b19aba6b8dd08dc284049627b5fe9ecdeaebbadc00
+          image: ghcr.io/quynhonsemiconductor/rova-web@sha256:ae15315752c113a7dce5a159c06c8edb91af1a7f9582c0c8cc42cce9f1a9a0e4
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
