@@ -5,10 +5,11 @@
 # the backup/dump CronJobs and the restore test; the opshub prod row in appsets/products.yaml is still
 # a comment. The EKS-era file this replaces was only `env: prod`: opshub prod never ran on AWS.
 #
-# The two Entra client ids are the APPLIED apps (2026-11-04): "OpsHub Prod" sign-in
-# e64292ea-2a11-4f9b-b970-04d2a5c2a56f and "OpsHub Prod Service" 12086ba1-9943-4cd1-b611-7a4d7209594a.
-# They are public identifiers, and the placeholder gate (scripts/check-prod-placeholders.sh,
-# chart-ci) stays armed for anything that reintroduces a `<..._PROD_...>` token.
+# The two Entra client ids are the APPLIED apps (2026-11-04): "OpsHub Prod" (sign-in, ENTRA_CLIENT_ID
+# below) and "OpsHub Prod Service" (certificate only, GRAPH_CLIENT_ID). They are public identifiers and
+# appear ONLY in the `value:` scalars, which is where the leak-guard allowlist scopes tier-2 ids to;
+# the placeholder gate (scripts/check-prod-placeholders.sh, chart-ci) stays armed for anything that
+# reintroduces a `<..._PROD_...>` token.
 env: prod
 size: s                      # one node: 1 replica each, no PDB (base.yaml says m / 2 api replicas)
 
