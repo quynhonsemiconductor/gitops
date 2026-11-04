@@ -29,8 +29,8 @@ services:
 # ── the SPA image (web) ──────────────────────────────────────────────────────
 # NOT under `services:`: web is not a service, so the chart reads it from
 # `.Values.web` (values.schema.json, "web"). Same release commit as the three
-# above (7aa5e92036e9 = v0.4.8): build-once, promoted by digest.
+# above (a5f72f941ed9 = v0.4.9): build-once, promoted by digest.
 web:
   image:
-    tag: sha-7aa5e92036e9
-    digest: sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
+    tag: sha-a5f72f941ed9
+    digest: sha256:4f659e1dbb42ce99ae94d2ca0e162ec219b85b61f57cbc9344290e5c82e8ad96

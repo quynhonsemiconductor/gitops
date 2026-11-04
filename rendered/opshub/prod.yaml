@@ -630,7 +630,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
+          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:4f659e1dbb42ce99ae94d2ca0e162ec219b85b61f57cbc9344290e5c82e8ad96
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
