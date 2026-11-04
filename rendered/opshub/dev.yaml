@@ -352,7 +352,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:c52cb287e55d5e2abfc905ffdb8f237888aaeb011c230157c4fed3ec5acc35c8
+          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:700ec6e14853b87b739f3c9b2e9af58067a673e84796fc2fba9f664c6fa9b198
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -382,7 +382,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a5f72f941ed9
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-49a3a5c0e65d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -493,7 +493,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:6780164a0592c5bd18aefcddade69864f845e18d3161685452494e6371c3c0cb
+          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:b24b5aaacd6b313a0c5f761dd93ea950a144bee9553d56eaf2c91d21edce9ee3
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -512,7 +512,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a5f72f941ed9
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-49a3a5c0e65d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -634,7 +634,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:4f659e1dbb42ce99ae94d2ca0e162ec219b85b61f57cbc9344290e5c82e8ad96
+          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:2b604668195b00bb868e69aeadbe5f2742aa5fee05aa2077de23682bb37cb605
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -681,7 +681,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-8e9e0ecb8412
+  name: migrator-f6114d56b9fa
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -721,7 +721,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:8e9e0ecb8412dc493076ee7bb080c06659bcf7f9ae8917789437b9993a7c3c2f
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:f6114d56b9fa9c8a95dbf3302fe5f926253811624a09a80fe0f94da99dd7cf3d
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
