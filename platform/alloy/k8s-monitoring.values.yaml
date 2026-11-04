@@ -181,9 +181,109 @@ nodeLogs:
       drop_counter_reason = "not_apparmor_denied"
     }
 
+# ── env label on the app metrics ───────────────────────────────────────────
+# WHY: an OTel SDK resource attribute does NOT become a Prometheus label — the
+# collector sends only `job`/`instance`, and the rest of the resource (including
+# deployment.environment.name and k8s.namespace.name) reaches Mimir only on the
+# `target_info` series. So every app series (http_*, mcp_*, db_*, …) carried NO
+# environment, and any dev-vs-prod panel or alert had to join target_info on
+# `instance` — fragile, and silent if `instance` is ever aggregated away.
+#
+# WHAT: one datapoint attribute `env` copied from the resource attribute the
+# apps ALREADY set (products set DEPLOYMENT_ENV=dev|prod, which the observability
+# package publishes as `deployment.environment.name`; verified identical on the
+# live `target_info` series 2026-11-04). The Prometheus exporter renders it as
+# the label `env="dev"|"prod"`. No app change, no new resource attribute.
+#
+# WHY A custom PROCESSOR, not destination-level
+# `openTelemetryConversion.resourceToTelemetryConversion`: that switch promotes
+# EVERY resource attribute (k8s.pod.uid, process.pid, host.name, …) to labels —
+# churn/cardinality the Adaptive Metrics rules do not cover for every family.
+# This copies exactly one attribute. Scope: the OTLP metrics pipeline only;
+# scraped Prometheus metrics (KSM, node-exporter, …) are untouched.
+#
+# CAVEAT: the chart still labels `dataProcessors` experimental. If a chart bump
+# removes it, the fallback is the destination-level conversion above with a
+# matching Adaptive Metrics rule; check `env` is present after any bump.
+dataProcessors:
+  env-label:
+    type: custom
+    metrics:
+      otlp:
+        enabled: true
+        # The chart forwards the feature's OTLP metrics into this component.
+        input: otelcol.processor.transform.env_label.input
+        # The output sink name is chart-generated: <proc>_out_metrics_otlp,
+        # where <proc> is this key with dashes as underscores.
+        config: |
+          otelcol.processor.transform "env_label" {
+            error_mode = "ignore"
+
+            metric_statements {
+              context = "datapoint"
+              statements = [
+                "set(attributes[\"env\"], resource.attributes[\"deployment.environment.name\"]) where resource.attributes[\"deployment.environment.name\"] != nil",
+              ]
+            }
+
+            output {
+              metrics = [otelcol.processor.batch.env_label_out_metrics_otlp.input]
+            }
+          }
+    # The feature validates its chain for EVERY (type, ecosystem) it can emit,
+    # so a metrics-only processor fails the chart's validation outright. Traces
+    # really do flow through here (the traces destination is OTLP); logs do not
+    # today (Loki destination, different ecosystem), but the tuple must still be
+    # declared and its config kept valid for the day an OTLP logs destination
+    # is added. Both carry the SAME resource attribute onto the resource, which
+    # is what Tempo shows — not a metric label, so no series cost.
+    logs:
+      otlp:
+        enabled: true
+        input: otelcol.processor.transform.env_label_logs.input
+        config: |
+          otelcol.processor.transform "env_label_logs" {
+            error_mode = "ignore"
+
+            log_statements {
+              context = "resource"
+              statements = [
+                "set(attributes[\"env\"], attributes[\"deployment.environment.name\"]) where attributes[\"deployment.environment.name\"] != nil",
+              ]
+            }
+
+            output {
+              logs = [otelcol.processor.batch.env_label_out_logs_otlp.input]
+            }
+          }
+    traces:
+      otlp:
+        enabled: true
+        input: otelcol.processor.transform.env_label_traces.input
+        config: |
+          otelcol.processor.transform "env_label_traces" {
+            error_mode = "ignore"
+
+            trace_statements {
+              context = "resource"
+              statements = [
+                "set(attributes[\"env\"], attributes[\"deployment.environment.name\"]) where attributes[\"deployment.environment.name\"] != nil",
+              ]
+            }
+
+            output {
+              traces = [otelcol.processor.batch.env_label_out_traces_otlp.input]
+            }
+          }
+
 applicationObservability:
   enabled: true
   collector: alloy
+  # Run the OTLP metrics through the env-label processor above before the
+  # destination (the chain is resolved per (type, ecosystem), so logs and
+  # traces are unaffected).
+  dataProcessors:
+    - env-label
   receivers:
     otlp:
       grpc:
