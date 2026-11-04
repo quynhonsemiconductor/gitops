@@ -110,6 +110,19 @@ aggregate the app metrics downstream; scrapers use the chart's strict
 allowlists (node-exporter and KSM defaults), and the two extra scrapes above
 are likewise allowlisted (`redis_*`, `argocd_*`, `up`).
 
+**One label is ADDED, not dropped: `env`.** OTel resource attributes never become
+Prometheus labels, so app series carried no environment and a dev/prod split
+needed a `target_info` join on `instance`. The `env-label` data processor copies
+exactly one resource attribute (`deployment.environment.name`, set by the
+products as `DEPLOYMENT_ENV=dev|prod`) onto the datapoints of the OTLP metrics
+pipeline. Two values, functionally determined by namespace — the narrow
+alternative to the destination-level `resourceToTelemetryConversion`, which
+promotes every resource attribute (pod uid, process pid, host name) at once. The
+same chain also puts `env` on trace resources (visible in Tempo) and app logs.
+Adaptive Metrics keeps only its own listed labels per prefix: it aggregates a new
+label away for the families it covers (`http_*`, `http_client_*`, `db_client_*`),
+so add `env` to a rule's `keep_labels` together with any new rule for `mcp_*`.
+
 ## Verify after the sync (the SA runs this)
 
 ```bash
@@ -123,6 +136,7 @@ kubectl -n platform logs -l app.kubernetes.io/name=alloy --tail=20 | grep -i err
 In Grafana Cloud:
 
 ```promql
+count by (env, job) ({cluster="qnsc-onprem", env=~".+"})          # app series carry env=dev|prod after the env-label processor (empty = regression)
 up{cluster="qnsc-onprem", job="node"}                              # 1 per node
 count by (__name__) ({cluster="qnsc-onprem", __name__=~"proxmox_.*"})  # PVE 9 host series
 count by (job) ({cluster="qnsc-onprem", job=~"integrations/kubernetes/.*"})
