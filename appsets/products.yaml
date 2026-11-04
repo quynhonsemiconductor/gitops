@@ -57,15 +57,16 @@ spec:
           # 0.17.0 drops the AWS secret/IAM/IRSA shape; 0.18.0 adds the optional web component;
           # 0.19.0 makes finished Job pods disappear (ttlSecondsAfterFinished, #188); 0.19.1 puts
           # the SPA's liveness on /livez, which qnsc-liveness-probes requires (#210 — 0.19.0's web
-          # Deployment was rejected in production).
+          # Deployment was rejected in production); 0.19.2 scopes the network policies to known
+          # ports and adds the optional web.apiUpstream path rova's guide proxy needs (#268).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.19.1" }
-          - { product: opshub, env: dev, chartVersion: "0.19.1" }
+          - { product: rova,   env: dev, chartVersion: "0.19.2" }
+          - { product: opshub, env: dev, chartVersion: "0.19.2" }
           # kb-dev: the values are complete (values/kb/dev.yaml) and the chart exists; this row waits for
           # the owner's kv-qnsc-dev kb-dev-* secrets (values/kb/dev.secrets.yaml) and the "KB Dev" Entra
           # redirects on kb-dev.qnsc.vn — an absent kv secret fails the whole ExternalSecret, so the row
-          # is the last switch. 0.19.1 is the chart every dev row runs.
-          - { product: kb, env: dev, chartVersion: "0.19.1" }
+          # is the last switch. All three dev rows move together to 0.19.2.
+          - { product: kb, env: dev, chartVersion: "0.19.2" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is

@@ -19,13 +19,11 @@ web:
   enabled: false
   # rova/apps/web/Caddyfile:129 reverse-proxies /guide-assets/* to
   # {$WEB_API_UPSTREAM:http://api:3000} (the User Guide gate calls GET
-  # /v1/auth/me), so rova MUST set `apiUpstream: true` here (chart 0.19.2 renders
+  # /v1/auth/me), so rova MUST set `apiUpstream: true` (chart 0.19.2 renders
   # WEB_API_UPSTREAM, web egress to the api and api ingress from the web pod).
-  # It cannot land yet: the rows still pin 0.19.1, whose schema rejects the key
-  # ("additional properties 'apiUpstream' not allowed"). The row that pins
-  # 0.19.2 must add it in the same commit — a test in web_test.yaml proves the
-  # rendered shape, and opshub/kb leave it false (their images serve static files
-  # only).
+  # It is set in dev.yaml while the prod row still pins 0.19.1, whose schema
+  # rejects the key; it moves here with the prod 0.19.2 pin. opshub/kb leave it
+  # false (their images serve static files only).
   # apiUpstream: true
   image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
   config:

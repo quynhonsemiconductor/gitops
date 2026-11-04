@@ -157,7 +157,7 @@ into a throwaway directory and validates it.
 
 The invariants under `charts/qnsc-service/tests/` each guard a decision that was
 expensive to reach and would be cheap to undo by accident: no CPU limits, memory
-limit equal to request, liveness pointing at nothing with a dependency, PSS
+limit defaulting to the request, liveness pointing at nothing with a dependency, PSS
 `restricted`, `trafficDistribution` on every Service, and a fixed `replicas` on every Deployment.
 
 ## Things that look wrong and are not
@@ -168,9 +168,12 @@ no CPU limits anywhere        CFS quota throttles on 100 ms bursts, not averages
                               and it presents as latency with no OOMKill and no
                               alarm. Every service here is that shape (§15d)
 
-memory limit == request       memory is not compressible. Bursting only defers an
-                              OOMKill to a worse moment, and it breaks bin-packing.
-                              Equal values also give Guaranteed QoS (§15d)
+memory limit >= request       a limit BELOW the request is an OOMKill at a number
+                              nobody sized. Above it is allowed when the request
+                              is the measured p95 and the limit is the old peak
+                              (chart `resources.memoryLimit`), at Burstable QoS.
+                              Prod api/worker and the databases keep them equal
+                              for Guaranteed (§15d)
 
 liveness never checks a dep   if liveness touches the database and the database
                               slows down, Kubernetes kills every replica of every
