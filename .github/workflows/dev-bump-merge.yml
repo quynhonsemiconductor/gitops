@@ -71,6 +71,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # The fixture and scope scripts live in this repository, so the job needs a tree before it
+      # runs them. They were run against the runner's empty workspace and exited 127 (#199's
+      # follow-up, runs 41779817774 / 41779939598).
+      #
+      # `ref` is the DEFAULT BRANCH, never `github.event.workflow_run.head_sha`: on
+      # workflow_run the head is a pull request's code, and this job holds an App token that can
+      # merge. The scripts that decide a merge must be the reviewed ones on main. This workflow
+      # already runs from the default branch (workflow_run semantics); pinning the checkout to
+      # the same ref makes the tree agree with the file that is executing.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
       - name: selection logic fixtures
         run: ./scripts/test-dev-bump-order.sh
 
