@@ -149,6 +149,9 @@ drift_check() {
   handled+="$p-storage-access-key-id $p-storage-secret-access-key "
   handled+="$p-db-app $p-db-worker $p-db-migrator $p-db-readonly "
   handled+="$p-github-webhook-secret $p-redis-url $p-github-app-private-key "
+  # Not generated: the Cloudflare Access AUD tag, copied from the Access app. It must still be
+  # asked for, or the values file lists a secret the script can never create.
+  handled+="$p-mcp-access-aud "
   # graph-cert is a Key Vault CERTIFICATE (identity lane), named here so the check
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
@@ -181,6 +184,8 @@ if (( CHECK_ONLY )); then
   [[ $ENV == prod ]] && echo "  $VAULT_APP/r2-backup-rw-access-key-id" && echo "  $VAULT_APP/r2-backup-rw-secret-access-key" \
     && echo "  $VAULT_APP/r2-backup-ro-access-key-id" && echo "  $VAULT_APP/r2-backup-ro-secret-access-key" \
     && echo "  $VAULT_APP/r2-dump-rw-access-key-id" && echo "  $VAULT_APP/r2-dump-rw-secret-access-key"
+  [[ $ENV == dev ]] && echo "  $VAULT_APP/r2-backup-dev-rw-access-key-id" \
+    && echo "  $VAULT_APP/r2-backup-dev-rw-secret-access-key"
   if (( DO_SITE )); then
     echo "  $VAULT_ADMIN/admin-argocd-password"
     echo "  $VAULT_PLATFORM/platform-argocd-admin-bcrypt"
@@ -273,6 +278,13 @@ ask_pem_file() {
   put "$v" "$n" "$e" <"$path"
 }
 
+# MCP_ACCESS_AUD: the Access application's AUD tag, an identifier the owner copies from Cloudflare
+# Zero Trust (not a credential). Present only in the products that run an MCP server.
+if listed "$PRODUCT-$ENV-mcp-access-aud"; then
+  ask "$VAULT_APP" "$PRODUCT-$ENV-mcp-access-aud" "$EXP_1Y" \
+    'MCP_ACCESS_AUD (Cloudflare Access app AUD tag; not a credential)'
+fi
+
 # Only the products whose schema HAS a roster: opshub has none.
 if grep -q "$PRODUCT-$ENV-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.yaml" 2>/dev/null; then
   ask "$VAULT_APP" "$PRODUCT-$ENV-platform-admin-emails" "$EXP_1Y" \
@@ -281,6 +293,15 @@ fi
 
 # The pg-rova backup credential (platform/cnpg/pg-rova-backup.yaml, platform/restore-test): an R2 API token
 # scoped to bucket qnsc-backups, object read+write. Prod vault only; ESO in data-prod/restore-test reads nothing else.
+# The pg-dev dump token (platform/cnpg/pg-dev-dump.yaml): a DEV-ONLY R2 token scoped to the
+# separate bucket qnsc-backups-dev (object read+write; R2 cannot scope by prefix). It has no
+# permission on qnsc-backups, so a dev credential can never touch prod backups.
+if [[ $ENV == dev ]]; then
+  echo "== $VAULT_APP: pg-dev dump R2 token (qnsc-backups only; input hidden; Enter skips)"
+  ask "$VAULT_APP" r2-backup-dev-rw-access-key-id "$EXP_1Y" 'pg-dev dump R2 token Access Key ID (bucket qnsc-backups-dev ONLY, read+write)'
+  ask "$VAULT_APP" r2-backup-dev-rw-secret-access-key "$EXP_1Y" 'pg-dev dump R2 token Secret Access Key (bucket qnsc-backups-dev ONLY)'
+fi
+
 if [[ $ENV == prod ]]; then
   echo "== $VAULT_APP: pg-rova backup R2 token (qnsc-backups only; input hidden; Enter skips)"
   ask "$VAULT_APP" r2-backup-rw-access-key-id "$EXP_1Y" 'R2 token Access Key ID (bucket qnsc-backups, read+write)'

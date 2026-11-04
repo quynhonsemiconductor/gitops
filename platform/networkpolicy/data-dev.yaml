@@ -43,3 +43,42 @@ spec:
       ports:
         - { protocol: TCP, port: 9187 }   # CNPG exporter
         - { protocol: TCP, port: 9121 }   # valkey exporter
+---
+# ── pg-dev-dump: egress to this cluster's Postgres and to R2 only ───────────
+#
+# The dump pod is the one dev workload that talks to a public endpoint. Selecting it in its own
+# egress policy isolates it from the namespace's otherwise-open egress: DNS, pg-dev on 5432, and
+# HTTPS to the public internet except every private range (R2 has no fixed address to name in a
+# NetworkPolicy; the exception list is what keeps it off the LAN and the cluster).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pg-dev-dump-egress
+  namespace: data-dev
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pg-dev-dump
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: pg-dev }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+      ports:
+        - { protocol: TCP, port: 443 }

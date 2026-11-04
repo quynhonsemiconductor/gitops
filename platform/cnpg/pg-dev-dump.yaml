@@ -1,0 +1,211 @@
+# ── pg-dev nightly logical dump -> R2 qnsc-backups-dev (audit C-M7) ──────────
+#
+# Dev has no barman (pg-dev.yaml: "dump-only"). Until this file existed, kb-dev, opshub-dev and
+# rova-dev data survived only in the PBS snapshot on the same chassis. This is the second copy:
+# a plain `pg_dump -Fc` per database, restorable with `pg_restore -d <empty> --no-owner`.
+#
+#   dumps/pg-dev-rova-YYYY-MM-DD.dump     lifecycle 7 d on the WHOLE bucket
+#   dumps/pg-dev-opshub-YYYY-MM-DD.dump   (infra live/onprem/backups.tf)
+#   dumps/pg-dev-kb-YYYY-MM-DD.dump
+# A SEPARATE bucket from qnsc-backups on purpose: a dev credential must never reach prod backups.
+# No bucket lock (the bucket deletes everything at 7 d; a 14-day lock would outlive it), and the
+# uploader still skips a key that already exists so a retried Job is a logged no-op.
+#
+# WHO CONNECTS: `<product>_readonly`, a CNPG managed role that is a member of pg_read_all_data —
+# SELECT everywhere, no DDL and no ownership. The dump never uses the *_migrator owner.
+#
+# The R2 token is DEV-scoped and bucket-scoped: `r2-backup-dev-rw-*` in kv-qnsc-dev, permission on
+# `qnsc-backups-dev` ONLY. The OWNER creates an R2 API token `pg-dev-dump-onprem` (Object Read &
+# Write on qnsc-backups-dev only; R2 cannot scope by prefix) and stores it with
+# `platform/bootstrap/secrets.sh --env dev`.
+#
+# TLS is verified against the pg-dev-ca-pub mirror. Pods wait for pg_isready; data-dev-admit admits
+# a new pod a few seconds after it starts (same race pg-rova fixed in #91).
+#
+# Run on demand:  kubectl -n data-dev create job --from=cronjob/pg-dev-dump pg-dev-dump-manual-1
+# Restore:        pg_restore -d <empty db> --no-owner <file>   (after downloading with any S3 client)
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-dump-r2
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-dump-r2
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-backup-dev-rw-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-backup-dev-rw-secret-access-key }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-dev-dump
+  namespace: data-dev
+spec:
+  schedule: "0 21 * * *"          # 21:00 UTC = 04:00 ICT, after the prod dumps (20:00 and 20:30)
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pg-dev-dump
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26
+            runAsGroup: 26
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            - name: dump-rova
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+              env:
+                - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+                - { name: PGDATABASE, value: rova }
+                - { name: PGSSLMODE, value: verify-full }
+                - { name: PGSSLROOTCERT, value: /etc/pg-ca/ca.crt }
+                - { name: PGOPTIONS, value: "-c statement_timeout=0 -c idle_in_transaction_session_timeout=0" }
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: pg-dev-rova-readonly, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-dev-rova-readonly, key: password } }
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done
+                  pg_isready -q -t 2 || { echo "DUMP-FAIL rova server not ready"; exit 1; }
+                  pg_dump -Fc -f /work/pg-dev-rova.dump
+                  pg_restore --list /work/pg-dev-rova.dump >/dev/null || { echo "DUMP-FAIL rova dump is not readable"; exit 1; }
+                  echo "DUMP-READY rova bytes=$(wc -c </work/pg-dev-rova.dump) sha256=$(sha256sum /work/pg-dev-rova.dump | cut -d' ' -f1)"
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: pg-ca, mountPath: /etc/pg-ca, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: &restricted
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+            - name: dump-opshub
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+              env:
+                - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+                - { name: PGDATABASE, value: opshub }
+                - { name: PGSSLMODE, value: verify-full }
+                - { name: PGSSLROOTCERT, value: /etc/pg-ca/ca.crt }
+                - { name: PGOPTIONS, value: "-c statement_timeout=0 -c idle_in_transaction_session_timeout=0" }
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: pg-dev-opshub-readonly, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-dev-opshub-readonly, key: password } }
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done
+                  pg_isready -q -t 2 || { echo "DUMP-FAIL opshub server not ready"; exit 1; }
+                  pg_dump -Fc -f /work/pg-dev-opshub.dump
+                  pg_restore --list /work/pg-dev-opshub.dump >/dev/null || { echo "DUMP-FAIL opshub dump is not readable"; exit 1; }
+                  echo "DUMP-READY opshub bytes=$(wc -c </work/pg-dev-opshub.dump) sha256=$(sha256sum /work/pg-dev-opshub.dump | cut -d' ' -f1)"
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: pg-ca, mountPath: /etc/pg-ca, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: *restricted
+            - name: dump-kb
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+              env:
+                - { name: PGHOST, value: pg-dev-rw.data-dev.svc }
+                - { name: PGDATABASE, value: kb }
+                - { name: PGSSLMODE, value: verify-full }
+                - { name: PGSSLROOTCERT, value: /etc/pg-ca/ca.crt }
+                - { name: PGOPTIONS, value: "-c statement_timeout=0 -c idle_in_transaction_session_timeout=0" }
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: pg-dev-kb-readonly, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-dev-kb-readonly, key: password } }
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done
+                  pg_isready -q -t 2 || { echo "DUMP-FAIL kb server not ready"; exit 1; }
+                  pg_dump -Fc -f /work/pg-dev-kb.dump
+                  pg_restore --list /work/pg-dev-kb.dump >/dev/null || { echo "DUMP-FAIL kb dump is not readable"; exit 1; }
+                  echo "DUMP-READY kb bytes=$(wc -c </work/pg-dev-kb.dump) sha256=$(sha256sum /work/pg-dev-kb.dump | cut -d' ' -f1)"
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: pg-ca, mountPath: /etc/pg-ca, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: *restricted
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.38.5@sha256:c8156a0e74e13929a42d7e60f0d4e14e7d28d980cd21822505d4bff80e5460c1
+              env:
+                - { name: HOME, value: /tmp }
+                - { name: AWS_DEFAULT_REGION, value: auto }
+                - { name: AWS_ENDPOINT_URL, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+                - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+                - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: pg-dev-dump-r2, key: ACCESS_KEY_ID } }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: pg-dev-dump-r2, key: ACCESS_SECRET_KEY } }
+              command:
+                - bash
+                - -c
+                - |
+                  set -eu
+                  for f in /work/pg-dev-*.dump; do
+                    size=$(wc -c <"$f")
+                    base=$(basename "$f" .dump)
+                    name="$base-$(date -u +%F).dump"
+                    key="dumps/$name"
+                    # write-once in practice: skip a key a retried Job already uploaded
+                    if aws s3api head-object --bucket qnsc-backups-dev --key "$key" >/dev/null 2>&1; then
+                      echo "DUMP-SKIP $key already exists"
+                      continue
+                    fi
+                    aws s3 cp --only-show-errors "$f" "s3://qnsc-backups-dev/$key"
+                    got=$(aws s3api head-object --bucket qnsc-backups-dev --key "$key" --query ContentLength --output text)
+                    [ "$got" = "$size" ] || { echo "DUMP-FAIL $key uploaded $got bytes, expected $size"; exit 1; }
+                    echo "DUMP-OK $key bytes=$size"
+                  done
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: *restricted
+          volumes:
+            - name: work
+              emptyDir: { sizeLimit: 8Gi }
+            - name: tmp
+              emptyDir: { sizeLimit: 64Mi }
+            - name: pg-ca
+              secret: { secretName: pg-dev-ca-pub }
