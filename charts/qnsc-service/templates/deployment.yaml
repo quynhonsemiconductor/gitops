@@ -118,7 +118,7 @@ spec:
               cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
               memory: {{ $svc.resources.memory | default $d.resources.memory }}
             limits:
-              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+              memory: {{ $svc.resources.memoryLimit | default ($svc.resources.memory | default $d.resources.memory) }}
               {{- if $svc.resources.gpu }}
               nvidia.com/gpu: {{ $svc.resources.gpu }}
               {{- end }}
@@ -409,7 +409,7 @@ spec:
               cpu: {{ $sc.resources.cpu }}
               memory: {{ $sc.resources.memory }}
             limits:
-              memory: {{ $sc.resources.memory }}
+              memory: {{ $sc.resources.memoryLimit | default $sc.resources.memory }}
           {{- with $sc.startupProbe }}
           startupProbe:
             {{- toYaml . | nindent 12 }}
