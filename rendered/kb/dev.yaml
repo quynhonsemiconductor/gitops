@@ -402,7 +402,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -560,7 +560,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -714,7 +714,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:85bd824bf060ab05aaee36b9f49f3a56ffcf79c9f90ced59c6e9f1a1e5a03be0
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:7ade608505f2377571d13748450e045c5b400035252f1f67bcae9d6dc1621e7c
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
