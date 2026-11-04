@@ -417,6 +417,8 @@ spec:
               value: "password"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA
@@ -575,6 +577,8 @@ spec:
               value: "/etc/qnsc/graph/cert.pem"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA
@@ -835,6 +839,8 @@ spec:
               value: "password"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA

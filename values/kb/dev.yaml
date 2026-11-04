@@ -104,6 +104,13 @@ defaults:
   env:
     # KB pins production in EVERY environment so validate_production() runs.
     - { name: ENVIRONMENT, value: "production" }
+    # NOT the same thing: ENVIRONMENT is a runtime mode, DEPLOYMENT_ENV is the
+    # deployment identity the OTel resource publishes as
+    # deployment.environment.name (kb -> Mimir `deployment_environment_name`, the
+    # label the Adaptive Metrics keep-list and every per-env query use). Reading
+    # it from ENVIRONMENT would label kb-dev telemetry production — the same
+    # reason rova/opshub carry it separately.
+    - { name: DEPLOYMENT_ENV, value: "dev" }
     - { name: JOB_MODE, value: "celery" }
     - { name: AUTO_CREATE_SCHEMA, value: "false" }
     - { name: ENABLE_RLS, value: "true" }
