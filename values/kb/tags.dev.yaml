@@ -12,13 +12,13 @@
 services:
   api:
     image:
-      tag: sha-62b7dfe568ce
-      digest: sha256:5c4c496d5bbbc8f91af7020fcb8c0d1edf5b6d2bb526477548c7681df7b9c185
+      tag: sha-df19f54d57b6
+      digest: sha256:f2f52bf5e9e5c329f6a34e9c9a673dd2ed185c3612c39be44efc040860f7f47e
   migrator:
     image:
-      tag: sha-62b7dfe568ce
-      digest: sha256:107aa85d58b7a42f3eb79ba94d143f3d3f90dbd0186147e6870f4a6abb00b204
+      tag: sha-df19f54d57b6
+      digest: sha256:9b50178a31dac70debea44ef976023a4049461d75d04558673f5401d1577ae67
   worker:
     image:
-      tag: sha-62b7dfe568ce
-      digest: sha256:9ce7e766f05e7bb8b9bd00df52427155fc6a2353cc7fe4735a232b772b0d9b8c
+      tag: sha-df19f54d57b6
+      digest: sha256:41ca61b0b41a0eaaf1e2bdaa9bb6a3968db4edbb38e26fd10e97ad643f6de6db
