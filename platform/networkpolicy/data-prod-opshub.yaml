@@ -2,7 +2,8 @@
 #
 # opshub-prod reaches only pg-opshub (5432) and valkey-opshub (6379), selected by the pods' own
 # labels; rova-prod's access is scoped the same way in data-prod.yaml (audit N-M6), so neither
-# product can open the other's instance even with the right credentials.
+# product can open the other's instance even with the right credentials. restore-test is not
+# admitted here: it restores into its own cluster in its own namespace.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

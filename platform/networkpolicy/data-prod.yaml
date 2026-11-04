@@ -8,13 +8,22 @@
 # data-prod-opshub-* policies on the server side added nothing to that union).
 # Audit N-M6.
 #
+# ORDER, for manual `kubectl apply -f` (ArgoCD applies the whole file in one
+# sync either way): the per-cluster allow policies come FIRST, the trimmed
+# namespace policy LAST. Applied in this order a running rova-prod never loses
+# a packet between the two objects.
+#
 # `data-prod-admit` keeps only the callers that legitimately span the namespace:
 # the CNPG operator (it manages every Cluster here), pods in data-prod itself
 # (the dump/backup CronJobs run here), and `platform` (the one Alloy) on the
 # METRICS ports only. Product access lives on the instance's own pods, selected
 # by the label CNPG and the valkey StatefulSet set:
-#   - pg-rova       -> rova-prod on 5432, plus restore-test (the weekly restore)
+#   - pg-rova       -> rova-prod on 5432
 #   - valkey-rova   -> rova-prod on 6379
+#
+# restore-test is NOT admitted here: it restores into its OWN CNPG cluster in
+# the restore-test namespace from the R2 archive, so it never talks to pg-rova
+# in this namespace.
 #
 # Egress stays open for the same reason as before: pods must reach the internet
 # (Graph, R2, GHCR) without this file becoming an allowlist that only breaks on
@@ -23,6 +32,40 @@
 # `cnpg-system` is where the CNPG operator and the barman plugin run
 # (../namespaces/onprem.yaml, ../cnpg/operator.yaml): the selectors match its
 # kubernetes.io/metadata.name, so the operator must be installed THERE.
+---
+# rova-prod -> pg-rova only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-rova-postgres
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: pg-rova }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: rova-prod }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# rova-prod -> valkey-rova only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-rova-valkey
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/instance: valkey-rova }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: rova-prod }
+      ports:
+        - { protocol: TCP, port: 6379 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -57,41 +100,3 @@ spec:
       ports:
         - { protocol: TCP, port: 9187 }
         - { protocol: TCP, port: 9121 }
----
-# rova-prod -> pg-rova only. restore-test is the weekly restore (§10.4): it
-# reads the R2 archive, but the check that the restored cluster answers is kept
-# on this same door so a restore run never needs a new policy.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: data-prod-rova-postgres
-  namespace: data-prod
-spec:
-  podSelector:
-    matchLabels: { cnpg.io/cluster: pg-rova }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: rova-prod }
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: restore-test }
-      ports:
-        - { protocol: TCP, port: 5432 }
----
-# rova-prod -> valkey-rova only.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: data-prod-rova-valkey
-  namespace: data-prod
-spec:
-  podSelector:
-    matchLabels: { app.kubernetes.io/instance: valkey-rova }
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: rova-prod }
-      ports:
-        - { protocol: TCP, port: 6379 }
