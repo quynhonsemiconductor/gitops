@@ -32,7 +32,13 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-platform
 spec:
-  podSelector: {}
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -46,7 +52,9 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-external
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -67,14 +75,24 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-data
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "data-dev" }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: "pg-dev" }
       ports:
         - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-dev" }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: "valkey-dev" }
+      ports:
         - { protocol: TCP, port: 6379 }
 
 ---
@@ -172,6 +190,13 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
       ports:
         - { protocol: TCP, port: 3000 }
     - from:
@@ -365,7 +390,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 768Mi
+              memory: 384Mi
             limits:
               memory: 768Mi
           livenessProbe:
@@ -517,7 +542,7 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 480Mi
+              memory: 256Mi
             limits:
               memory: 480Mi
           env:
