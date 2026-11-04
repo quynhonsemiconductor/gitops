@@ -5,7 +5,7 @@
 
          listens on 8080             (web.port)
          doc root    /srv            (index.html at its root)
-         health      /healthz        (both probes)
+         health      /healthz        (readiness)  ·  /livez  (liveness, §9j policy contract)
          config      /srv/config.json, mounted from the ConfigMap below
          runs as an arbitrary non-root uid (the chart pins 1001)
 
@@ -84,12 +84,14 @@ spec:
               memory: {{ $w.resources.memory }}
             limits:
               memory: {{ $w.resources.memory }}
-          {{- /* The static server serves no API and depends on nothing, so one
-                 endpoint is honest for both probes. `/healthz` is the image's
-                 contract (unlike the API chart the chart cannot derive it from
-                 a service kind — there is no kind here). */}}
+          {{- /* TWO paths, and the split is not cosmetic: platform/policy/admission.yaml
+                 (qnsc-liveness-probes, §9j) admits a Deployment only when every
+                 livenessProbe httpGet is `/livez` — /healthz here was rejected by the API
+                 server in rova-dev and opshub-dev on 2026-11-04 (the chart's unit tests
+                 passed; the policy never ran against a render with web on). Readiness is
+                 the dependency-touching probe and stays `/healthz`, the image's contract. */}}
           livenessProbe:
-            httpGet: { path: /healthz, port: {{ $w.port | default 8080 }} }
+            httpGet: { path: /livez, port: {{ $w.port | default 8080 }} }
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
