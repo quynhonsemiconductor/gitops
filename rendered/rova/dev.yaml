@@ -508,6 +508,7 @@ metadata:
 spec:
   activeDeadlineSeconds: 600
   backoffLimit: 0
+  ttlSecondsAfterFinished: 259200
   template:
     metadata:
       labels:
