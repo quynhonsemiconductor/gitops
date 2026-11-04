@@ -63,6 +63,9 @@ services:
   # prod values (512 / 256) for parity.
   api:
     resources: { cpu: 100m, memory: 768Mi }
+    # One replica on dev (2026-11-04): k3s-01 memory REQUESTS were at 97% (actual use 30%), so new prod pods
+    # could not schedule. Dev needs no HA; base keeps 2 for prod.
+    replicas: 1
     env:
       - { name: PORT, value: "3000" }
       - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
