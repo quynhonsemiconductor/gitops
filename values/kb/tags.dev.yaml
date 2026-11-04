@@ -22,3 +22,7 @@ services:
     image:
       tag: sha-62b7dfe568ce
       digest: sha256:9ce7e766f05e7bb8b9bd00df52427155fc6a2353cc7fe4735a232b772b0d9b8c
+web:
+  image:
+    tag: sha-65583789795d
+    digest: sha256:186086005968f2ecba302bddae41cb4479566997c89bf027554a7214021edca4
