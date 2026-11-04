@@ -11,10 +11,14 @@
 #   - kube-dns (UDP/TCP 53): the only name resolution the connector gets;
 #   - product namespaces (qnsc.vn/tenant=product) on the chart ports the tunnel
 #     config actually targets — api 3000 (rova/opshub) and 8000 (kb), web 8080;
-#   - argocd-server on 80 (the admin door in qnsc_apps_ingress);
+#   - argocd-server on 8080 (its POD port; the Service's 80/443 both targetPort
+#     8080, and a NetworkPolicy matches the pod, not the Service);
 #   - Cloudflare's edge on 7844 (QUIC/UDP and TCP) and 443, for every public
-#     address EXCEPT RFC 1918 and 100.64.0.0/10, so a stolen tunnel config
-#     cannot point the connector at Proxmox, PBS, the router or the WARP range.
+#     address EXCEPT RFC 1918 and 100.64.0.0/10. That except-list blocks
+#     LAN/cluster-private targets (Proxmox, PBS, the router, the WARP range);
+#     it does not restrict which INTERNET address the connector may dial, which
+#     is deliberate — Cloudflare's edge ranges change, and the origin set above
+#     is what actually needs confining.
 #
 # DNS is a podSelector on kube-dns rather than "any pod in kube-system": k3s runs
 # metrics-server and the kubelet's host-network pods there, and neither is an
@@ -54,7 +58,7 @@ spec:
           podSelector:
             matchLabels: { app.kubernetes.io/name: argocd-server }
       ports:
-        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 8080 }
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
