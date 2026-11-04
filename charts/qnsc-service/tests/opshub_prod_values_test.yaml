@@ -121,7 +121,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/quynhonsemiconductor/opshub-web@sha256:33466f53dc6b74d22a51526ff0ad86eec138e1193bfa50152abc2ce5c0a598fc
+          value: ghcr.io/quynhonsemiconductor/opshub-web@sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
 
   - it: the prod config.json is production and same-origin, matching what the Worker deploy wrote
     template: templates/web-configmap.yaml
