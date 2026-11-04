@@ -33,14 +33,21 @@ spec:
   walStorage:
     size: 10Gi
   resources:
-    # §5.7: 500m / 2 Gi, memory limit = request, no CPU limit.
-    requests: { cpu: 500m, memory: 2Gi }
-    limits: { memory: 2Gi }
+    # Right-sized 2026-11-04: 24h p95 for the dev Postgres was 198Mi against a
+    # 2Gi request — the pod reserved the worst case for a database serving three
+    # dev products with low traffic. 768Mi keeps request == limit (Guaranteed,
+    # §5.7) and still leaves ~4x the measured p95 for page cache and backends.
+    requests: { cpu: 500m, memory: 768Mi }
+    limits: { memory: 768Mi }
   postgresql:
     parameters:
       timezone: UTC
       max_connections: "100"
-      shared_buffers: 512MB
+      # 25% / 60% of the 768Mi limit (§15d). The old shared_buffers 512MB was
+      # 25% of 2Gi; keeping it under a 768Mi cgroup would invite the OOM killer.
+      # effective_cache_size is a planner estimate, not an allocation.
+      shared_buffers: 192MB
+      effective_cache_size: 460MB
       work_mem: 8MB
       maintenance_work_mem: 256MB   # pgvector HNSW builds (kb)
   certificates:
