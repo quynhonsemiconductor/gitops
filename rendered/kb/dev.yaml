@@ -98,6 +98,77 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-ingress-web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: kb
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, ...). Both selectors are in ONE `from` entry, which
+          # ANDs them; two entries would admit every pod in the namespace.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 8080 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: kb
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+              app.kubernetes.io/instance: kb
+      ports:
+        - { protocol: TCP, port: 8000 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-ingress-api
   labels:
     app.kubernetes.io/name: api
@@ -121,6 +192,13 @@ spec:
         - { protocol: TCP, port: 8000 }
     - from:
         - podSelector: {}          # same namespace, service to service
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: web
+              app.kubernetes.io/instance: kb
       ports:
         - { protocol: TCP, port: 8000 }
 
@@ -179,6 +257,24 @@ metadata:
 automountServiceAccountToken: false
 
 ---
+# Source: qnsc-service/templates/web-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kb-web-config
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+data:
+  config.json: |-
+    {"apiBaseUrl":"/api/v1"}
+
+---
 # Source: qnsc-service/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -202,6 +298,31 @@ spec:
     - name: http
       port: 8000
       targetPort: 8000
+
+---
+# Source: qnsc-service/templates/web-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferClose
+  selector:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
@@ -533,6 +654,99 @@ spec:
           secret:
             secretName: kb-dev-graph-cert
             items: [{ key: cert.pem, path: cert.pem }]
+
+---
+# Source: qnsc-service/templates/web.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  # Direct read, like deployment.yaml:27 — NOT `| default 1`, which turns an
+  # explicit replicas: 0 (kube-downscaler, or a deliberately parked env) back
+  # into 1 because Sprig's default treats 0 as empty. web.replicas defaults to
+  # 1 in values.yaml, so an omitted key still renders 1.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: kb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+      annotations:
+        checksum/config: 4a93b5909a9de6b630ca40ebe61245fbc9a50e2a61380e1938ea13ab2c0aa307
+    spec:
+      # A static file server never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:2f1a03b845098c0b61ec965c4bc72bfc6f3d0f24cd9457cd274fc4c240f7e7ba
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: WEB_API_UPSTREAM
+              value: "http://api:8000"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 64Mi
+          livenessProbe:
+            httpGet: { path: /livez, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: web-config
+              mountPath: /srv/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: web-config
+          configMap:
+            name: kb-web-config
+            items: [{ key: config.json, path: config.json }]
 
 ---
 # Source: qnsc-service/templates/job.yaml
