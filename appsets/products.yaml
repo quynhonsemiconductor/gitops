@@ -95,10 +95,11 @@ spec:
     - list:
         elements:
           - { product: rova, env: prod, chartVersion: "0.19.1" }
-          # opshub prod: DISABLED prep (values/opshub/prod.yaml, platform/opshub-prod/). The move PR
-          # uncomments it after the data layer is up, the secrets exist and no `<OPSHUB_PROD_...>`
-          # placeholder remains (scripts/check-prod-placeholders.sh).
-          # - { product: opshub, env: prod, chartVersion: "0.15.0" }
+          # opshub prod GO-LIVE (2026-11-04): the data layer is live (apps/platform-opshub-prod.yaml;
+          # pg-opshub Healthy, first backup complete, ContinuousArchiving=True). This row deploys the
+          # app itself. 0.19.1 is the chart that carries `web` — a row must never pin below the chart
+          # whose values it uses (the #163/#174 ComparisonError).
+          - { product: opshub, env: prod, chartVersion: "0.19.1" }
         template:
           metadata:
             name: "{{.product}}-{{.env}}"
