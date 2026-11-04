@@ -10,8 +10,9 @@
 # passwords — and the Graph certificate, which is the worker-only FILE wired at the
 # bottom of this file, never an env var.
 #
-# NOT DEPLOYED BY THIS FILE: kb has no row in appsets/products.yaml yet; the move PR enables it
-# once the owner has created the secrets (an absent kv secret fails the whole ExternalSecret).
+# DEPLOYED BY THE kb dev ROW in appsets/products.yaml (gitops#206); it stays a draft until the
+# owner has created the secrets (an absent kv secret fails the whole ExternalSecret) and the
+# host has joined the edge cutover.
 env: dev
 size: s
 
