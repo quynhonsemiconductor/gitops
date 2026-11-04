@@ -253,7 +253,16 @@ jobs:
           OLDER: ${{ steps.guard.outputs.older }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"
+          # `--admin` IS the bypass. qnsc-automation is a bypass actor on `main-review`
+          # (ruleset 26364222) in pull_request mode, but the REST merge endpoint applies a
+          # bypass only when the client asks for it, and `gh pr merge` asks only with
+          # `--admin`. Without it GitHub answers "the base branch policy prohibits the
+          # merge … add --admin" even though every required check is green (PR #222,
+          # 2026-11-04). `--admin` bypasses the review requirement, never the guard: the
+          # guard step above has already re-proved author, file scope, ordering and the
+          # full required-check rollup on this exact head, and `--match-head-commit`
+          # refuses if the PR moved since.
+          gh pr merge "$PR" --repo "$REPO" --squash --admin --match-head-commit "$SHA"
           gh pr view "$PR" --repo "$REPO" --json state,mergeCommit \
             --jq '"merged #\(.state) as \(.mergeCommit.oid // "?")"'
 
