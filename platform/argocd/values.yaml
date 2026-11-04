@@ -74,8 +74,12 @@ configs:
 
 controller:
   replicas: 1     # a reconciler; a restart costs one reconciliation interval
+  # Right-sized 2026-11-04 from p95 483Mi over 24h (memory-p95-24h). The old
+  # 1Gi request was a peak-sized request on the node that ran out of requests:
+  # k3s-01 had 2.8Gi of ArgoCD requests for ~0.75Gi of actual use. The limit
+  # stays 1Gi, so a reconcile burst still has headroom and OOM protection.
   resources:
-    requests: { cpu: 500m, memory: 1Gi }
+    requests: { cpu: 500m, memory: 512Mi }
     limits:   { memory: 1Gi }
   # §12 — metrics Service, scraped by the k8s-monitoring collector
   # (platform/alloy) by port name `http-metrics` in the argocd namespace.
@@ -86,7 +90,10 @@ controller:
       enabled: false
 
 repoServer:
-  replicas: 2
+  # ONE replica: there is ONE node, so the second replica was never HA — both
+  # pods sat on k3s-01 and shared its failure domain. A restart costs a render,
+  # not a sync (the controller retries).
+  replicas: 1
   # NO IRSA ANNOTATION, and the one that used to be here was INERT.
   #
   # It named `qnsc-prod-argocd`, whose trust policy in
@@ -106,7 +113,10 @@ repoServer:
   # no repository credential, and the ECR token refresher this used to need
   # is long gone.
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
+    # p95 126Mi over 24h. 512Mi stays as the limit because a Helm/Kustomize
+    # render is the one burst this process has: request 256Mi schedules it,
+    # the limit still admits a spike.
+    requests: { cpu: 250m, memory: 256Mi }
     limits:   { memory: 512Mi }
   # §12 — metrics Service, scraped by the k8s-monitoring collector
   # (platform/alloy) by port name `http-metrics` in the argocd namespace.
@@ -119,7 +129,8 @@ repoServer:
 applicationSet:
   replicas: 1
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    # p95 30Mi; 64Mi request, 256Mi limit keeps a generator burst covered.
+    requests: { cpu: 100m, memory: 64Mi }
     limits:   { memory: 256Mi }
   # §12 — metrics Service, scraped by the k8s-monitoring collector
   # (platform/alloy) by port name `http-metrics` in the argocd namespace.
@@ -130,9 +141,12 @@ applicationSet:
       enabled: false
 
 server:
-  replicas: 2
+  # ONE replica for the same reason as repoServer: one node, no HA to gain.
+  # A brief API outage during a rollout is bounded by the pod's restart.
+  replicas: 1
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    # p95 66Mi; request 128Mi, limit 256Mi.
+    requests: { cpu: 100m, memory: 128Mi }
     limits:   { memory: 256Mi }
   # §12 — metrics Service, scraped by the k8s-monitoring collector
   # (platform/alloy) by port name `http-metrics` in the argocd namespace.
