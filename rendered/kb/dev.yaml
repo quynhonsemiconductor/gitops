@@ -381,9 +381,9 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 2.25Gi
+              memory: 768Mi
             limits:
-              memory: 2.25Gi
+              memory: 768Mi
           livenessProbe:
             httpGet: { path: /livez, port: 8000 }
             periodSeconds: 10
@@ -462,7 +462,9 @@ spec:
             - name: EMBEDDING_VERSION
               value: e5-large-instruct-v1
             - name: EMBEDDING_RUNTIME
-              value: onnx
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
             - name: MALWARE_SCAN_ENABLED
               value: "true"
             - name: MALWARE_SCANNER_HOST
@@ -547,9 +549,9 @@ spec:
           resources:
             requests:
               cpu: 500m
-              memory: 4.5Gi
+              memory: 2.5Gi
             limits:
-              memory: 4.5Gi
+              memory: 2.5Gi
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy-receiver.platform.svc:4318
@@ -618,7 +620,9 @@ spec:
             - name: EMBEDDING_VERSION
               value: e5-large-instruct-v1
             - name: EMBEDDING_RUNTIME
-              value: onnx
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
             - name: MALWARE_SCAN_ENABLED
               value: "true"
             - name: MALWARE_SCANNER_HOST
@@ -706,7 +710,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:2f1a03b845098c0b61ec965c4bc72bfc6f3d0f24cd9457cd274fc4c240f7e7ba
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:675ff06b7927cb17f270cc6ba57aad0151816ae2a235b8dd7041b9a88aa85f11
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -876,7 +880,9 @@ spec:
             - name: EMBEDDING_VERSION
               value: e5-large-instruct-v1
             - name: EMBEDDING_RUNTIME
-              value: onnx
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
             - name: MALWARE_SCAN_ENABLED
               value: "true"
       volumes:

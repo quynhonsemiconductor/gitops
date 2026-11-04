@@ -71,9 +71,10 @@ data:
 
 services:
   api:
-    # §5.7 dev sizing: uvicorn 1 worker + the in-process ONNX session, measured
-    # 1.6-1.7 GB resident on ECS with the int8 export — 2.25 Gi leaves headroom.
-    resources: { cpu: 250m, memory: 2.25Gi }
+    # §5.7 dev sizing, TEI era: the int8 e5 export (the 1.6-1.7 GB resident the
+    # 2.25 Gi covered) leaves the process with EMBEDDING_RUNTIME=tei, so 768 Mi is
+    # uvicorn + FastAPI + asyncpg with headroom. It was Pending on k3s-01 at 2.25 Gi.
+    resources: { cpu: 250m, memory: 768Mi }
     env:
       # §13.1 — the sidecar clamd is GONE; scanning goes to the platform service.
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
@@ -82,12 +83,16 @@ services:
       - { name: ALLOW_SELF_REGISTRATION, value: "false" }
 
   worker:
-    # §5.7 dev sizing: Celery --concurrency=1, model per process, PaddleOCR.
-    resources: { cpu: 500m, memory: 4.5Gi }
+    # §5.7 dev sizing, TEI era: Celery --concurrency=1 + PaddleOCR, which stays
+    # in the worker (OCR is a separate service, phase 3). The fp32 e5 export that
+    # made 4.5 Gi necessary is no longer loaded when EMBEDDING_RUNTIME=tei; 2.5 Gi
+    # keeps the OCR models and their working set.
+    resources: { cpu: 500m, memory: 2.5Gi }
     env:
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
       - { name: MALWARE_SCANNER_PORT, value: "3310" }
-      # Same value ECS develop runs: 3 ONNX threads against the new CPU shape.
+      # Unused while EMBEDDING_RUNTIME=tei; kept so a rollback to `onnx` is the one
+      # value change (the baked export stays in the image for one release).
       - { name: EMBEDDING_ONNX_THREADS, value: "3" }
 
   migrator: { }
@@ -133,11 +138,17 @@ defaults:
     # EMBEDDING_DIMENSION is derived from this name in src/core/config.py.
     - { name: EMBEDDING_MODEL, value: "intfloat/multilingual-e5-large-instruct" }
     - { name: EMBEDDING_VERSION, value: "e5-large-instruct-v1" }
-    # `onnx` = the in-process model, which is all kb's code supports at the pinned image (no TEI client in
-    # qnsc-kb-backend main: Settings.EMBEDDING_RUNTIME only knows onnx). The network path to tei-e5 is
-    # ready (networkPolicy.egressNamespaces above); switching is kb-backend work plus this one value and
-    # the api/worker memory drop (the ~2.3 GB model leaves the process).
-    - { name: EMBEDDING_RUNTIME, value: "onnx" }
+    # `tei` = the shared in-cluster service (platform/ai/tei-e5.yaml), same model,
+    # revision and fp32 dtype, so the vector space does not move. qnsc-kb-backend#359
+    # (merge 4ebb1e6) added the client; the pinned image (sha-288234d2a33a) is two
+    # commits past it. The endpoint shape is deliberate — exactly
+    # http://<service>.<namespace>.svc, no port (the Service is :80) — and is validated
+    # by src/lib/embeddings/tei.py, not through llm_endpoint_security.
+    # NetworkPolicy: allow-egress-ai (networkPolicy.egressNamespaces above) admits
+    # namespace ai on 80; tei-e5-clients admits kb-dev on its side.
+    # Rollback: set this back to `onnx` (the export stays baked one release).
+    - { name: EMBEDDING_RUNTIME, value: "tei" }
+    - { name: TEI_EMBEDDINGS_URL, value: "http://tei-e5.ai.svc" }
     # validate_production() refuses to boot with scanning off — and it is on
     # everywhere, via the platform clamd now.
     - { name: MALWARE_SCAN_ENABLED, value: "true" }
