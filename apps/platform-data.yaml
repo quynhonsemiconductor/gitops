@@ -26,7 +26,7 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: platform/cnpg
-      directory: { include: "{imagecatalog,pg-dev}.yaml" }
+      directory: { include: "{imagecatalog,pg-dev,pg-dev-dump}.yaml" }
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]

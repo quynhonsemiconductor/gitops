@@ -14,7 +14,8 @@
 # into data-dev BEFORE this syncs; CNPG issues and renews the server certificate itself.
 #
 # Dev is dump-only (§6.3: "pg_dump only, no WAL archiving"), so there is deliberately
-# NO barman plugin / ObjectStore here. The nightly pg_dump CronJob is PLT-B7.
+# NO barman plugin / ObjectStore here. The nightly pg_dump CronJob is pg-dev-dump.yaml
+# (one dump per database, dev/ prefix, 7-day lifecycle).
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -75,6 +76,14 @@ spec:
         login: true
         passwordSecret:
           name: pg-dev-rova-migrator
+      # The dump role: SELECT everywhere, no DDL and no ownership. pg-dev-dump runs as this,
+      # never as the migrator.
+      - name: rova_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        passwordSecret:
+          name: pg-dev-rova-readonly
       # opshub joins with its dev move (the same three-role shape as rova: app and
       # worker are runtime, the migrator owns the database and holds DDL).
       - name: opshub_app
@@ -92,6 +101,12 @@ spec:
         login: true
         passwordSecret:
           name: pg-dev-opshub-migrator
+      - name: opshub_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        passwordSecret:
+          name: pg-dev-opshub-readonly
       # kb joins with its dev move: app (api + worker, one role) and the migrator that owns the database.
       - name: kb_app
         ensure: present
@@ -103,6 +118,12 @@ spec:
         login: true
         passwordSecret:
           name: pg-dev-kb-migrator
+      - name: kb_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        passwordSecret:
+          name: pg-dev-kb-readonly
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -323,6 +344,75 @@ spec:
     - secretKey: password
       remoteRef:
         key: kb-dev-db-migrator
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-rova-readonly
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-rova-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: rova_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: rova-dev-db-readonly
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-opshub-readonly
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-opshub-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: opshub_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: opshub-dev-db-readonly
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-dev-kb-readonly
+  namespace: data-dev
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-dev, kind: ClusterSecretStore }
+  target:
+    name: pg-dev-kb-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: kb_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-dev-db-readonly
 ---
 # ── Role timeouts ───────────────────────────────────────────────────────────
 # CNPG 1.30 has no per-role GUC field — `Cluster.managed.roles` carries only
