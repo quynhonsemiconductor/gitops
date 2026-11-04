@@ -368,7 +368,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:19290a5861d7966b1eaf75c1896817991718a3b1803419907346909d9c3cb0c5
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:b3e76c1ccd1bf10aee4ae9d62429003b7dfc54fe77743131aac6c57abb8759b8
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -402,7 +402,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-288234d2a33a
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0e14877a304a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -537,7 +537,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c63bc3e0ba167ee4da1e1e865770d6a476fd18c38a8bfab4023d4b96e7b45146
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c204070e8a5d61aff853b44062cf42da0994aa0e0862811818d28b228cae2361
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -556,7 +556,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-288234d2a33a
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0e14877a304a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -706,7 +706,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:2f1a03b845098c0b61ec965c4bc72bfc6f3d0f24cd9457cd274fc4c240f7e7ba
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:675ff06b7927cb17f270cc6ba57aad0151816ae2a235b8dd7041b9a88aa85f11
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -753,7 +753,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-4ea416f7eea1
+  name: migrator-5c0380444078
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -793,7 +793,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:4ea416f7eea19d94ec4a41bf13bd01fe10b4d1802eba0231b160238920880b63
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:5c038044407829748e3197c236198b1358d2b371d11dda9a621028262532cbb4
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
