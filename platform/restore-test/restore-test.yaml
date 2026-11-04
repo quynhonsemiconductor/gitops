@@ -234,6 +234,7 @@ spec:
     spec:
       backoffLimit: 0            # a failed restore test is a result, not something to retry
       activeDeadlineSeconds: 3000
+      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
       template:
         metadata:
           labels:

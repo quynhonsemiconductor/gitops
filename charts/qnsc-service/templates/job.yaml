@@ -34,6 +34,11 @@ spec:
          re-running the sync is safe. */}}
   activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
   backoffLimit: 0
+  {{- /* 3 days, then the Job and its pod are deleted. Before this, every migrator
+         run left a Succeeded pod forever: after node reboots the pile of
+         terminated pods is the cluster's largest object count. Long enough that
+         a migration's logs are still there while its rollout is being debugged. */}}
+  ttlSecondsAfterFinished: 259200
   template:
     metadata:
       labels:

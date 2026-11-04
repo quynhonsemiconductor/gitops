@@ -25,6 +25,9 @@ spec:
     spec:
       activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
       backoffLimit: 1
+      {{- /* 3 days: the CronJob's own history limits bound how many Jobs exist,
+             but each Job's pod is the terminated pod that piles up. */}}
+      ttlSecondsAfterFinished: 259200
       template:
         metadata:
           labels:
