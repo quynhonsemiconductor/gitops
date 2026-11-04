@@ -368,7 +368,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:4bc462cdaa526b767b5b2019020fd68af46b4025cca018da80502edc2ccf42b8
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:51f81a0bcbf91cbf722271ebc950b8a38eef87d2a0dfecdfe4352578fd67a29a
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -402,7 +402,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-d1458cb504a0
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -417,6 +417,8 @@ spec:
               value: "password"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA
@@ -539,7 +541,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:3b9467e43b39056f77f5edeebeff011f6fd59d30e4a5b0d9c0d61d4f2896dff3
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:8ceadd4a767707413526e69fc039660bc4c2fc423f962bb37b1135f9ae60cca6
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -558,7 +560,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-d1458cb504a0
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -575,6 +577,8 @@ spec:
               value: "/etc/qnsc/graph/cert.pem"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA
@@ -710,7 +714,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:675ff06b7927cb17f270cc6ba57aad0151816ae2a235b8dd7041b9a88aa85f11
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:85bd824bf060ab05aaee36b9f49f3a56ffcf79c9f90ced59c6e9f1a1e5a03be0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -757,7 +761,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-ef78291c3c5f
+  name: migrator-bfbfabbbf713
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -797,7 +801,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:ef78291c3c5f0a17b33356991ba7cf42b29cb57694a02baf7c78f199285c3372
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:bfbfabbbf71379a2fe60b437f5432f5ad99dc12bd1cf62b65235bf7141a1cc48
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -835,6 +839,8 @@ spec:
               value: "password"
             - name: ENVIRONMENT
               value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
             - name: JOB_MODE
               value: celery
             - name: AUTO_CREATE_SCHEMA
