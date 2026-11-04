@@ -1,0 +1,35 @@
+# The selection and scope fixtures on every PR that touches them.
+#
+# dev-bump-merge.yml is triggered by check_suite and therefore ALWAYS runs the
+# workflow file from the default branch — a PR cannot exercise its own copy.
+# Without this workflow, the first run of a changed selector would be a real
+# dev bump. Cheap and standalone on purpose: no chart, no cluster.
+name: dev-bump-order
+
+on:
+  pull_request:
+    paths:
+      - scripts/dev-bump-order.sh
+      - scripts/dev-bump-scope.sh
+      - scripts/test-dev-bump-order.sh
+      - .github/workflows/dev-bump-order.yml
+      - .github/workflows/dev-bump-merge.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/dev-bump-order.sh
+      - scripts/dev-bump-scope.sh
+      - scripts/test-dev-bump-order.sh
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    name: dev-bump-order
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - run: ./scripts/test-dev-bump-order.sh

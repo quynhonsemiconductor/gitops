@@ -34,7 +34,9 @@ on:
     types: [completed]
 
 concurrency:
-  group: dev-bump-merge-${{ github.event.check_suite.head_sha }}
+  # ONE static group: bumps are processed one at a time, so two products' or two
+  # tags' workflows cannot interleave a close/merge decision.
+  group: dev-bump-merge
   cancel-in-progress: false
 
 permissions:
@@ -109,28 +111,11 @@ jobs:
           [ "$author_type" = "Bot" ] || abort "PR #$PR author '$author' is not a Bot account"
 
           # ── file scope, from the API, never the title ──────────────────────
-          files=()
-          while IFS= read -r f; do files+=("$f"); done \
-            < <(gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename')
-          [ "${#files[@]}" -gt 0 ] || abort "PR #$PR changes no files"
-          values_product=""
-          rendered_product=""
-          for f in "${files[@]}"; do
-            if [[ "$f" =~ ^values/([a-z0-9-]+)/tags\.dev\.yaml$ ]]; then
-              p=${BASH_REMATCH[1]}
-              [ -z "$values_product" ] || [ "$values_product" = "$p" ] || abort "PR #$PR touches two products: $values_product and $p"
-              values_product=$p
-            elif [[ "$f" =~ ^rendered/([a-z0-9-]+)/dev\.yaml$ ]]; then
-              p=${BASH_REMATCH[1]}
-              [ -z "$rendered_product" ] || [ "$rendered_product" = "$p" ] || abort "PR #$PR renders two products: $rendered_product and $p"
-              rendered_product=$p
-            else
-              abort "PR #$PR touches out-of-scope path: $f"
-            fi
-          done
-          [ -n "$values_product" ] || abort "PR #$PR changes no values/<product>/tags.dev.yaml"
-          [ -z "$rendered_product" ] || [ "$rendered_product" = "$values_product" ] \
-            || abort "PR #$PR renders $rendered_product but bumps $values_product"
+          # The product and the allow-list live in scripts/dev-bump-scope.sh,
+          # which its fixture suite exercises in PR CI too.
+          files=$(gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename')
+          values_product=$(printf '%s\n' "$files" | ./scripts/dev-bump-scope.sh) \
+            || abort "PR #$PR is not a dev bump in scope (reason above)"
 
           # ── ordering: never merge an OLDER bump over a newer one ────────────
           # The matrix opens several bumps before any merges (kb #192-#195 were
@@ -146,12 +131,35 @@ jobs:
           done < <(gh pr list --repo "$REPO" --state open --author app/qnsc-automation \
                      --limit 100 --json number --jq '.[].number')
 
+          # A bump that ALREADY merged with a higher number is an absolute stop:
+          # if its close of this PR failed, merging this one now rolls dev back.
+          while read -r n; do
+            [ "$n" -gt "$PR" ] || continue
+            if gh api "repos/$REPO/pulls/$n/files?per_page=100" --paginate --jq '.[].filename' \
+                 | grep -qxF "values/$values_product/tags.dev.yaml"; then
+              bumps=$(jq --argjson n "$n" --arg p "$values_product" \
+                '. + [{number: $n, product: $p, state: "merged"}]' <<<"$bumps")
+            fi
+          done < <(gh pr list --repo "$REPO" --state merged --author app/qnsc-automation \
+                     --limit 100 --json number --jq '.[].number')
+
+          # NEWER = higher PR number. The bump job is serialised per product in
+          # commit order, so a higher PR number is a later commit; createdAt is
+          # not used because it can skew.
           if ! order=$(printf '%s' "$bumps" | ./scripts/dev-bump-order.sh "$PR" "$values_product" -); then
             skip "PR #$PR is no longer an open bump for $values_product"
           fi
           role=$(sed -n 's/^role=//p' <<<"$order")
           newer=$(sed -n 's/^newer=//p' <<<"$order")
           older=$(sed -n 's/^older=//p' <<<"$order")
+          merged_ahead=$(sed -n 's/^merged_ahead=//p' <<<"$order")
+
+          if [ "$merged_ahead" != "-" ]; then
+            GH_TOKEN="$APP_TOKEN" gh pr close "$PR" --repo "$REPO" --delete-branch \
+              --comment "Superseded by #$merged_ahead, already merged for $values_product. Merging this older bump would roll dev back." \
+              || echo "::warning::could not close superseded PR #$PR"
+            skip "PR #$PR is behind merged #$merged_ahead for $values_product"
+          fi
 
           if [ "$role" = "older" ]; then
             GH_TOKEN="$APP_TOKEN" gh pr close "$PR" --repo "$REPO" --delete-branch \
@@ -174,19 +182,11 @@ jobs:
           failed=$(jq -r '[.[] | select(.state == "FAILURE" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ACTION_REQUIRED")] | length' <<<"$checks")
           [ "$failed" = "0" ] || abort "PR #$PR has $failed failed check(s)"
 
-          # This PR is the newest and green: close the older bumps BEFORE the
-          # merge so none of them can land concurrently. A failed close is a
-          # warning, not a reason to keep a stale PR able to merge.
-          for old in $older; do
-            GH_TOKEN="$APP_TOKEN" gh pr close "$old" --repo "$REPO" --delete-branch \
-              --comment "Superseded by #$PR: a newer dev bump for $values_product merged instead. Merging out of order would roll dev back." \
-              || echo "::warning::could not close superseded PR #$old"
-          done
-
           echo "::notice::PR #$PR ($values_product dev) is newest, in scope and green; merging $SHA"
           {
             echo "merge=true"
             echo "product=$values_product"
+            echo "older=$older"
           } >> "$GITHUB_OUTPUT"
 
       - name: merge with the automation App token
@@ -198,8 +198,19 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.check_suite.head_sha }}
           PR: ${{ github.event.check_suite.pull_requests[0].number }}
+          PRODUCT: ${{ steps.guard.outputs.product }}
+          OLDER: ${{ steps.guard.outputs.older }}
         run: |
           set -euo pipefail
           gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"
           gh pr view "$PR" --repo "$REPO" --json state,mergeCommit \
             --jq '"merged #\(.state) as \(.mergeCommit.oid // "?")"'
+
+          # Only AFTER the merge succeeded, retire the older bumps. They can no
+          # longer win the ordering guard (merged_ahead cites this PR), but an
+          # open PR that will never merge is noise. A failed close is a warning.
+          for old in $OLDER; do
+            gh pr close "$old" --repo "$REPO" --delete-branch \
+              --comment "Superseded by #$PR (merged): a newer dev bump for $PRODUCT landed first." \
+              || echo "::warning::could not close superseded PR #$old"
+          done
