@@ -121,6 +121,8 @@ tests:
             - from:
                 - namespaceSelector:
                     matchLabels: { kubernetes.io/metadata.name: platform }
+                  podSelector:
+                    matchLabels: { app.kubernetes.io/name: cloudflared }
               ports:
                 - { protocol: TCP, port: 3000 }
             - from:

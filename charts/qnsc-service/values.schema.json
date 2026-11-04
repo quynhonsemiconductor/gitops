@@ -118,7 +118,14 @@
           }
         },
         "cache": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "instance": {
+              "type": "string",
+              "description": "Valkey/Redis pod label app.kubernetes.io/instance the product reaches on 6379 (e.g. valkey-dev, valkey-rova, valkey-kb-dev). allow-egress-data selects exactly this pod; unset renders no cache rule."
+            }
+          }
         },
         "storage": {
           "type": "object"
@@ -271,6 +278,10 @@
               "memory": {
                 "type": "string"
               },
+              "memoryLimit": {
+                "type": "string",
+                "description": "Optional memory LIMIT. Defaults to `memory` (limit == request, §15d) unless a workload needs burst headroom above its request — e.g. kb-dev worker request 1Gi / limit 2.5Gi."
+              },
               "gpu": {
                 "type": "integer",
                 "minimum": 1
@@ -386,6 +397,10 @@
                     },
                     "memory": {
                       "type": "string"
+                    },
+                    "memoryLimit": {
+                      "type": "string",
+                      "description": "Optional memory LIMIT. Defaults to `memory` (limit == request, §15d) unless a workload needs burst headroom above its request — e.g. kb-dev worker request 1Gi / limit 2.5Gi."
                     }
                   }
                 },
@@ -426,6 +441,10 @@
           "type": "boolean",
           "description": "Off by default. Enabling it requires an image and renders Deployment + Service + ConfigMap (and a PDB when web.pdb is true)."
         },
+        "apiUpstream": {
+          "type": "boolean",
+          "description": "The SPA's server proxies to the api (rova's Caddyfile reverse_proxy for /guide-assets/*, the User Guide gate). When true the chart renders WEB_API_UPSTREAM, an allow-egress-web policy (DNS + this release's api pods) and an ingress entry from the web pods on the api port. Default false: opshub/kb web images serve static files only and make no server-side calls."
+        },
         "port": {
           "type": "integer",
           "minimum": 1,
@@ -445,7 +464,11 @@
           "additionalProperties": false,
           "properties": {
             "cpu": { "type": ["string", "number"] },
-            "memory": { "type": "string" }
+            "memory": { "type": "string" },
+            "memoryLimit": {
+              "type": "string",
+              "description": "Optional memory LIMIT. Defaults to `memory` (limit == request) unless the static server needs burst headroom."
+            }
           },
           "description": "Requests. No CPU limit and memory limit == request, like every service (sizes small by design)."
         },

@@ -74,7 +74,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           content: { secretRef: { name: opshub-env-api } }
 
-  - it: api:3000 accepts ingress only from platform, its own namespace, and the SPA
+  - it: api:3000 accepts ingress only from cloudflared and its own namespace
     template: templates/networkpolicy.yaml
     documentSelector: { path: metadata.name, value: allow-ingress-api }
     asserts:
@@ -84,19 +84,13 @@ tests:
             - from:
                 - namespaceSelector:
                     matchLabels: { kubernetes.io/metadata.name: platform }
+                  # AND, not a second entry: only the tunnel connector, not every platform pod
+                  podSelector:
+                    matchLabels: { app.kubernetes.io/name: cloudflared }
               ports:
                 - { protocol: TCP, port: 3000 }
             - from:
                 - podSelector: {}
-              ports:
-                - { protocol: TCP, port: 3000 }
-            # the SPA's only call: Caddy's forward_auth gate (GET /v1/auth/me). Prod serves web
-            # from the cluster (owner decision 3), so this entry is part of the prod shape.
-            - from:
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: web
-                      app.kubernetes.io/instance: opshub
               ports:
                 - { protocol: TCP, port: 3000 }
 
