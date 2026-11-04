@@ -11,11 +11,11 @@ values:
 tests:
   - it: renders no extra egress policy by default
     asserts:
-      # 6 core policies + the web ingress policy: rova dev serves the SPA from the
-      # cluster. The web egress policy only renders with web.apiUpstream, which
-      # rova's values add with the 0.19.2 pin.
+      # 6 core policies + the web ingress policy + the web egress policy:
+      # rova dev serves the SPA and its Caddyfile reverse-proxies to the api,
+      # so values/rova/dev.yaml sets web.apiUpstream: true.
       - hasDocuments:
-          count: 7
+          count: 8
   - it: renders one allow-egress-<namespace> per entry, by namespace and port only
     set:
       networkPolicy.egressNamespaces:
