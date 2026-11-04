@@ -4,6 +4,8 @@ templates:
   - templates/externalsecret.yaml
   - templates/deployment.yaml
   - templates/networkpolicy.yaml
+  - templates/web.yaml
+  - templates/web-configmap.yaml
 values:
   - ../../../values/opshub/base.yaml
   - ../../../values/opshub/prod.yaml
@@ -54,7 +56,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           content: { secretRef: { name: opshub-env-api } }
 
-  - it: api:3000 accepts ingress only from platform and its own namespace
+  - it: api:3000 accepts ingress only from platform, its own namespace, and the SPA
     template: templates/networkpolicy.yaml
     documentSelector: { path: metadata.name, value: allow-ingress-api }
     asserts:
@@ -68,6 +70,15 @@ tests:
                 - { protocol: TCP, port: 3000 }
             - from:
                 - podSelector: {}
+              ports:
+                - { protocol: TCP, port: 3000 }
+            # the SPA's only call: Caddy's forward_auth gate (GET /v1/auth/me). Prod serves web
+            # from the cluster (owner decision 3), so this entry is part of the prod shape.
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: web
+                      app.kubernetes.io/instance: opshub
               ports:
                 - { protocol: TCP, port: 3000 }
 
@@ -85,3 +96,18 @@ tests:
       - equal:
           path: spec.egress[0].to[0].namespaceSelector.matchLabels
           value: { kubernetes.io/metadata.name: data-prod }
+
+  # ── the SPA, served from the cluster (owner decision 3, 2026-11-04) ─────────
+  - it: the web Deployment runs the release's own web image, pinned by digest
+    template: templates/web.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/opshub-web@sha256:33466f53dc6b74d22a51526ff0ad86eec138e1193bfa50152abc2ce5c0a598fc
+
+  - it: the prod config.json is production and same-origin, matching what the Worker deploy wrote
+    template: templates/web-configmap.yaml
+    asserts:
+      - equal:
+          path: data["config.json"]
+          value: '{"apiBaseUrl":"","appEnv":"production","devLoginEnabled":false}'
