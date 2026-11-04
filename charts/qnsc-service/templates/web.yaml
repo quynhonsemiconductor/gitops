@@ -19,7 +19,6 @@
 {{- if .Values.web.enabled }}
 {{- $w := .Values.web }}
 {{- $d := .Values.defaults }}
-{{- $apiPort := include "qnsc.webApiPort" $ }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -72,12 +71,16 @@ spec:
           ports:
             - name: http
               containerPort: {{ $w.port | default 8080 }}
+          {{- /* rova only: the Caddyfile reverse-proxies /guide-assets/* to the api
+                 (the User Guide forward_auth gate). The URL is the api SERVICE, so
+                 it takes the Service port, never the pod port. Opt-in per product
+                 (web.apiUpstream); opshub/kb serve static files only. */}}
+          {{- if $w.apiUpstream }}
+          {{- $apiPort := required "web.apiUpstream is true: services.api.port is required (WEB_API_UPSTREAM dials the api Service)" (dig "api" "port" "" .Values.services) }}
           env:
-            {{- /* Caddy's forward_auth gate for /guide-assets/* calls
-                   GET /v1/auth/me on this URL with the reader's cookie. Read the
-                   port from the api service above, never assume it. */}}
             - name: WEB_API_UPSTREAM
               value: {{ printf "http://api:%v" $apiPort | quote }}
+          {{- end }}
           resources:
             requests:
               cpu: {{ $w.resources.cpu }}
