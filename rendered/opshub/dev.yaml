@@ -352,7 +352,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:b18c1055519183c742d708d068096b74a646f745a1ffa67f73ce7598ab59fa48
+          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:07df3d6ca986f4c645491fcc54ccc5fb84b478069d2b86a95e999de76d22a4c1
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -382,7 +382,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-7374f733439a
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-6133392ebeed
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -493,7 +493,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:d36aa7b13f882cb13da15c9eaeda83d4f402c56aa460c749285b337f8eb0e694
+          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:0514472573a88a0e2e7fc0d4b352e0aa20713a86632aa87eabad1ee6309105bb
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -512,7 +512,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-7374f733439a
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-6133392ebeed
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -681,7 +681,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-644296acb83b
+  name: migrator-617e9c0bad2b
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -721,7 +721,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:644296acb83bd6dd5ec567a2134525083dc28346042ad54340d00862bdc20664
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:617e9c0bad2bccb90ef1fc3e9acafa8158cec89ed7ece5921216679ab1f56eb9
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
