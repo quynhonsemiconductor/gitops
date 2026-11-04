@@ -1,15 +1,30 @@
 # opshub PRODUCTION on k3s-01 (prep, 2026-11-02): mirrors values/rova/prod.yaml. ArgoCD merges
 # base.yaml, this file and tags.prod.yaml.
 #
-# NOT DEPLOYED: the opshub prod row in appsets/products.yaml is a comment, and the data layer lives
-# in platform/opshub-prod/ (pg-opshub, valkey-opshub, backup, dump, restore test), enabled by the
-# move PR. The EKS-era file this replaces was only `env: prod`: opshub prod never ran on AWS.
+# DATA LAYER ENABLED, APP NOT YET: apps/platform-opshub-prod.yaml deploys pg-opshub, valkey-opshub,
+# the backup/dump CronJobs and the restore test; the opshub prod row in appsets/products.yaml is still
+# a comment. The EKS-era file this replaces was only `env: prod`: opshub prod never ran on AWS.
 #
 # PLACEHOLDERS (`<OPSHUB_PROD_...>`) stand for public Entra client ids that do not exist yet; the
 # placeholder gate (scripts/check-prod-placeholders.sh, chart-ci) fails the PR that enables the row
 # while any remains.
 env: prod
 size: s                      # one node: 1 replica each, no PDB (base.yaml says m / 2 api replicas)
+
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1) — no prod Worker (owner decision 3,
+# 2026-11-04). The repo lives here; the tag/digest live in tags.prod.yaml (`web:`), beside the
+# api/worker/migrator tags, so a promotion is one reviewed diff.
+#
+# config is the whole /config.json mounted at /srv/config.json: same origin, appEnv production, dev
+# login off — the values the Worker deploy wrote for production (opshub
+# .github/workflows/web-deploy-worker.yml), which were also the old build-time VITE_* defaults.
+web:
+  enabled: true
+  image: { repo: ghcr.io/quynhonsemiconductor/opshub-web }
+  config:
+    apiBaseUrl: ""
+    appEnv: production
+    devLoginEnabled: false
 
 networkPolicy:
   # ON: default-deny ingress and egress. api:3000 only from `platform` (cloudflared, Alloy) and its own

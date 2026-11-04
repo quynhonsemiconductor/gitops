@@ -1,7 +1,9 @@
-# opshub production, prepared and NOT enabled
+# opshub production: data layer enabled, app not yet
 
-Mirror of the rova prod layer. Nothing in this directory is synced: root reads `apps/*.yaml` only, and
-`application.yaml.disabled` is the switch.
+Mirror of the rova prod layer. The two Applications now live in `apps/platform-opshub-prod.yaml`
+(root syncs `apps/*.yaml`), so pg-opshub, valkey-opshub, the backup/dump CronJobs and the restore test
+sync wave 3. The app itself is still off: the opshub prod row in `appsets/products.yaml` is a comment
+until the go-live PR.
 
 | File | What |
 |---|---|
@@ -10,7 +12,7 @@ Mirror of the rova prod layer. Nothing in this directory is synced: root reads `
 | `pg-opshub-dump.yaml` | nightly `pg_dump -Fc` as opshub_readonly -> `dumps/daily|weekly|monthly/pg-opshub-<date>.dump`, write-once, 20:30 UTC |
 | `valkey-opshub.yaml` | dedicated prod cache with an ACL (user `opshub`, derived from ONE kv secret) |
 | `restore-test-opshub.yaml` | on-demand restore test (suspended CronJob in `restore-test`), same checks as rova's |
-| `application.yaml.disabled` | the two Applications (data, restore test) |
+| `apps/platform-opshub-prod.yaml` (repo root) | the two Applications (data, restore test) |
 
 Shared platform files already carry the prep (inert until pods exist): namespace `opshub-prod`
 (platform/namespaces/onprem.yaml), the products-project destination (apps/project.yaml), the
@@ -26,6 +28,6 @@ narrow `data-prod-opshub-*` ingress policies (platform/networkpolicy/data-prod-o
    backup; Exchange mailbox `noreply-opshub@qnsc.vn` and its scope; tunnel route + Access for `opshub.qnsc.vn`.
 3. **SA**: `cluster.sh --env prod --pg-cluster pg-opshub` creates `pg-opshub-ca` / `pg-opshub-ca-pub` in data-prod from the
    same kv-qnsc-prod CA the rova cluster uses.
-4. **PR**: `git mv platform/opshub-prod/application.yaml.disabled apps/platform-opshub-prod.yaml`, wait for pg-opshub Healthy,
-   run a backup and the restore test (REQUIRE_DATA=0, then 1 after the data load), then uncomment the opshub row in
-   appsets/products.yaml (the placeholder gate must pass) and set the image tag.
+4. **PR (data layer, DONE 2026-11-04)**: `git mv platform/opshub-prod/application.yaml.disabled apps/platform-opshub-prod.yaml`.
+   Wait for pg-opshub Healthy, run a backup and the restore test (REQUIRE_DATA=0, then 1 after the data load).
+5. **PR (go live)**: uncomment the opshub row in appsets/products.yaml (the placeholder gate must pass) and set the image tag.

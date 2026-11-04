@@ -1,7 +1,8 @@
 # GENERATED — DO NOT EDIT BY HAND.
 #
-# PROVISIONAL TAG (2026-11-02): the latest successful `GHCR · Publish` of opshub main (9ef2a6dc006a); all
-# three images exist on GHCR. The move PR sets the commit it runs.
+# PROVISIONAL TAG (2026-11-04): release v0.4.8 (commit 7aa5e92036e9), the newest opshub release
+# already promoted on main; all four images (api, worker, migrator, web) exist on GHCR for that
+# commit. The go-live PR pins v0.4.8 + its web digest sha-7aa5e92036e9.
 #
 # CI writes this file on every deploy, and it is separate from prod.yaml for one
 # reason: `yq -i` REWRITES a whole file, and these values files carry reasoning
@@ -25,3 +26,12 @@ services:
     image:
       tag: v0.4.8
       digest: sha256:1c4bb626a154913071adfbb14b8e556d52880cab2211f61fdde429e0594d889c
+
+# ── the SPA image (web) ──────────────────────────────────────────────────────
+# NOT under `services:`: web is not a service, so the chart reads it from
+# `.Values.web` (values.schema.json, "web"). Same release commit as the three
+# above (7aa5e92036e9 = v0.4.8): build-once, promoted by digest.
+web:
+  image:
+    tag: sha-7aa5e92036e9
+    digest: sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
