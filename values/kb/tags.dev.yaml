@@ -12,10 +12,13 @@
 services:
   api:
     image:
-      tag: sha-0000000
+      tag: sha-5b45635ab84d
+      digest: sha256:8b5003a9d5866a8fa4700c07b4f4042b5e51b9ac7b08a4fe8cb14348d7b9db66
   migrator:
     image:
-      tag: sha-0000000
+      tag: sha-5b45635ab84d
+      digest: sha256:35032ad01654591055c9a748d97d9564078b3de9fef0011eccd168a84ff439af
   worker:
     image:
-      tag: sha-0000000
+      tag: sha-5b45635ab84d
+      digest: sha256:73a1565e55bbf658f4e0b76f7302201431c9a43af884490920fd43e5decf2f3a
