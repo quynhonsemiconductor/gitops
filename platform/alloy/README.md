@@ -110,18 +110,28 @@ aggregate the app metrics downstream; scrapers use the chart's strict
 allowlists (node-exporter and KSM defaults), and the two extra scrapes above
 are likewise allowlisted (`redis_*`, `argocd_*`, `up`).
 
-**One label is ADDED, not dropped: `env`.** OTel resource attributes never become
-Prometheus labels, so app series carried no environment and a dev/prod split
-needed a `target_info` join on `instance`. The `env-label` data processor copies
-exactly one resource attribute (`deployment.environment.name`, set by the
-products as `DEPLOYMENT_ENV=dev|prod`) onto the datapoints of the OTLP metrics
-pipeline. Two values, functionally determined by namespace — the narrow
-alternative to the destination-level `resourceToTelemetryConversion`, which
-promotes every resource attribute (pod uid, process pid, host name) at once. The
-same chain also puts `env` on trace resources (visible in Tempo) and app logs.
-Adaptive Metrics keeps only its own listed labels per prefix: it aggregates a new
-label away for the families it covers (`http_*`, `http_client_*`, `db_client_*`),
-so add `env` to a rule's `keep_labels` together with any new rule for `mcp_*`.
+**Two labels are ADDED, not dropped: `deployment_environment_name` and `env`.**
+OTel resource attributes never become Prometheus labels, so app series carried no
+environment and a dev/prod split needed a `target_info` join on `instance`. The
+`env-label` data processor copies one resource attribute
+(`deployment.environment.name`, set by the products as `DEPLOYMENT_ENV=dev|prod`)
+onto the datapoints of the OTLP metrics pipeline, under BOTH names:
+
+- `deployment_environment_name` — the spelling every dashboard, SLO and alert
+  rule already queries, and the one the Adaptive Metrics rules keep
+  (`keep_labels` in infra `live/adaptive-metrics`). Anything else is aggregated
+  away, so `env` alone left dev and prod collapsed into one unlabelled series
+  and per-env queries returned nothing.
+- `env` — the MCP dashboard groups on it, and no `mcp_*` rule exists, so nothing
+  aggregates it away.
+
+Two labels with the same two values add no series; they only let one set of
+series be queried both ways. The narrow alternative to the destination-level
+`resourceToTelemetryConversion`, which promotes every resource attribute (pod
+uid, process pid, host name) at once. The same chain also puts `env` on trace
+resources (visible in Tempo) and app logs. A NEW rule for a family must add both
+`deployment_environment_name` and `env` to its `keep_labels` (or use only the
+former and drop the dashboard's `env` grouping).
 
 ## Verify after the sync (the SA runs this)
 
