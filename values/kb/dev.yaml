@@ -10,10 +10,25 @@
 # passwords — and the Graph certificate, which is the worker-only FILE wired at the
 # bottom of this file, never an env var.
 #
-# NOT DEPLOYED BY THIS FILE: kb has no row in appsets/products.yaml yet; the move PR enables it
-# once the owner has created the secrets (an absent kv secret fails the whole ExternalSecret).
+# DEPLOYED BY THE kb dev ROW in appsets/products.yaml (gitops#206); it stays a draft until the
+# owner has created the secrets (an absent kv secret fails the whole ExternalSecret) and the
+# host has joined the edge cutover.
 env: dev
 size: s
+
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1). The repo lives here and the
+# tag/digest live in tags.dev.yaml (`web:`), written by the product's publish workflow.
+# config is the whole /config.json the image mounts at /srv/config.json, validated by
+# qnsc-kb-frontend src/config/runtime.ts (qnsc-kb-frontend#146): one key, a same-origin
+# path; the bundle is built once and promoted by digest, so nothing environment-specific
+# is compiled in. /api/v1 is the API's prefix — the tunnel sends /api/* to api.kb-dev:8000.
+# The tunnel's catch-all and the edge cutover (`web = "cluster"`, no Workers routes) are
+# the SA's follow-up; until they land the host still serves this SPA from the Worker.
+web:
+  enabled: true
+  image: { repo: ghcr.io/quynhonsemiconductor/kb-web }
+  config:
+    apiBaseUrl: "/api/v1"
 
 # Default-deny ingress AND egress, ON for dev as for prod (audit G-05, audit 2026-11-01 #2). What the
 # chart renders: DNS, egress to `platform` (OTLP at alloy-receiver:4318, kb's clamd) and to this
