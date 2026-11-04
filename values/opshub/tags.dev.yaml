@@ -22,3 +22,14 @@ services:
     image:
       tag: sha-7374f733439a
       digest: sha256:d36aa7b13f882cb13da15c9eaeda83d4f402c56aa460c749285b337f8eb0e694
+
+# ── the SPA image (web) ──────────────────────────────────────────────────────
+# NOT under `services:`: web is not a service, so the chart reads it from
+# `.Values.web` (values.schema.json, "web"). Hand-seeded for the dev web proof;
+# bump-dev does not write this key yet — E's `ci: promote and bump the web image`
+# PR adds it. Safe in a generated file: bump-dev's `yq -i` writes only
+# `.services.<name>`, so it leaves this block alone.
+web:
+  image:
+    tag: sha-7374f733439a
+    digest: sha256:33466f53dc6b74d22a51526ff0ad86eec138e1193bfa50152abc2ce5c0a598fc

@@ -55,4 +55,6 @@ tests:
     template: templates/networkpolicy.yaml
     asserts:
       - hasDocuments:
-          count: 5   # default-deny, dns, platform, external, allow-ingress-api: no allow-egress-data
+          # default-deny, dns, platform, external, allow-ingress-api (no allow-egress-data), plus
+          # the two web policies: rova dev serves the SPA from the cluster (values/rova/dev.yaml).
+          count: 7

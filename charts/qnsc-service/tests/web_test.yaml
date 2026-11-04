@@ -11,8 +11,9 @@ templates:
   - templates/networkpolicy.yaml
 values:
   - ../../../values/rova/base.yaml
-  - ../../../values/rova/dev.yaml
-  - ../../../values/rova/tags.dev.yaml
+  # NOT values/rova/dev.yaml: it now enables web with rova's real config.json, and this suite
+  # needs BOTH states. web-suite.yaml keeps the state explicit; web-repo.yaml was its first half.
+  - values/web-suite.yaml
   - values/web-repo.yaml
 release:
   name: rova

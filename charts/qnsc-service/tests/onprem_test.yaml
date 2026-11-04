@@ -27,7 +27,10 @@ tests:
       networkPolicy.enabled: true
     asserts:
       - hasDocuments:
-          count: 6        # default-deny, allow-dns, allow-egress-platform, allow-egress-external, allow-egress-data (cnpg), + the dev allow-ingress-api (rova dev exposes the api to the cluster)
+          # default-deny, allow-dns, allow-egress-platform, allow-egress-external, allow-egress-data (cnpg),
+          # the dev allow-ingress-api (rova dev exposes the api to the cluster), and the two web policies
+          # (rova dev serves the SPA from the cluster; web_test.yaml owns their contract).
+          count: 8
 
   - it: renders NO NetworkPolicy when networkPolicy.enabled is false
     template: templates/networkpolicy.yaml

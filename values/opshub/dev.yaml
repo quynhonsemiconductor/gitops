@@ -11,6 +11,23 @@
 env: dev
 size: s
 
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1) — and web is NOT a
+# service: the chart renders it from this block, not from `services:`. The repo
+# lives here; the tag/digest live in tags.dev.yaml (`web:`), written by CI like
+# every other image.
+#
+# config is the whole /config.json mounted at /srv/config.json. Same shape and
+# values the Worker deploy wrote for this environment (opshub
+# .github/workflows/web-deploy-worker.yml): same origin, appEnv development,
+# dev login off.
+web:
+  enabled: true
+  image: { repo: ghcr.io/quynhonsemiconductor/opshub-web }
+  config:
+    apiBaseUrl: ""
+    appEnv: development
+    devLoginEnabled: false
+
 # Default-deny ingress AND egress, ON for dev as for prod (audit G-05, audit 2026-11-01 #2). What the
 # chart renders: DNS, egress to `platform` (OTLP at alloy-receiver:4318, kb's clamd) and to this
 # product's data namespace (Postgres 5432, Valkey 6379), plus the internet minus the CIDRs below,

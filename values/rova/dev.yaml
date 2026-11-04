@@ -13,15 +13,23 @@
 env: dev
 size: s                      # 1 replica, no PDB, no topology spread
 
-# The SPA image repository, beside the api/worker/migrator repos. Still DISABLED:
-# dev turns it on once the rova-web image exists and CI writes its tag/digest
-# into tags.dev.yaml; prod turns on at the edge cutover. It lives in dev.yaml,
-# not base.yaml, until the prod row moves off chart 0.15.0 — that chart's schema
-# rejects `web`, and a key in base.yaml reaches prod too. Moves to base with the
-# prod row PR.
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1). The repo lives here;
+# the tag/digest live in tags.dev.yaml (`web:`), written by CI like every other
+# image. It lives in dev.yaml, not base.yaml, until the prod row moves off chart
+# 0.15.0 — that chart's schema rejects `web`, and a key in base.yaml reaches prod
+# too. Moves to base with the prod row PR.
+#
+# config is the whole /config.json the image mounts at /srv/config.json. Same
+# shape and values the Worker deploy wrote for this environment
+# (rova .github/workflows/web-deploy-worker.yml): same origin, appEnv
+# development, dev login off.
 web:
-  enabled: false
+  enabled: true
   image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
+  config:
+    apiBaseUrl: ""
+    appEnv: development
+    devLoginEnabled: false
 
 # ── ONE `services:` KEY, AND THAT IS NOT A STYLE POINT ───────────────────────
 # This file briefly had three. YAML keeps only the LAST mapping for a duplicate key,
