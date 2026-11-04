@@ -32,18 +32,51 @@ tests:
           path: spec.egress[0].to[0].ipBlock.except
           value: [169.254.169.254/32, 192.168.0.0/16]
 
-  - it: allows egress to the product's data namespace on 5432 and 6379 only (cnpg mode)
+  - it: allows egress to the product's own Postgres and Valkey pods only (cnpg mode)
     documentSelector: { path: metadata.name, value: allow-egress-data }
     asserts:
+      - equal:
+          path: spec.podSelector
+          value:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
       - equal:
           path: spec.egress
           value:
             - to:
                 - namespaceSelector:
                     matchLabels: { kubernetes.io/metadata.name: data-dev }
+                  podSelector:
+                    matchLabels: { cnpg.io/cluster: pg-dev }
               ports:
                 - { protocol: TCP, port: 5432 }
+            - to:
+                - namespaceSelector:
+                    matchLabels: { kubernetes.io/metadata.name: data-dev }
+                  podSelector:
+                    matchLabels: { app.kubernetes.io/instance: valkey-dev }
+              ports:
                 - { protocol: TCP, port: 6379 }
+
+  - it: scopes the platform and internet egress allows to non-web workloads
+    set:
+      web.enabled: true
+      web.image:
+        repo: ghcr.io/quynhonsemiconductor/rova-web
+        tag: sha-7c36d2ef8e8f
+    asserts:
+      - equal:
+          path: spec.podSelector
+          value:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+        documentSelector: { path: metadata.name, value: allow-egress-platform }
+      - equal:
+          path: spec.podSelector
+          value:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+        documentSelector: { path: metadata.name, value: allow-egress-external }
 
   - it: renders no data-egress policy outside cnpg mode
     values:

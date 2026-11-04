@@ -1,0 +1,73 @@
+# ── cloudflared egress: only what the connector needs (platform audit N-M5) ──
+#
+# networkpolicy/platform.yaml is ingress-only, so cloudflared alone could open a
+# connection to any address it liked. That matters because the tunnel is
+# config-by-API: whoever can edit its ingress (the Cloudflare write token in the
+# `production` environment, or a Cloudflare account compromise) can publish an
+# origin, and cloudflared is the process that would dial it. This policy makes
+# the in-cluster origin set explicit and keeps the connector off the office LAN.
+#
+# Allowed:
+#   - kube-dns (UDP/TCP 53): the only name resolution the connector gets;
+#   - product namespaces (qnsc.vn/tenant=product) on the chart ports the tunnel
+#     config actually targets — api 3000 (rova/opshub) and 8000 (kb), web 8080;
+#   - argocd-server on 8080 (its POD port; the Service's 80/443 both targetPort
+#     8080, and a NetworkPolicy matches the pod, not the Service);
+#   - Cloudflare's edge on 7844 (QUIC/UDP and TCP) and 443, for every public
+#     address EXCEPT RFC 1918 and 100.64.0.0/10. That except-list blocks
+#     LAN/cluster-private targets (Proxmox, PBS, the router, the WARP range);
+#     it does not restrict which INTERNET address the connector may dial, which
+#     is deliberate — Cloudflare's edge ranges change, and the origin set above
+#     is what actually needs confining.
+#
+# DNS is a podSelector on kube-dns rather than "any pod in kube-system": k3s runs
+# metrics-server and the kubelet's host-network pods there, and neither is an
+# origin. The product and argocd rules are namespace/pod scoped for the same
+# reason — this is an allowlist, not a route.
+#
+# Ingress is unchanged: platform-admit (platform.yaml) already refuses every
+# caller except the platform's own pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloudflared-egress
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: cloudflared }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { qnsc.vn/tenant: product }
+      ports:
+        - { protocol: TCP, port: 3000 }   # api.<product>-<env> (rova, opshub)
+        - { protocol: TCP, port: 8000 }   # api.kb-<env>
+        - { protocol: TCP, port: 8080 }   # web.<product>-<env>
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: argocd }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: argocd-server }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+      ports:
+        - { protocol: TCP, port: 7844 }   # QUIC fallback / http2
+        - { protocol: UDP, port: 7844 }   # QUIC
+        - { protocol: TCP, port: 443 }

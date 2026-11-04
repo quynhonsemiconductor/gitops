@@ -208,22 +208,36 @@ connected client on an unguarded node drain, and Karpenter drains eagerly.
 
 
 {{/*
-Port of the `api` Service the optional `web` component calls.
+True when the product is configured with a Redis/Valkey URL (REDIS_URL or
+VALKEY_URL), as a plain defaults.env entry or a secrets.env mapping.
 
-web is a static server, but its Caddy forward_auth gate asks the API for
-GET /v1/auth/me before serving /guide-assets/*, so WEB_API_UPSTREAM must be the
-port this chart actually renders — never a hardcoded 3000 (a product may change
-it, and a wrong port fails as a 503 from the gate with a healthy web pod).
-
-Called only when web.enabled; fails loudly rather than rendering a web pod that
-cannot authenticate anyone.
+allow-egress-data needs data.cache.instance to draw the 6379 rule. A product
+with a cache URL but no instance would render a policy that silently blocks its
+own cache (the chart 0.19.2 split), so the policy fails the render instead.
 */}}
-{{- define "qnsc.webApiPort" -}}
-{{- $api := index .Values.services "api" -}}
-{{- if not $api -}}
-{{- fail "web.enabled requires a service named \"api\": WEB_API_UPSTREAM points at it" -}}
+{{- define "qnsc.redisConfigured" -}}
+{{- $found := false -}}
+{{- range .Values.defaults.env -}}
+{{- if has .name (list "REDIS_URL" "VALKEY_URL") -}}{{- $found = true -}}{{- end -}}
 {{- end -}}
-{{- required "service \"api\": `port` is required when web is enabled (WEB_API_UPSTREAM)" $api.port -}}
+{{- $senv := .Values.secrets.env | default dict -}}
+{{- if or (hasKey $senv "REDIS_URL") (hasKey $senv "VALKEY_URL") -}}{{- $found = true -}}{{- end -}}
+{{- if $found -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+The product's non-web workloads (api, worker, migrator, Jobs and CronJobs).
+
+The optional SPA (`web`) is a static file server: it gets DNS from allow-dns and
+nothing else. Every other egress allow — platform, the internet, the data
+namespace, networkPolicy.egressNamespaces — selects this instead of every pod in
+the namespace, so a compromised web pod cannot reach Postgres, Valkey, clamd,
+TEI or the internet. `NotIn [web]` rather than an explicit api/worker/migrator
+list, so a future Job or CronJob is covered without another chart change.
+*/}}
+{{- define "qnsc.nonWebPodSelector" -}}
+matchExpressions:
+  - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
 {{- end -}}
 
 {{/*
@@ -235,8 +249,7 @@ The kubelet probes the pod directly, so probes use the same number.
 
 `services.<name>.port` is the Service port and the default pod port;
 `services.<name>.targetPort` overrides the pod port (an image that listens on a
-fixed port behind a differently numbered Service). webApiPort is the other one:
-WEB_API_UPSTREAM dials the SERVICE, so it takes `port`, not this.
+fixed port behind a differently numbered Service).
 */}}
 {{- define "qnsc.podPort" -}}
 {{- $root := index . 0 -}}

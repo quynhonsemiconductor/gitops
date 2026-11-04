@@ -51,7 +51,10 @@ platform:
   argo-cd:
     chart: argo-cd
     repo: https://argoproj.github.io/argo-helm
-    version: "10.9.2"          # ArgoCD 3.x
+    # 10.11.7 = ArgoCD v3.5.7: the patch that carries the three CRITICAL
+    # repo-server fixes (GHSA-9v9p-x54c-58gc, GHSA-fw5c-w8rc-j7fx,
+    # GHSA-m3vr-7329-44ww) missing from v3.5.3. Same 3.5 line, no API change.
+    version: "10.11.7"         # ArgoCD 3.5.7
   alloy:
     # The HOST collector on the Proxmox host (SMART/ZFS/NUT), not the in-cluster
     # one: the cluster uses the k8s-monitoring chart below (ONPREM-PLAN §12).
@@ -137,12 +140,10 @@ images:
   # §12 collector binary, digest-pinned (Docker Hub API, verified 2026-11-01).
   alloy: "docker.io/grafana/alloy:v1.13.0@sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221"
 
-  # §9.1 — text-embeddings-inference. The `120-` line is the CUDA 12.9 /
-  # Blackwell sm_120 build (RTX 5060 Ti), marked EXPERIMENTAL upstream; the
-  # plain tag is the CPU line used by the phase-A fallback. Both index digests
-  # verified anonymously on GHCR 2026-10-31 (tags 120-1.9.4 and 1.9.4).
-  tei-gpu: "ghcr.io/huggingface/text-embeddings-inference:120-1.9.4@sha256:bd8e5b1954146f7fe8590b64b959bc194433c6c38c036592a84d736841ca9400"
-  tei-cpu: "ghcr.io/huggingface/text-embeddings-inference:1.9.4@sha256:02864b69c15e4f247b8306b0be8801d6800fed97702185fb19d98170e956fab1"
+  # §9.1 — text-embeddings-inference: pins REMOVED 2026-11-04. They duplicated the
+  # `image:` lines in platform/ai/tei-e5.yaml (gpu `120-1.9.4`, cpu `1.9.4`), and a
+  # second copy is a second thing to drift. The manifests are the single source;
+  # the org preset's regex manager updates them.
 
 # Model pins for the AI services (§9.1). Model identity is part of the data:
 # changing a line here changes the vector space and is a planned migration.

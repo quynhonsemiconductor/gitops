@@ -11,8 +11,9 @@ values:
 tests:
   - it: renders no extra egress policy by default
     asserts:
-      # 6 core policies + the two web policies: rova dev serves the SPA from the cluster
-      # (values/rova/dev.yaml). The web pair has its own suite, web_test.yaml.
+      # 6 core policies + the web ingress policy + the web egress policy:
+      # rova dev serves the SPA and its Caddyfile reverse-proxies to the api,
+      # so values/rova/dev.yaml sets web.apiUpstream: true.
       - hasDocuments:
           count: 8
   - it: renders one allow-egress-<namespace> per entry, by namespace and port only
@@ -22,6 +23,12 @@ tests:
         - { namespace: other, ports: [8080, 8443] }
     documentSelector: { path: metadata.name, value: allow-egress-ai }
     asserts:
+      # scoped to the product's non-web workloads, like every egress allow (chart 0.19.2)
+      - equal:
+          path: spec.podSelector
+          value:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
       - equal:
           path: spec.egress
           value:

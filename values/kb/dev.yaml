@@ -68,14 +68,20 @@ data:
     # pairing with the kv secret is visible in one place.
     migratorUser: kb_migrator
     caFile: /etc/qnsc/db-ca/ca.crt
+  cache:
+    # The Valkey instance allow-egress-data admits on 6379, selected by its
+    # app.kubernetes.io/instance pod label (chart 0.19.2 splits the old
+    # namespace-wide data rule). kb's Celery broker.
+    instance: valkey-kb-dev
 
 services:
   api:
     # §5.7 dev sizing, TEI era: the int8 e5 export (the 1.6-1.7 GB resident the
     # 2.25 Gi covered) leaves the process with EMBEDDING_RUNTIME=tei, so 768 Mi is
     # uvicorn + FastAPI + asyncpg with headroom. It was Pending on k3s-01 at 2.25 Gi.
-    # 512 Mi (2026-11-04): measured 119 Mi steady on kb-dev; k3s-01 requests were at 97%.
-    resources: { cpu: 250m, memory: 512Mi }
+    # 24h p95 124Mi (memory-p95-24h-2026-11-04): 256Mi request = ~2x p95,
+    # 512Mi limit keeps today's ceiling.
+    resources: { cpu: 250m, memory: 256Mi, memoryLimit: 512Mi }
     env:
       # §13.1 — the sidecar clamd is GONE; scanning goes to the platform service.
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
@@ -87,8 +93,10 @@ services:
     # §5.7 dev sizing, TEI era: Celery --concurrency=1 + PaddleOCR, which stays
     # in the worker (OCR is a separate service, phase 3). The fp32 e5 export that
     # made 4.5 Gi necessary is no longer loaded when EMBEDDING_RUNTIME=tei; 2.5 Gi
-    # keeps the OCR models and their working set.
-    resources: { cpu: 500m, memory: 2.5Gi }
+    # keeps the OCR models and their working set. Idle p95 is 140Mi and does not
+    # cover an OCR burst, so the REQUEST drops to 1Gi while the LIMIT stays 2.5Gi:
+    # scheduling no longer reserves the burst, the cgroup still admits it.
+    resources: { cpu: 500m, memory: 1Gi, memoryLimit: 2.5Gi }
     env:
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
       - { name: MALWARE_SCANNER_PORT, value: "3310" }

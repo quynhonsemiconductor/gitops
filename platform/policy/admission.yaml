@@ -94,14 +94,18 @@ spec:
           !has(c.resources) || !has(c.resources.limits) || !('cpu' in c.resources.limits))
       message: "CPU limits are forbidden (§15d). Set a request; memory limit == memory request."
       reason: Invalid
-    # Memory IS required, and must equal the request: memory is not compressible,
-    # so bursting only defers an OOMKill to a worse moment and breaks bin-packing.
-    # Equal values also give Guaranteed QoS, so these are evicted last.
+    # Memory IS required, and the limit may not be BELOW the request: memory is
+    # not compressible, so a limit under the request is an OOMKill at a number
+    # nobody sized. It MAY be above it: a workload whose request is its measured
+    # p95 and whose limit is its old peak is Burstable on purpose (§15d, chart
+    # `resources.memoryLimit`). The request stays the bin-packing unit; the limit
+    # stays the OOM guard. Where Guaranteed QoS matters (prod api/worker, the
+    # databases) the values keep request == limit.
     - expression: >-
         object.spec.template.spec.containers.all(c,
           has(c.resources.limits) && 'memory' in c.resources.limits &&
-          c.resources.limits.memory == c.resources.requests.memory)
-      message: "memory limit must equal memory request (§15d)."
+          c.resources.limits.memory >= c.resources.requests.memory)
+      message: "memory limit must be at least the memory request (§15d)."
       reason: Invalid
 ---
 apiVersion: admissionregistration.k8s.io/v1
