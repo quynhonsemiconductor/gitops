@@ -30,6 +30,17 @@ spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
 
+  # ArgoCD gives every Application this set generates the resources-finalizer, so
+  # deleting an Application (or this ApplicationSet, or the root app that owns
+  # it) cascades into deleting that environment's workloads. Commenting out a row
+  # is documented as the normal way to disable a product (scripts/render.sh), and
+  # a commented-out row must not be able to remove a running environment — prod
+  # especially. preserveResourcesOnDeletion keeps the generated Applications'
+  # resources when they are deleted; a deliberate teardown is then an explicit
+  # kubectl/argocd step, not a side effect of a one-line values edit.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+
   # Two generators rather than one, split by environment. The alternative — a
   # single list with `prune: {{ if eq .env "dev" }}…` — does not work: a Go
   # template opening a value makes it a YAML flow mapping, and templating a

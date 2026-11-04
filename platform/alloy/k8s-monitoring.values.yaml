@@ -61,6 +61,40 @@ destinations:
         action = "labeldrop"
       }
 
+      // ── series budget (audit S-H3, 2026-11-04) ────────────────────────────
+      // Grafana Cloud Free bills ACTIVE series against 10k (7,958 before these
+      // cuts). Drop the families below at the write boundary: none is read by a
+      // rule or dashboard in this repo.
+      //
+      // kube_pod_status_phase: 5 phases x ~173 pods (865). Only the abnormal
+      // phases are useful for triage; Running/Succeeded are the bulk.
+      write_relabel_config {
+        source_labels = ["__name__", "phase"]
+        regex         = "kube_pod_status_phase;(Running|Succeeded)"
+        action        = "drop"
+      }
+      // kube_pod_status_ready: keep condition="true" — the two PostgreSQL
+      // readiness alerts read it (onprem-workloads.tf). false/unknown are the
+      // not-ready samples those rules do not query.
+      write_relabel_config {
+        source_labels = ["__name__", "condition"]
+        regex         = "kube_pod_status_ready;(false|unknown)"
+        action        = "drop"
+      }
+      // kubelet histogram internals (~280 series); no alert or dashboard uses
+      // a kubelet_* duration histogram.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "kubelet_(pod_worker|cgroup_manager|pod_start)_duration_seconds(_bucket|_sum|_count)?"
+        action        = "drop"
+      }
+      // Guest CPU accounting (96 series) — unused.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "node_cpu_guest_seconds_total"
+        action        = "drop"
+      }
+
   grafana-logs:
     type: loki
     urlFrom: sys.env("GRAFANA_LOKI_URL")

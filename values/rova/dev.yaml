@@ -57,6 +57,11 @@ data:
     # migratorUser needs NO override: chart 0.12.1 defaults the migrator role to
     # <product>_migrator (rova_migrator), exactly §6.3's pairing.
     caFile: /etc/qnsc/db-ca/ca.crt
+  cache:
+    # The Valkey instance allow-egress-data admits on 6379, selected by its
+    # app.kubernetes.io/instance pod label (chart 0.19.2 splits the old
+    # namespace-wide data rule). Rova and opshub share valkey-dev.
+    instance: valkey-dev
 
 services:
   # §5.7 dev sizing: api 100m / 768 Mi, worker 50m / 480 Mi, heap flags at the

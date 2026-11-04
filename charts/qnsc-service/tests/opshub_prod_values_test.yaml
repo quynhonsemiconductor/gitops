@@ -74,7 +74,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           content: { secretRef: { name: opshub-env-api } }
 
-  - it: api:3000 accepts ingress only from platform, its own namespace, and the SPA
+  - it: api:3000 accepts ingress only from cloudflared and its own namespace
     template: templates/networkpolicy.yaml
     documentSelector: { path: metadata.name, value: allow-ingress-api }
     asserts:
@@ -84,19 +84,13 @@ tests:
             - from:
                 - namespaceSelector:
                     matchLabels: { kubernetes.io/metadata.name: platform }
+                  # AND, not a second entry: only the tunnel connector, not every platform pod
+                  podSelector:
+                    matchLabels: { app.kubernetes.io/name: cloudflared }
               ports:
                 - { protocol: TCP, port: 3000 }
             - from:
                 - podSelector: {}
-              ports:
-                - { protocol: TCP, port: 3000 }
-            # the SPA's only call: Caddy's forward_auth gate (GET /v1/auth/me). Prod serves web
-            # from the cluster (owner decision 3), so this entry is part of the prod shape.
-            - from:
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: web
-                      app.kubernetes.io/instance: opshub
               ports:
                 - { protocol: TCP, port: 3000 }
 
@@ -116,12 +110,16 @@ tests:
           value: { kubernetes.io/metadata.name: data-prod }
 
   # ── the SPA, served from the cluster (owner decision 3, 2026-11-04) ─────────
-  - it: the web Deployment runs the release's own web image, pinned by digest
+  # The assertion is the SHAPE, never one release's digest. A literal digest here
+  # fails every promotion PR (the promote rewrites web.image.digest in
+  # values/opshub/tags.prod.yaml), so the chart's own gate would block the release
+  # it is supposed to verify.
+  - it: the web Deployment runs the release's web image, pinned by digest
     template: templates/web.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/quynhonsemiconductor/opshub-web@sha256:4f659e1dbb42ce99ae94d2ca0e162ec219b85b61f57cbc9344290e5c82e8ad96
+          pattern: '^ghcr\.io/quynhonsemiconductor/opshub-web@sha256:[0-9a-f]{64}$'
 
   - it: the prod config.json is production and same-origin, matching what the Worker deploy wrote
     template: templates/web-configmap.yaml

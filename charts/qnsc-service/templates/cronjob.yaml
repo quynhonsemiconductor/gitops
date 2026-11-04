@@ -61,7 +61,7 @@ spec:
                   cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
                   memory: {{ $svc.resources.memory | default $d.resources.memory }}
                 limits:
-                  memory: {{ $svc.resources.memory | default $d.resources.memory }}
+                  memory: {{ $svc.resources.memoryLimit | default ($svc.resources.memory | default $d.resources.memory) }}
               envFrom:
                 {{- if include "qnsc.perValueEnv" $ }}
                 {{- if $.Values.secrets.env }}
