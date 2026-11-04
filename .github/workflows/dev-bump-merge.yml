@@ -1,0 +1,164 @@
+# =============================================================================
+# Merge the automation bot's DEV bumps.
+#
+# WHY GITHUB AUTO-MERGE NEVER WORKED. The bump action opens the PR and runs
+# `gh pr merge --auto --squash` as qnsc-automation (ci/actions/bump-gitops-tag
+# action.yml:301). qnsc-automation IS a bypass actor on `main-review` (ruleset
+# 26364222, Integration 4166718, pull_request mode), but auto-merge only records
+# the request and then waits for the branch ruleset like any other actor — the
+# bypass is applied when the BYPASSING ACTOR PERFORMS THE MERGE. Observed on
+# PR 195: every check SUCCESS, `autoMergeRequest.enabledBy = qnsc-automation`,
+# `reviewDecision = REVIEW_REQUIRED`, `mergeStateStatus = BLOCKED`. So every dev
+# bump since #156 was merged by hand.
+#
+# This workflow performs that merge itself, with the App token, and only after
+# RE-PROVING the scope from the PR's file list — never from the title, never
+# from another check's verdict. `bot-scope` enforces the same scope, but the
+# condition that authorises a bot bypass deserves to be checked by the thing
+# that acts on it.
+#
+# ALLOWED: values/<product>/tags.dev.yaml, plus the same product's
+#          rendered/<product>/dev.yaml (the bump action re-renders both).
+# PROD IS NEVER MERGED HERE. Any other path, any second product, any non-bot
+# author, any non-green required check: no merge.
+#
+# Trigger: check_suite, because that is the event that fires when the checks the
+# ruleset requires finish. Several suites complete per PR; each invocation
+# re-checks the WHOLE rollup, so only the last one to finish sees everything
+# green. A still-pending check exits 0 and the next suite completion retries.
+# =============================================================================
+name: dev-bump merge
+
+on:
+  check_suite:
+    types: [completed]
+
+concurrency:
+  group: dev-bump-merge-${{ github.event.check_suite.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  merge:
+    name: merge dev bump
+    # Branch name is a COST filter only (do not mint an App token for every human
+    # PR's check suite); author and file scope are re-proved inside the guard.
+    if: >-
+      github.event.check_suite.pull_requests[0].number != null &&
+      startsWith(github.event.check_suite.head_branch, 'bump/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # App token: the merge must be performed BY the bypass actor. Scoped to
+      # this repository and to the two permissions the merge needs.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gitops
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: guard (author, scope, required checks)
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.check_suite.head_sha }}
+          PR: ${{ github.event.check_suite.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+
+          abort() { echo "::error::$*"; exit 1; }
+          skip()  { echo "::notice::$*"; echo "merge=false" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # The ruleset's required checks, by their exact context names.
+          required=(
+            "chart"
+            "PR title (conventional commits)"
+            "security / Security scans (Gitleaks, osv-scanner, Semgrep)"
+            "actions-security / Workflow security (actionlint, zizmor)"
+            "bot-scope"
+          )
+
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          state=$(jq -r '.state' <<<"$pr_json")
+          draft=$(jq -r '.draft' <<<"$pr_json")
+          base=$(jq -r '.base.ref' <<<"$pr_json")
+          head_sha=$(jq -r '.head.sha' <<<"$pr_json")
+          head_repo=$(jq -r '.head.repo.full_name' <<<"$pr_json")
+          author=$(jq -r '.user.login' <<<"$pr_json")
+          author_type=$(jq -r '.user.type' <<<"$pr_json")
+
+          [ "$state" = "open" ]      || skip "PR #$PR is $state"
+          [ "$draft" = "false" ]     || skip "PR #$PR is a draft"
+          [ "$base" = "main" ]       || abort "PR #$PR targets '$base', not main"
+          [ "$head_sha" = "$SHA" ]   || skip "PR #$PR head moved to $head_sha"
+          [ "$head_repo" = "$REPO" ] || abort "PR #$PR comes from '$head_repo', not this repository"
+          [ "$author" = "qnsc-automation[bot]" ] || skip "PR #$PR author is '$author', not the automation bot"
+          [ "$author_type" = "Bot" ] || abort "PR #$PR author '$author' is not a Bot account"
+
+          # ── file scope, from the API, never the title ──────────────────────
+          files=()
+          while IFS= read -r f; do files+=("$f"); done \
+            < <(gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename')
+          [ "${#files[@]}" -gt 0 ] || abort "PR #$PR changes no files"
+          values_product=""
+          rendered_product=""
+          for f in "${files[@]}"; do
+            if [[ "$f" =~ ^values/([a-z0-9-]+)/tags\.dev\.yaml$ ]]; then
+              p=${BASH_REMATCH[1]}
+              [ -z "$values_product" ] || [ "$values_product" = "$p" ] || abort "PR #$PR touches two products: $values_product and $p"
+              values_product=$p
+            elif [[ "$f" =~ ^rendered/([a-z0-9-]+)/dev\.yaml$ ]]; then
+              p=${BASH_REMATCH[1]}
+              [ -z "$rendered_product" ] || [ "$rendered_product" = "$p" ] || abort "PR #$PR renders two products: $rendered_product and $p"
+              rendered_product=$p
+            else
+              abort "PR #$PR touches out-of-scope path: $f"
+            fi
+          done
+          [ -n "$values_product" ] || abort "PR #$PR changes no values/<product>/tags.dev.yaml"
+          [ -z "$rendered_product" ] || [ "$rendered_product" = "$values_product" ] \
+            || abort "PR #$PR renders $rendered_product but bumps $values_product"
+
+          # ── required checks on this exact head ─────────────────────────────
+          # `gh pr checks` resolves the LATEST run per context, so a cancelled
+          # older bot-scope run cannot block a green one.
+          checks=$(gh pr checks "$PR" --json name,state || true)
+          for want in "${required[@]}"; do
+            got=$(jq -r --arg want "$want" '.[] | select(.name == $want) | .state' <<<"$checks" | head -1)
+            [ -n "$got" ] || abort "PR #$PR is missing required check: $want"
+            [ "$got" = "SUCCESS" ] || abort "PR #$PR required check '$want' is $got"
+          done
+          pending=$(jq -r '[.[] | select(.state == "PENDING" or .state == "QUEUED" or .state == "IN_PROGRESS")] | length' <<<"$checks")
+          [ "$pending" = "0" ] || skip "PR #$PR still has $pending pending check(s); a later suite completion retries"
+          failed=$(jq -r '[.[] | select(.state == "FAILURE" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ACTION_REQUIRED")] | length' <<<"$checks")
+          [ "$failed" = "0" ] || abort "PR #$PR has $failed failed check(s)"
+
+          echo "::notice::PR #$PR ($values_product dev) is in scope and green; merging $SHA"
+          {
+            echo "merge=true"
+            echo "product=$values_product"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: merge with the automation App token
+        if: steps.guard.outputs.merge == 'true'
+        env:
+          # The bypass actor performs the merge — that is what applies the ruleset
+          # exemption. `--match-head-commit` refuses if the PR moved after the guard.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.check_suite.head_sha }}
+          PR: ${{ github.event.check_suite.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"
+          gh pr view "$PR" --repo "$REPO" --json state,mergeCommit \
+            --jq '"merged #\(.state) as \(.mergeCommit.oid // "?")"'
