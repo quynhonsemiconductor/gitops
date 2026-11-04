@@ -87,7 +87,7 @@ spec:
               cpu: {{ $svc.resources.cpu | default $d.resources.cpu }}
               memory: {{ $svc.resources.memory | default $d.resources.memory }}
             limits:
-              memory: {{ $svc.resources.memory | default $d.resources.memory }}
+              memory: {{ $svc.resources.memoryLimit | default ($svc.resources.memory | default $d.resources.memory) }}
           envFrom:
             {{- /* §5d — the MIGRATOR role, never the application role. The app role
                    carries statement_timeout = 30s, which would kill the 600s

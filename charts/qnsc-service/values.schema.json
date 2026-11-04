@@ -278,6 +278,10 @@
               "memory": {
                 "type": "string"
               },
+              "memoryLimit": {
+                "type": "string",
+                "description": "Optional memory LIMIT. Defaults to `memory` (limit == request, §15d) unless a workload needs burst headroom above its request — e.g. kb-dev worker request 1Gi / limit 2.5Gi."
+              },
               "gpu": {
                 "type": "integer",
                 "minimum": 1
@@ -393,6 +397,10 @@
                     },
                     "memory": {
                       "type": "string"
+                    },
+                    "memoryLimit": {
+                      "type": "string",
+                      "description": "Optional memory LIMIT. Defaults to `memory` (limit == request, §15d) unless a workload needs burst headroom above its request — e.g. kb-dev worker request 1Gi / limit 2.5Gi."
                     }
                   }
                 },
@@ -456,7 +464,11 @@
           "additionalProperties": false,
           "properties": {
             "cpu": { "type": ["string", "number"] },
-            "memory": { "type": "string" }
+            "memory": { "type": "string" },
+            "memoryLimit": {
+              "type": "string",
+              "description": "Optional memory LIMIT. Defaults to `memory` (limit == request) unless the static server needs burst headroom."
+            }
           },
           "description": "Requests. No CPU limit and memory limit == request, like every service (sizes small by design)."
         },

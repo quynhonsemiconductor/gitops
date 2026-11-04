@@ -86,7 +86,7 @@ spec:
               cpu: {{ $w.resources.cpu }}
               memory: {{ $w.resources.memory }}
             limits:
-              memory: {{ $w.resources.memory }}
+              memory: {{ $w.resources.memoryLimit | default $w.resources.memory }}
           {{- /* TWO paths, and the split is not cosmetic: platform/policy/admission.yaml
                  (qnsc-liveness-probes, §9j) admits a Deployment only when every
                  livenessProbe httpGet is `/livez` — /healthz here was rejected by the API
