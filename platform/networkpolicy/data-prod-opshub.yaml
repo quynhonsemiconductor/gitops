@@ -1,14 +1,8 @@
 # ── data-prod: opshub-prod's access to ITS data only (prep, nothing runs yet) ───────────
 #
-# data-prod-admit (data-prod.yaml) admits rova-prod, restore-test and cnpg-system to EVERY pod in
-# data-prod. NetworkPolicies add up, so opshub-prod gets two narrow policies of its own instead of a
-# new line in that one: opshub-prod reaches only pg-opshub (5432) and valkey-opshub (6379), selected
-# by the pods' own labels. The CNPG operator (cnpg-system), the restore test and Alloy are already
-# admitted by data-prod-admit.
-#
-# FOLLOW-UP once opshub-prod runs (not now: rova-prod is live and in its soak): rova-prod is still
-# admitted to every data-prod pod by data-prod-admit, so it could reach pg-opshub/valkey-opshub (each
-# needs its own credentials; defence in depth only). Scope that rule to pg-rova/valkey-rova pods then.
+# opshub-prod reaches only pg-opshub (5432) and valkey-opshub (6379), selected by the pods' own
+# labels; rova-prod's access is scoped the same way in data-prod.yaml (audit N-M6), so neither
+# product can open the other's instance even with the right credentials.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
