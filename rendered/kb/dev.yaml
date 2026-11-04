@@ -402,7 +402,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -560,7 +560,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT

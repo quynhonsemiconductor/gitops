@@ -51,7 +51,10 @@ platform:
   argo-cd:
     chart: argo-cd
     repo: https://argoproj.github.io/argo-helm
-    version: "10.9.2"          # ArgoCD 3.x
+    # 10.11.7 = ArgoCD v3.5.7: the patch that carries the three CRITICAL
+    # repo-server fixes (GHSA-9v9p-x54c-58gc, GHSA-fw5c-w8rc-j7fx,
+    # GHSA-m3vr-7329-44ww) missing from v3.5.3. Same 3.5 line, no API change.
+    version: "10.11.7"         # ArgoCD 3.5.7
   alloy:
     # The HOST collector on the Proxmox host (SMART/ZFS/NUT), not the in-cluster
     # one: the cluster uses the k8s-monitoring chart below (ONPREM-PLAN §12).
