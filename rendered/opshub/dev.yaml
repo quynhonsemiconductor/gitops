@@ -382,7 +382,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-7aa5e92036e9
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-65e6afa60905
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -512,7 +512,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-7aa5e92036e9
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-65e6afa60905
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -634,7 +634,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
+          image: ghcr.io/quynhonsemiconductor/opshub-web@sha256:8aabfa9ad03211d7d22d8925efd0a55730733572fb516ac243dca9b36c256bb3
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
