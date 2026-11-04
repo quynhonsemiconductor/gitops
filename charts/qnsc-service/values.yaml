@@ -49,12 +49,18 @@ size: s              # default preset; a service may override it
 #                bootstrapping; a missing/invalid file is a boot error, not a
 #                silent fallback.
 #   uid          any non-root uid works; the chart pins runAsUser 1001.
-#   egress       DNS (kube-system, 53) and this release's api pods on the api
-#                Service port — nothing else. The chart sets
-#                WEB_API_UPSTREAM=http://api:<rendered port> for the
-#                /guide-assets/* forward_auth gate.
+#   egress       DNS (kube-system, 53) only, UNLESS web.apiUpstream is true:
+#                then also this release's api pods (rova's Caddy reverse_proxy for
+#                /guide-assets/*). Every other egress allow is scoped to the
+#                product's non-web workloads (qnsc.nonWebPodSelector).
 web:
   enabled: false
+  # rova only: its Caddyfile reverse-proxies /guide-assets/* to the api (the User
+  # Guide forward_auth gate). true renders WEB_API_UPSTREAM + web egress to the
+  # api pods + api ingress from the web pods. opshub/kb web images serve static
+  # files only (apps/web/Caddyfile at v0.4.9; qnsc-kb-frontend nginx.conf), so
+  # they leave it false.
+  apiUpstream: false
   port: 8080
   replicas: 1          # a static server; dev turns it to 0 by schedule like any Deployment
   pdb: false           # minAvailable 1 on one replica blocks every node drain

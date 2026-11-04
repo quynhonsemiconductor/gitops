@@ -1,0 +1,63 @@
+suite: allow-egress-data splits the targets by pod label
+# Chart 0.19.2 stopped admitting 5432 AND 6379 to every pod in the data namespace.
+# The Postgres rule selects the product's CNPG cluster (cnpg.io/cluster) and only
+# then opens 5432; the Valkey rule selects one instance
+# (app.kubernetes.io/instance, data.cache.instance) on 6379. The prod values set
+# valkey-rova here, so the prod pin cannot silently drop 6379.
+templates:
+  - templates/networkpolicy.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/prod.yaml
+  - ../../../values/rova/tags.prod.yaml
+set:
+  env: prod
+  networkPolicy.enabled: true
+
+tests:
+  - it: renders one rule per real target, each on its own port
+    documentSelector: { path: metadata.name, value: allow-egress-data }
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 2
+      - equal:
+          path: spec.egress[0].to[0]
+          value:
+            namespaceSelector:
+              matchLabels: { kubernetes.io/metadata.name: data-prod }
+            podSelector:
+              matchLabels: { cnpg.io/cluster: pg-rova }
+      - equal:
+          path: spec.egress[0].ports
+          value:
+            - { protocol: TCP, port: 5432 }
+      - equal:
+          path: spec.egress[1].to[0]
+          value:
+            namespaceSelector:
+              matchLabels: { kubernetes.io/metadata.name: data-prod }
+            podSelector:
+              matchLabels: { app.kubernetes.io/instance: valkey-rova }
+      - equal:
+          path: spec.egress[1].ports
+          value:
+            - { protocol: TCP, port: 6379 }
+
+  - it: fails the render when a Redis URL is configured but data.cache.instance is empty
+    # The 0.19.2 split would otherwise render a policy that silently blocks the
+    # product's own cache. REDIS_URL is set in values/rova/prod.yaml secrets.env.
+    set:
+      data.cache.instance: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: 'a Redis/Valkey URL is configured (REDIS_URL or VALKEY_URL) but data.cache.instance is unset: allow-egress-data would render no 6379 rule and the app could not reach its cache. Set data.cache.instance to the Valkey pod label (valkey-dev, valkey-rova, valkey-opshub, valkey-kb-dev).'
+
+  - it: renders the cache rule against the configured instance
+    set:
+      data.cache.instance: valkey-other
+    documentSelector: { path: metadata.name, value: allow-egress-data }
+    asserts:
+      - equal:
+          path: spec.egress[1].to[0].podSelector.matchLabels
+          value: { app.kubernetes.io/instance: valkey-other }

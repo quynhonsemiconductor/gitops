@@ -47,7 +47,12 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-platform
 spec:
-  podSelector: {}
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    {{- include "qnsc.nonWebPodSelector" $ | nindent 4 }}
   policyTypes: [Egress]
   egress:
     - to:
@@ -69,7 +74,8 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-external
 spec:
-  podSelector: {}
+  podSelector:
+    {{- include "qnsc.nonWebPodSelector" $ | nindent 4 }}
   policyTypes: [Egress]
   egress:
     - to:
@@ -84,21 +90,43 @@ spec:
 ---
 {{- /* The CIDR exclusion above also cut the way to the product's own data: Postgres
        (CNPG) and the cache, both in the namespace data.postgres.namespace
-       (data-prod / data-dev). Allowed by namespace and port, nothing else. */}}
+       (data-prod / data-dev). Each destination is selected by its OWN pod label
+       and port — the CNPG cluster by `cnpg.io/cluster`, the Valkey instance by
+       `app.kubernetes.io/instance` (data.cache.instance) — so 5432 opens to the
+       product's database and 6379 to its cache, never a port to every pod in the
+       namespace. The cache rule is omitted when the product has no cache. */}}
+{{- $cacheInstance := "" }}
+{{- with .Values.data.cache }}{{ $cacheInstance = .instance | default "" }}{{ end }}
+{{- if and (not $cacheInstance) (eq (include "qnsc.redisConfigured" $) "true") }}
+{{- fail "a Redis/Valkey URL is configured (REDIS_URL or VALKEY_URL) but data.cache.instance is unset: allow-egress-data would render no 6379 rule and the app could not reach its cache. Set data.cache.instance to the Valkey pod label (valkey-dev, valkey-rova, valkey-opshub, valkey-kb-dev)." }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-egress-data
 spec:
-  podSelector: {}
+  podSelector:
+    {{- include "qnsc.nonWebPodSelector" $ | nindent 4 }}
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: {{ .Values.data.postgres.namespace | quote }} }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: {{ .Values.data.postgres.cluster | quote }} }
       ports:
         - { protocol: TCP, port: 5432 }
+    {{- with .Values.data.cache }}
+    {{- with .instance }}
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $.Values.data.postgres.namespace | quote }} }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: {{ . | quote }} }
+      ports:
         - { protocol: TCP, port: 6379 }
+    {{- end }}
+    {{- end }}
 {{- end }}
 {{- range .Values.networkPolicy.egressNamespaces }}
 ---
@@ -111,7 +139,8 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-{{ .namespace }}
 spec:
-  podSelector: {}
+  podSelector:
+    {{- include "qnsc.nonWebPodSelector" $ | nindent 4 }}
   policyTypes: [Egress]
   egress:
     - to:
@@ -126,11 +155,12 @@ spec:
        loop below cannot emit its ingress rule. Cloudflared lives in `platform`,
        and with default-deny on in dev an unlisted web pod is unreachable — the
        tunnel would answer 503 with the pod healthy. Same shape as an `expose:
-       public` service, plus same-namespace traffic. */}}
+       public` service, plus same-namespace traffic.
+
+       EGRESS for web is `allow-dns` only: the SPA is a static file server and
+       makes no server-side calls (the v0.4.x Caddyfile has no reverse_proxy or
+       forward_auth; WEB_API_UPSTREAM was removed with chart 0.19.2). */}}
 {{- if .Values.web.enabled }}
-{{- /* The POD port, not the Service port: a NetworkPolicy is evaluated after
-       DNAT (qnsc.podPort). `services.api.targetPort` may split the two. */}}
-{{- $apiPodPort := include "qnsc.podPort" (list $ "api") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -158,18 +188,13 @@ spec:
         - podSelector: {}
       ports:
         - { protocol: TCP, port: {{ .Values.web.port | default 8080 }} }
----
-{{- /* web needs TWO egress destinations that the namespace-wide policies do
-       not give it:
-
-         DNS   `allow-dns` already covers every pod in the namespace, but a
-               web-scoped copy keeps this rule set self-contained and testable.
-         api   the only egress a static server makes: Caddy's forward_auth gate
-               for /guide-assets/* asks GET /v1/auth/me on the api Service. The
-               destination is the api PODS (same namespace) on the POD port —
-               not the Service port, see qnsc.podPort; allow-egress-external
-               excludes the cluster CIDRs, so without this rule the gate times
-               out and answers 503. */}}
+{{- if .Values.web.apiUpstream }}
+{{- /* rova's Caddyfile reverse-proxies /guide-assets/* to the api (the User
+       Guide forward_auth gate), so THAT product's web pod needs DNS and the api
+       pods on the POD port (a NetworkPolicy is evaluated after DNAT). Opt-in:
+       web.apiUpstream false (opshub, kb) means the static server talks to
+       nothing, and this policy does not render. */}}
+{{- $apiPodPort := include "qnsc.podPort" (list $ "api") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -196,6 +221,7 @@ spec:
       ports:
         - { protocol: TCP, port: {{ $apiPodPort }} }
 {{- end }}
+{{- end }}
 {{- range $name, $_ := .Values.services }}
 {{- $svc  := include "qnsc.svc"  (list $ $name) | fromYaml }}
 {{- $caps := include "qnsc.caps" $svc.kind      | fromYaml }}
@@ -219,6 +245,13 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
       ports:
         - { protocol: TCP, port: {{ $podPort }} }
     {{- end }}
@@ -235,10 +268,10 @@ spec:
         - podSelector: {}          # same namespace, service to service
       ports:
         - { protocol: TCP, port: {{ $podPort }} }
-    {{- if and $.Values.web.enabled (eq $name "api") }}
-    {{- /* Scoped alongside the generic same-namespace rule above: the web pod's
-           forward_auth gate calls the api Service directly, so the pairing is
-           explicit and testable even if the generic rule is ever narrowed. */}}
+    {{- if and $.Values.web.enabled $.Values.web.apiUpstream (eq $name "api") }}
+    {{- /* rova's guide-assets reverse proxy calls the api Service from the web
+           pod; explicit so the pairing survives any narrowing of the generic
+           same-namespace rule. Other products leave web.apiUpstream false. */}}
     - from:
         - podSelector:
             matchLabels:
