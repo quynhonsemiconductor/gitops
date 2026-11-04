@@ -53,7 +53,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 169.254.169.254/32   # IMDS — pods use IRSA, never the node role
+              - 169.254.169.254/32   # IMDS — pods never use a node role
               - 10.42.0.0/16
               - 10.43.0.0/16
               - 10.0.0.0/8
@@ -123,7 +123,6 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-api
 automountServiceAccountToken: false
 
 ---
@@ -144,7 +143,6 @@ metadata:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-migrator
 automountServiceAccountToken: false
 
 ---
@@ -162,7 +160,6 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::608983206583:role/qnsc-prod-rova-worker
 automountServiceAccountToken: false
 
 ---
@@ -500,7 +497,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-v0.8.8
+  name: migrator-4c5598fc65d9
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -515,6 +512,7 @@ metadata:
 spec:
   activeDeadlineSeconds: 600
   backoffLimit: 0
+  ttlSecondsAfterFinished: 259200
   template:
     metadata:
       labels:

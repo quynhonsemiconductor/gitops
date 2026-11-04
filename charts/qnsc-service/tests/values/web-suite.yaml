@@ -10,6 +10,11 @@
 # "enabled without a tag or digest" case needs the repo present to prove the tag
 # is the thing that fails.
 env: dev
+# An environment's values file used to supply these; the suite owns them now so rova's base.yaml
+# can carry the real `web:` block without turning the "off" cases into copies of its config.
+product: rova
+services:
+  api: { kind: http, port: 3000 }
 web:
   enabled: false
   image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
