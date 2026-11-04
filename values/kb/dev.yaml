@@ -68,6 +68,11 @@ data:
     # pairing with the kv secret is visible in one place.
     migratorUser: kb_migrator
     caFile: /etc/qnsc/db-ca/ca.crt
+  cache:
+    # The Valkey instance allow-egress-data admits on 6379, selected by its
+    # app.kubernetes.io/instance pod label (chart 0.19.2 splits the old
+    # namespace-wide data rule). kb's Celery broker.
+    instance: valkey-kb-dev
 
 services:
   api:

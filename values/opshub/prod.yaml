@@ -47,6 +47,12 @@ data:
     workerUser: opshub_worker
     migratorUser: opshub_migrator
     caFile: /etc/qnsc/db-ca/ca.crt     # pg-opshub-ca-pub via the cnpg-ca-prod store
+  cache:
+    # valkey-opshub, selected by app.kubernetes.io/instance in allow-egress-data
+    # (chart 0.19.2). No-op while the row pins 0.19.1; required before the prod
+    # pin so 6379 cannot drop out. VALKEY_URL (secrets.env) is configured, so the
+    # chart fails the render if this is missing.
+    instance: valkey-opshub
 
 services:
   api:
