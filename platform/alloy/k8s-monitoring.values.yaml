@@ -189,22 +189,36 @@ nodeLogs:
 # environment, and any dev-vs-prod panel or alert had to join target_info on
 # `instance` — fragile, and silent if `instance` is ever aggregated away.
 #
-# WHAT: one datapoint attribute `env` copied from the resource attribute the
-# apps ALREADY set (products set DEPLOYMENT_ENV=dev|prod, which the observability
-# package publishes as `deployment.environment.name`; verified identical on the
-# live `target_info` series 2026-11-04). The Prometheus exporter renders it as
-# the label `env="dev"|"prod"`. No app change, no new resource attribute.
+# WHAT: datapoint attributes copied from the resource attribute the apps ALREADY
+# set (products set DEPLOYMENT_ENV=dev|prod, which the observability package
+# publishes as `deployment.environment.name`). The Prometheus exporter renders
+# them as the labels `deployment_environment_name="dev"|"prod"` (the label every
+# dashboard, SLO and alert rule queries) and `env` (kept because the MCP
+# dashboard groups on it and no Adaptive Metrics rule covers `mcp_*`, so nothing
+# strips it). No app change, no new resource attribute.
+#
+# WHY BOTH, and not just `env`: `env` ALONE CANNOT SURVIVE FOR THE FAMILIES
+# ADAPTIVE METRICS COVERS. The `http_server_`/`http_client_`/`db_client_*` rules
+# (infra live/adaptive-metrics) keep ONLY `job, service_namespace, service_name,
+# deployment_environment_name, method, status_class, route, le` — a label not in
+# that list, such as `env`, is aggregated away. So with `env` only, dev and prod
+# (which share `job="<product>/<service>"` and `service_name`) collapsed into ONE
+# aggregated series with no environment on it at all, and any per-env query
+# (`deployment_environment_name="prod"`) returned nothing. Emitting the
+# AM-spelled label fixes the split without touching the rules; emitting `env`
+# too costs ZERO extra series, because both labels carry the same two values
+# from the same namespace.
 #
 # WHY A custom PROCESSOR, not destination-level
 # `openTelemetryConversion.resourceToTelemetryConversion`: that switch promotes
 # EVERY resource attribute (k8s.pod.uid, process.pid, host.name, …) to labels —
 # churn/cardinality the Adaptive Metrics rules do not cover for every family.
-# This copies exactly one attribute. Scope: the OTLP metrics pipeline only;
-# scraped Prometheus metrics (KSM, node-exporter, …) are untouched.
+# This copies exactly two, derived from one attribute. Scope: the OTLP metrics
+# pipeline only; scraped Prometheus metrics (KSM, node-exporter, …) are untouched.
 #
 # CAVEAT: the chart still labels `dataProcessors` experimental. If a chart bump
 # removes it, the fallback is the destination-level conversion above with a
-# matching Adaptive Metrics rule; check `env` is present after any bump.
+# matching Adaptive Metrics rule; check both labels are present after any bump.
 dataProcessors:
   env-label:
     type: custom
@@ -222,6 +236,7 @@ dataProcessors:
             metric_statements {
               context = "datapoint"
               statements = [
+                "set(attributes[\"deployment_environment_name\"], resource.attributes[\"deployment.environment.name\"]) where resource.attributes[\"deployment.environment.name\"] != nil",
                 "set(attributes[\"env\"], resource.attributes[\"deployment.environment.name\"]) where resource.attributes[\"deployment.environment.name\"] != nil",
               ]
             }
