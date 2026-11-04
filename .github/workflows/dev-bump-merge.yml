@@ -35,6 +35,10 @@
 # =============================================================================
 name: dev-bump merge
 
+# zizmor: ignore[dangerous-triggers] — workflow_run is required here: check_suite
+# is not delivered for Actions-created suites. This job never checks out or runs
+# PR code; it reads PR/check metadata through the API and merges with the App
+# token. The DEFAULT-branch copy of this file is the one that runs.
 on:
   workflow_run:
     workflows:
