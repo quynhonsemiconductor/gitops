@@ -74,7 +74,8 @@ services:
     # §5.7 dev sizing, TEI era: the int8 e5 export (the 1.6-1.7 GB resident the
     # 2.25 Gi covered) leaves the process with EMBEDDING_RUNTIME=tei, so 768 Mi is
     # uvicorn + FastAPI + asyncpg with headroom. It was Pending on k3s-01 at 2.25 Gi.
-    resources: { cpu: 250m, memory: 768Mi }
+    # 512 Mi (2026-11-04): measured 119 Mi steady on kb-dev; k3s-01 requests were at 97%.
+    resources: { cpu: 250m, memory: 512Mi }
     env:
       # §13.1 — the sidecar clamd is GONE; scanning goes to the platform service.
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
