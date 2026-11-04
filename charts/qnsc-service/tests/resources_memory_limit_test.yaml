@@ -1,0 +1,77 @@
+suite: optional resources.memoryLimit (default = memory, limit == request)
+# §15d: a workload's memory limit equals its request unless a product asks for
+# burst headroom. `resources.memoryLimit` is that opt-in; absent, the render is
+# byte-identical to the memory == request shape every existing row has.
+templates:
+  - templates/deployment.yaml
+  - templates/job.yaml
+  - templates/web.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/dev.yaml
+  - ../../../values/rova/tags.dev.yaml
+
+tests:
+  - it: memoryLimit equal to memory keeps limit == request (the default shape)
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: api }
+    # The absent-key branch is covered by the prod values suites (no
+    # memoryLimit there, limit == request); rova dev sets the key, so pin it
+    # equal here to prove an equal value is still accepted unchanged.
+    set:
+      services.api.resources.memoryLimit: 384Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 384Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 384Mi
+
+  - it: memoryLimit raises ONLY the limit, the request is untouched
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: api }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 384Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 768Mi
+
+  - it: the migrator Job honours memoryLimit too
+    template: templates/job.yaml
+    set:
+      services.migrator.resources.memoryLimit: 2Gi
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 512Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 2Gi
+
+  - it: the web Deployment defaults its limit to its request
+    template: templates/web.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 64Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 64Mi
+
+  - it: the web Deployment honours memoryLimit
+    template: templates/web.yaml
+    set:
+      web.resources.memoryLimit: 128Mi
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 64Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 128Mi

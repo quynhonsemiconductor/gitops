@@ -32,7 +32,13 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-platform
 spec:
-  podSelector: {}
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -46,7 +52,9 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-external
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -67,14 +75,24 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-data
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "data-dev" }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: "pg-dev" }
       ports:
         - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-dev" }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: "valkey-kb-dev" }
+      ports:
         - { protocol: TCP, port: 6379 }
 
 ---
@@ -84,7 +102,9 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-ai
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -134,41 +154,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-egress-web
-  labels:
-    app.kubernetes.io/name: web
-    app.kubernetes.io/instance: kb
-    app.kubernetes.io/part-of: kb
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: kb
-    qnsc.vn/env: dev
-    qnsc.vn/tenant: product
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: web
-      app.kubernetes.io/instance: kb
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: kube-system }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: api
-              app.kubernetes.io/instance: kb
-      ports:
-        - { protocol: TCP, port: 8000 }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: allow-ingress-api
   labels:
     app.kubernetes.io/name: api
@@ -188,17 +173,17 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
       ports:
         - { protocol: TCP, port: 8000 }
     - from:
         - podSelector: {}          # same namespace, service to service
-      ports:
-        - { protocol: TCP, port: 8000 }
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: web
-              app.kubernetes.io/instance: kb
       ports:
         - { protocol: TCP, port: 8000 }
 
@@ -381,7 +366,7 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               memory: 512Mi
           livenessProbe:
@@ -402,7 +387,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -551,7 +536,7 @@ spec:
           resources:
             requests:
               cpu: 500m
-              memory: 2.5Gi
+              memory: 1Gi
             limits:
               memory: 2.5Gi
           env:
@@ -560,7 +545,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-0d7024dc429d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-7160b2da817a
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -724,9 +709,6 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          env:
-            - name: WEB_API_UPSTREAM
-              value: "http://api:8000"
           resources:
             requests:
               cpu: 50m

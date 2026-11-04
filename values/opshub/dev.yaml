@@ -59,11 +59,17 @@ data:
     # pairing with the kv secret is visible in one place.
     migratorUser: opshub_migrator
     caFile: /etc/qnsc/db-ca/ca.crt
+  cache:
+    # The Valkey instance allow-egress-data admits on 6379, selected by its
+    # app.kubernetes.io/instance pod label (chart 0.19.2 splits the old
+    # namespace-wide data rule). Rova and opshub share valkey-dev.
+    instance: valkey-dev
 
 services:
   api:
-    # §5.7 dev sizing: api 100m / 768 Mi with the prod heap flag for parity.
-    resources: { cpu: 100m, memory: 768Mi }
+    # 24h p95 180Mi (memory-p95-24h-2026-11-04). 384Mi request = ~2x p95;
+    # 768Mi limit keeps today's ceiling. The prod heap flag stays for parity.
+    resources: { cpu: 100m, memory: 384Mi, memoryLimit: 768Mi }
     # One replica on dev (2026-11-04): k3s-01 memory REQUESTS were at 97% (actual use 30%), so new prod pods
     # could not schedule. Dev needs no HA; base keeps 2 for prod.
     replicas: 1
@@ -81,7 +87,8 @@ services:
       - { name: CORS_ORIGINS, value: "https://opshub-dev.qnsc.vn" }
 
   worker:
-    resources: { cpu: 50m, memory: 480Mi }
+    # 24h p95 139Mi. 256Mi request = ~2x p95; 480Mi limit keeps today's ceiling.
+    resources: { cpu: 50m, memory: 256Mi, memoryLimit: 480Mi }
     env:
       - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
       - { name: DATABASE_POOL_MAX, value: "10" }
