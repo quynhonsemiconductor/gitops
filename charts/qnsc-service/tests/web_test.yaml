@@ -11,9 +11,9 @@ templates:
   - templates/web-pdb.yaml
   - templates/networkpolicy.yaml
 values:
-  - ../../../values/rova/base.yaml
-  # NOT values/rova/dev.yaml: it now enables web with rova's real config.json, and this suite
-  # needs BOTH states. web-suite.yaml keeps the state explicit; web-repo.yaml was its first half.
+  # NOT an environment's values file: web-suite.yaml keeps BOTH states explicit and carries the
+  # data shape, because rova's base.yaml now owns the real `web:` block (repo + config) and would
+  # turn the "off" cases into copies of a product's config.
   - values/web-suite.yaml
   - values/web-repo.yaml
 release:

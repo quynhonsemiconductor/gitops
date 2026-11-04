@@ -4,9 +4,23 @@
 product: rova
 size: l
 
-# No `web:` block here yet: the prod row still pins qnsc-service 0.15.0, whose
-# values schema rejects unknown keys (the #163/#174 ComparisonError). The block
-# lives in dev.yaml for the 0.18.0 dev rows and moves here with the prod-row PR.
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1). The repo lives here;
+# the tag/digest live in tags.<env>.yaml (`web:`), written by CI like every other
+# image. This block sat in dev.yaml while the prod row pinned 0.15.0, whose values
+# schema rejects unknown keys (#163/#174 ComparisonError); it moves here with the
+# prod row on 0.19.1.
+#
+# config is the whole /config.json the image mounts at /srv/config.json. Base keeps
+# it off; dev.yaml turns it on with `appEnv: development`. Prod keeps the SPA on the
+# Worker (`rova-prod-web`, live/edge): enabling it there needs a `web:` digest in
+# tags.prod (no rova release publishes one yet) and the edge route split. Same
+# origin, dev login off.
+web:
+  enabled: false
+  image: { repo: ghcr.io/quynhonsemiconductor/rova-web }
+  config:
+    apiBaseUrl: ""
+    devLoginEnabled: false
 
 services:
   api:
