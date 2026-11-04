@@ -848,9 +848,9 @@ collectors:
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          # cnpg_pg_database_size_bytes feeds the per-database 15 GiB warning in
-          # infra observability-alerting (onprem-data-p0.tf): one series per
-          # cluster+datname, so growth is visible before the filesystem floor.
+          // cnpg_pg_database_size_bytes feeds the per-database 15 GiB warning in
+          // infra observability-alerting (onprem-data-p0.tf): one series per
+          // cluster+datname, so growth is visible before the filesystem floor.
           regex         = "cnpg_pg_stat_archiver_failed_count|cnpg_pg_replication_lag|cnpg_collector_up|(cnpg_collector|barman_cloud_cloudnative_pg_io)_(last_available_backup_timestamp|last_failed_backup_timestamp|first_recoverability_point)|cnpg_backends_total|cnpg_pg_database_size_bytes|cnpg_pg_settings_setting|up|scrape_samples_scraped"
           action        = "keep"
         }
