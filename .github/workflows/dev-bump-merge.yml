@@ -53,6 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: selection logic fixtures
+        run: ./scripts/test-dev-bump-order.sh
+
       # App token: the merge must be performed BY the bypass actor. Scoped to
       # this repository and to the two permissions the merge needs.
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -69,6 +72,7 @@ jobs:
         id: guard
         env:
           GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.check_suite.head_sha }}
           PR: ${{ github.event.check_suite.pull_requests[0].number }}
@@ -128,6 +132,34 @@ jobs:
           [ -z "$rendered_product" ] || [ "$rendered_product" = "$values_product" ] \
             || abort "PR #$PR renders $rendered_product but bumps $values_product"
 
+          # ── ordering: never merge an OLDER bump over a newer one ────────────
+          # The matrix opens several bumps before any merges (kb #192-#195 were
+          # open at once). Without this, whichever PR's checks finish last wins
+          # and can roll dev back to an older sha.
+          bumps='[]'
+          while read -r n; do
+            if gh api "repos/$REPO/pulls/$n/files?per_page=100" --paginate --jq '.[].filename' \
+                 | grep -qxF "values/$values_product/tags.dev.yaml"; then
+              bumps=$(jq --argjson n "$n" --arg p "$values_product" \
+                '. + [{number: $n, product: $p}]' <<<"$bumps")
+            fi
+          done < <(gh pr list --repo "$REPO" --state open --author app/qnsc-automation \
+                     --limit 100 --json number --jq '.[].number')
+
+          if ! order=$(printf '%s' "$bumps" | ./scripts/dev-bump-order.sh "$PR" "$values_product" -); then
+            skip "PR #$PR is no longer an open bump for $values_product"
+          fi
+          role=$(sed -n 's/^role=//p' <<<"$order")
+          newer=$(sed -n 's/^newer=//p' <<<"$order")
+          older=$(sed -n 's/^older=//p' <<<"$order")
+
+          if [ "$role" = "older" ]; then
+            GH_TOKEN="$APP_TOKEN" gh pr close "$PR" --repo "$REPO" --delete-branch \
+              --comment "Superseded by #$newer: a newer dev bump for $values_product is open. Merging out of order would roll dev back." \
+              || echo "::warning::could not close superseded PR #$PR"
+            skip "PR #$PR superseded by #$newer"
+          fi
+
           # ── required checks on this exact head ─────────────────────────────
           # `gh pr checks` resolves the LATEST run per context, so a cancelled
           # older bot-scope run cannot block a green one.
@@ -142,7 +174,16 @@ jobs:
           failed=$(jq -r '[.[] | select(.state == "FAILURE" or .state == "CANCELLED" or .state == "TIMED_OUT" or .state == "ACTION_REQUIRED")] | length' <<<"$checks")
           [ "$failed" = "0" ] || abort "PR #$PR has $failed failed check(s)"
 
-          echo "::notice::PR #$PR ($values_product dev) is in scope and green; merging $SHA"
+          # This PR is the newest and green: close the older bumps BEFORE the
+          # merge so none of them can land concurrently. A failed close is a
+          # warning, not a reason to keep a stale PR able to merge.
+          for old in $older; do
+            GH_TOKEN="$APP_TOKEN" gh pr close "$old" --repo "$REPO" --delete-branch \
+              --comment "Superseded by #$PR: a newer dev bump for $values_product merged instead. Merging out of order would roll dev back." \
+              || echo "::warning::could not close superseded PR #$old"
+          done
+
+          echo "::notice::PR #$PR ($values_product dev) is newest, in scope and green; merging $SHA"
           {
             echo "merge=true"
             echo "product=$values_product"
