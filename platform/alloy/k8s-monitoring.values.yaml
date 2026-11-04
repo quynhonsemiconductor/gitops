@@ -523,8 +523,8 @@ collectors:
       # otherwise pick its own tag; a digest makes the collector binary that
       # parses every pipeline in this file an explicit, reviewable choice.
       image:
-        tag: v1.13.0
-        digest: sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221
+        tag: v1.21.3
+        digest: sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
       envFrom:
         - secretRef:
             name: grafana-cloud

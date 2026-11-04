@@ -60,7 +60,7 @@ platform:
     # one: the cluster uses the k8s-monitoring chart below (ONPREM-PLAN §12).
     chart: alloy
     repo: https://grafana.github.io/helm-charts
-    version: "1.12.1"
+    version: "1.14.4"
   external-secrets:
     chart: external-secrets
     repo: https://charts.external-secrets.io
@@ -138,7 +138,7 @@ images:
   cloudflared: "2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2"
   clamav: "1.5.4@sha256:6d87c712e3391e13c1ba6e05dfb074d4b1ddb5a6834b23bb9da990d2a4ef042a"   # amd64 only — the estate's one exception (§4c)
   # §12 collector binary, digest-pinned (Docker Hub API, verified 2026-11-01).
-  alloy: "docker.io/grafana/alloy:v1.13.0@sha256:6616111d70b3c75d5aa177e0584a523403eaba0eb3b177cb387302c2206d5221"
+  alloy: "docker.io/grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4"
 
   # §9.1 — text-embeddings-inference: pins REMOVED 2026-11-04. They duplicated the
   # `image:` lines in platform/ai/tei-e5.yaml (gpu `120-1.9.4`, cpu `1.9.4`), and a
