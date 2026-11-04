@@ -79,13 +79,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: pg-rova-restore-test
+  # NOT the restored cluster's name: CNPG creates its own ServiceAccount/Role/RoleBinding named after the
+  # cluster (pg-rova-restore-test) and overwrote this Role mid-test (2026-11-04: Forbidden on pods/clusters/configmaps).
+  name: pg-rova-restore-runner
   namespace: restore-test
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: pg-rova-restore-test
+  name: pg-rova-restore-runner
   namespace: restore-test
 rules:
   - apiGroups: [postgresql.cnpg.io]
@@ -104,11 +106,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: pg-rova-restore-test
+  name: pg-rova-restore-runner
   namespace: restore-test
-roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-rova-restore-test }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-rova-restore-runner }
 subjects:
-  - { kind: ServiceAccount, name: pg-rova-restore-test, namespace: restore-test }
+  - { kind: ServiceAccount, name: pg-rova-restore-runner, namespace: restore-test }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -240,7 +242,7 @@ spec:
           labels:
             app.kubernetes.io/name: pg-rova-restore-test
         spec:
-          serviceAccountName: pg-rova-restore-test
+          serviceAccountName: pg-rova-restore-runner
           restartPolicy: Never
           terminationGracePeriodSeconds: 330   # the EXIT trap deletes the cluster (<= 300 s)
           securityContext:
