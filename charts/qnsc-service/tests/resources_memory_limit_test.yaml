@@ -12,29 +12,32 @@ values:
   - ../../../values/rova/tags.dev.yaml
 
 tests:
-  - it: absent memoryLimit keeps limit == request (byte-identical render)
+  - it: memoryLimit equal to memory keeps limit == request (the default shape)
     template: templates/deployment.yaml
     documentSelector: { path: metadata.name, value: api }
+    # The absent-key branch is covered by the prod values suites (no
+    # memoryLimit there, limit == request); rova dev sets the key, so pin it
+    # equal here to prove an equal value is still accepted unchanged.
+    set:
+      services.api.resources.memoryLimit: 384Mi
     asserts:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
-          value: 768Mi
+          value: 384Mi
       - equal:
           path: spec.template.spec.containers[0].resources.limits.memory
-          value: 768Mi
+          value: 384Mi
 
   - it: memoryLimit raises ONLY the limit, the request is untouched
     template: templates/deployment.yaml
-    set:
-      services.api.resources.memoryLimit: 2Gi
     documentSelector: { path: metadata.name, value: api }
     asserts:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
-          value: 768Mi
+          value: 384Mi
       - equal:
           path: spec.template.spec.containers[0].resources.limits.memory
-          value: 2Gi
+          value: 768Mi
 
   - it: the migrator Job honours memoryLimit too
     template: templates/job.yaml

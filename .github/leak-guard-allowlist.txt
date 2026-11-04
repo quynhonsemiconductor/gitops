@@ -48,6 +48,9 @@ noreply-kb-dev@qnsc\.vn
 # The AWS IMDS endpoint (link-local, in a NetworkPolicy exception) — not an
 # on-prem address or topology.
 169\.254\.169\.254
+# The CGNAT range, excluded in the cloudflared egress policy (audit N-M5) so the
+# connector cannot reach it. An RFC 6598 constant, not an on-prem address.
+100\.64\.0\.0
 # k3s's DEFAULT pod and Service CIDRs (the cluster sets no override), a NetworkPolicy
 # exclusion in the chart: documented upstream defaults, not this site's topology.
 10\.42\.0\.0
