@@ -654,7 +654,7 @@ spec:
             limits:
               memory: 64Mi
           livenessProbe:
-            httpGet: { path: /healthz, port: 8080 }
+            httpGet: { path: /livez, port: 8080 }
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:

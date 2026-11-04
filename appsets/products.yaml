@@ -44,10 +44,12 @@ spec:
           # per value, db-migrator / db-worker passwords, graph cert).
           # 0.15.0 adds the cluster-CIDR egress exclusion and allow-egress-data (dev network policies are ON).
           # 0.17.0 drops the AWS secret/IAM/IRSA shape; 0.18.0 adds the optional web component;
-          # 0.19.0 makes finished Job pods disappear (ttlSecondsAfterFinished, #188).
+          # 0.19.0 makes finished Job pods disappear (ttlSecondsAfterFinished, #188); 0.19.1 puts
+          # the SPA's liveness on /livez, which qnsc-liveness-probes requires (#210 — 0.19.0's web
+          # Deployment was rejected in production).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.19.0" }
-          - { product: opshub, env: dev, chartVersion: "0.19.0" }
+          - { product: rova,   env: dev, chartVersion: "0.19.1" }
+          - { product: opshub, env: dev, chartVersion: "0.19.1" }
           # kb-dev: DISABLED until the owner has created its kv-qnsc-dev secrets (values/kb/dev.secrets.yaml)
           # and chart-v0.16.0 exists; the move PR uncomments this row.
           # - { product: kb, env: dev, chartVersion: "0.16.0" }
