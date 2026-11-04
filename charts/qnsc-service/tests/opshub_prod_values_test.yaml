@@ -45,6 +45,24 @@ tests:
           path: spec.template.spec.containers[0].env
           content: { name: VALKEY_URL, value: "redis://valkey-opshub.data-prod.svc:6379" }
 
+  - it: the Entra ids are the applied apps, never a <..._PROD_...> placeholder
+    # The chart fails at boot on a placeholder string, but only after prod data has moved; the
+    # values are checked here so the go-live PR cannot leave one behind.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: ENTRA_CLIENT_ID, value: e64292ea-2a11-4f9b-b970-04d2a5c2a56f }
+
+  - it: the worker mails through the applied "OpsHub Prod Service" app
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: GRAPH_CLIENT_ID, value: 12086ba1-9943-4cd1-b611-7a4d7209594a }
+
   - it: the worker logs in as opshub_worker and never sees the api-only secrets
     template: templates/deployment.yaml
     documentIndex: 1
