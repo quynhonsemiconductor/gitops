@@ -105,4 +105,45 @@ PY
 done < <(grep -E '^[[:space:]]*-[[:space:]]*\{[^}]*product:[^}]*env:' appsets/products.yaml \
           | sed -E 's/.*product:[[:space:]]*([a-z0-9-]+),[[:space:]]*env:[[:space:]]*([a-z]+).*/\1 \2/')
 
+# The chart with the SPA ENABLED: every Deployment it renders must be admitted by the same
+# policies. `web` is not a `services:` entry, so the unit suites prove its probe paths and the
+# ExternalSecret guard above never sees it — chart 0.19.0 shipped web with liveness on /healthz
+# and rova-dev and opshub-dev rejected the Deployment on 2026-11-04 (qnsc-liveness-probes).
+# Rendered from the chart at HEAD, with the real rova dev values and web forced ON: the test is
+# about the chart that is about to be published, not the one the rows still pin.
+echo "chart at HEAD with web enabled is admitted into rova-dev"
+if ! command -v helm >/dev/null; then
+  echo "  FAIL helm is required for the web admission case"
+  fail=1
+else
+  rendered=$(helm template rova charts/qnsc-service --namespace rova-dev \
+    -f values/rova/base.yaml -f values/rova/dev.yaml -f values/rova/tags.dev.yaml \
+    --set web.enabled=true) || { echo "  FAIL helm template"; fail=1; rendered=""; }
+  if [[ -z $rendered ]]; then :; else
+    docs=$(printf '%s' "$rendered" | python3 -c '
+import sys, yaml
+out = []
+for d in yaml.safe_load_all(sys.stdin):
+    if d and d.get("kind") == "Deployment":
+        d["metadata"]["namespace"] = "rova-dev"
+        out.append(d)
+print(yaml.safe_dump_all(out), end="")
+')
+    if ! printf '%s' "$docs" | grep -q '^  name: web$'; then
+      # A guard that cannot see the SPA would pass on a chart that has none.
+      echo "  FAIL no web Deployment in the render (web.enabled did not take)"
+      fail=1
+    else
+      set +e; out=$(printf '%s' "$docs" | "${K[@]}" apply --dry-run=server -f - 2>&1); rc=$?; set -e
+      if [[ $rc == 0 ]]; then
+        echo "  ok   $(printf '%s' "$docs" | grep -c '^  name: ') Deployments incl. web"
+      else
+        echo "  FAIL chart at HEAD is rejected with web enabled"
+        echo "$out" | grep -v memcache | head -5
+        fail=1
+      fi
+    fi
+  fi
+fi
+
 (( fail == 0 )) && echo "policy tests: PASS" || { echo "policy tests: FAIL"; exit 1; }

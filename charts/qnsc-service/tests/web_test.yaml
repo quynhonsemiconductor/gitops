@@ -2,7 +2,8 @@ suite: web component (optional SPA)
 # DELIVERY-DESIGN §3.1: the SPA is an ordinary Deployment serving static files
 # with runtime config, so the chart must prove BOTH states — off (no manifests,
 # no surprise workload for products without a front end) and on (one replica,
-# /healthz, a single-file config mount, and an ingress rule the tunnel needs).
+# /healthz readiness + /livez liveness, a single-file config mount, and an ingress rule the
+# tunnel needs).
 templates:
   - templates/web.yaml
   - templates/web-service.yaml
@@ -52,7 +53,7 @@ tests:
       - failedTemplate:
           errorMessage: 'service "web": image.tag (or image.digest) is required — the chart never defaults a tag, because `latest` is how a develop build reached production (§11)'
 
-  - it: renders one non-root replica with both probes on /healthz
+  - it: renders one non-root replica with liveness on /livez and readiness on /healthz
     template: templates/web.yaml
     set:
       web.enabled: true
@@ -96,9 +97,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.capabilities.drop
           value: [ALL]
+      # qnsc-liveness-probes (§9j): liveness is /livez, never a dependency. Readiness is the
+      # probe that may fail when the app cannot serve; /healthz is the image's contract.
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet
-          value: { path: /healthz, port: 8080 }
+          value: { path: /livez, port: 8080 }
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet
           value: { path: /healthz, port: 8080 }

@@ -1,7 +1,7 @@
 # Values for the web suite ONLY.
 #
 # The suite proves the component's own contract in BOTH states — off (no
-# manifests) and on (a non-root replica, /healthz, a single-file config mount) —
+# manifests) and on (a non-root replica, /livez liveness + /healthz readiness, a single-file config mount) —
 # so it must not read an environment's values file: values/rova/dev.yaml turns
 # web ON with rova's real config.json, which makes the "off" cases impossible and
 # turns the verbatim-config assertions into a copy of rova's dev config.

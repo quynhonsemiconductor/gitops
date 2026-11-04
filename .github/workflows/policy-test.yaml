@@ -62,6 +62,14 @@ jobs:
           PY
           kubectl --context k3d-policytest apply --server-side -f /tmp/externalsecret-crd.yaml
 
+      # The policy test renders the chart at HEAD with the SPA enabled (scripts/test-policy.sh):
+      # `web` is not a `services:` entry, so nothing else sends its probes through admission, and
+      # chart 0.19.0 shipped web liveness on /healthz that rova-dev and opshub-dev rejected.
+      - name: Install helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "4.3.0"   # keep equal to HELM_VERSION in chart-ci
+
       - name: Policy tests
         run: ./scripts/test-policy.sh k3d-policytest
 
