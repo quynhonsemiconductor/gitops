@@ -6,7 +6,7 @@
 # hand-made release into ArgoCD.
 #
 # ADOPTION, NOT INSTALL: same release name (`argocd`), same namespace (`argocd`),
-# same chart (argo-cd 10.9.2 from versions.yaml) and the same values file the
+# same chart (argo-cd 10.11.7 from versions.yaml) and the same values file the
 # hand upgrade used. Helm's ownership metadata (`meta.helm.sh/release-name`) on
 # every live object already matches, so the first sync updates in place; it does
 # not delete and recreate a Deployment. helm is still used ONCE at bootstrap,
@@ -46,7 +46,7 @@ spec:
   sources:
     - repoURL: https://argoproj.github.io/argo-helm
       chart: argo-cd
-      targetRevision: "10.9.2"   # keep in step with versions.yaml
+      targetRevision: "10.11.7"   # keep in step with versions.yaml
       helm:
         releaseName: argocd
         valueFiles: [$values/platform/argocd/values.yaml]
