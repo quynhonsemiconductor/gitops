@@ -1,0 +1,31 @@
+suite: terminated pod hygiene
+# Every Job keeps its pods for 3 days, then Kubernetes deletes the Job and its
+# pod. Without it, a Succeeded pod per migrator run/dump/restore-test lives
+# forever and becomes the biggest object count in the cluster.
+templates:
+  - templates/job.yaml
+  - templates/cronjob.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/tags.prod.yaml
+  - values/cron-job.yaml
+set:
+  env: prod
+  secrets.clusterSecretStore: kv-qnsc-prod
+
+tests:
+  - it: the migrator Job deletes its pod after three days
+    template: templates/job.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 259200
+
+  - it: a cron Job deletes its pod after three days
+    template: templates/cronjob.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.ttlSecondsAfterFinished
+          value: 259200

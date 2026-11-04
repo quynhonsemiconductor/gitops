@@ -206,6 +206,7 @@ metadata:
 spec:
   backoffLimit: 6
   activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
   template:
     metadata:
       labels:

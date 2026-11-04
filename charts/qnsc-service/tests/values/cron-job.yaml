@@ -1,0 +1,7 @@
+# A cron entry for job_ttl_test.yaml: no product currently runs one, but the
+# template must still clean up its pods.
+services:
+  cleanup:
+    kind: cron
+    schedule: "0 3 * * *"
+    image: { repo: ghcr.io/quynhonsemiconductor/rova-api, tag: sha-000000000000 }
