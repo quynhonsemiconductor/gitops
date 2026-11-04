@@ -72,9 +72,12 @@ data:
 services:
   api:
     # §5.7 dev sizing, TEI era: the int8 e5 export (the 1.6-1.7 GB resident the
-    # 2.25 Gi covered) leaves the process with EMBEDDING_RUNTIME=tei, so 768 Mi is
-    # uvicorn + FastAPI + asyncpg with headroom. It was Pending on k3s-01 at 2.25 Gi.
-    resources: { cpu: 250m, memory: 768Mi }
+    # 2.25 Gi covered) leaves the process with EMBEDDING_RUNTIME=tei. Measured
+    # 119 Mi resident (kubectl top, 2026-11-04), so 384 Mi is a request lowered for
+    # the k3s-01 memory pressure (97% of requests; the opshub prod pods must fit).
+    # Chart 0.19.1 renders memory limit == request (§15d), so this lowers BOTH; a
+    # split request/limit needs a chart release. Dev only.
+    resources: { cpu: 250m, memory: 384Mi }
     env:
       # §13.1 — the sidecar clamd is GONE; scanning goes to the platform service.
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
@@ -84,10 +87,13 @@ services:
 
   worker:
     # §5.7 dev sizing, TEI era: Celery --concurrency=1 + PaddleOCR, which stays
-    # in the worker (OCR is a separate service, phase 3). The fp32 e5 export that
-    # made 4.5 Gi necessary is no longer loaded when EMBEDDING_RUNTIME=tei; 2.5 Gi
-    # keeps the OCR models and their working set.
-    resources: { cpu: 500m, memory: 2.5Gi }
+    # in the worker (OCR is a separate service, phase 3). Measured 138 Mi idle
+    # (kubectl top, 2026-11-04). 1 Gi is the request, lowered for k3s-01 memory
+    # pressure (97% of requests); once TEI is live the worker no longer holds the
+    # e5 model. Chart 0.19.1 renders memory limit == request (§15d), so the 2.5 Gi
+    # limit falls with it — a split request/limit needs a chart release. Dev only:
+    # a large scanned file may restart the pod; Celery redelivers the task.
+    resources: { cpu: 500m, memory: 1Gi }
     env:
       - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
       - { name: MALWARE_SCANNER_PORT, value: "3310" }

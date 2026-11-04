@@ -62,6 +62,10 @@ services:
   # §5.7 dev sizing: api 100m / 768 Mi, worker 50m / 480 Mi, heap flags at the
   # prod values (512 / 256) for parity.
   api:
+    # One replica, not the size-l preset's 3: k3s-01 is at ~97% of its memory
+    # requests (pg-rova + pg-opshub + pg-dev + the dev apps), and an idle dev api
+    # holds no sessions worth a second copy. Dev only; prod keeps its replicas.
+    replicas: 1
     resources: { cpu: 100m, memory: 768Mi }
     env:
       - { name: PORT, value: "3000" }
