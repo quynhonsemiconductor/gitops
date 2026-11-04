@@ -22,15 +22,26 @@
 # PROD IS NEVER MERGED HERE. Any other path, any second product, any non-bot
 # author, any non-green required check: no merge.
 #
-# Trigger: check_suite, because that is the event that fires when the checks the
-# ruleset requires finish. Several suites complete per PR; each invocation
-# re-checks the WHOLE rollup, so only the last one to finish sees everything
-# green. A still-pending check exits 0 and the next suite completion retries.
+# Trigger: workflow_run on the four workflows that PRODUCE the ruleset's five
+# required checks (chart, PR title, security, bot-scope), not check_suite. Live
+# finding on #200: check_suite is not delivered for check suites created by
+# GitHub Actions itself, so every run of this workflow was `skipped`, and
+# `check_suite.pull_requests` can also be empty. workflow_run does fire for them,
+# runs the DEFAULT-branch copy of this file (same safety as before), and the PR
+# is resolved from head_sha via the API. Each of the four completions invokes
+# this; each re-checks the WHOLE rollup, so only the last one to finish sees
+# everything green. A still-pending check exits 0 and the next completion
+# retries.
 # =============================================================================
 name: dev-bump merge
 
 on:
-  check_suite:
+  workflow_run:
+    workflows:
+      - chart
+      - PR title
+      - Security · Scan
+      - bot-scope
     types: [completed]
 
 concurrency:
@@ -47,16 +58,37 @@ permissions:
 jobs:
   merge:
     name: merge dev bump
-    # Branch name is a COST filter only (do not mint an App token for every human
-    # PR's check suite); author and file scope are re-proved inside the guard.
+    # PR event and branch name are COST filters only (do not mint an App token
+    # for main pushes or human PRs); author and file scope are re-proved inside
+    # the guard.
     if: >-
-      github.event.check_suite.pull_requests[0].number != null &&
-      startsWith(github.event.check_suite.head_branch, 'bump/')
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'bump/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: selection logic fixtures
         run: ./scripts/test-dev-bump-order.sh
+
+      # workflow_run carries the head SHA but not a guaranteed PR number
+      # (`pull_requests` is often empty). Resolve it from the commit.
+      - name: resolve the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit sha: $SHA"; exit 1; }
+          pr=$(gh api "repos/$REPO/commits/$SHA/pulls" \
+            --jq "[.[] | select(.state == \"open\" and .base.ref == \"main\" and .head.sha == \"$SHA\") | .number] | first // empty")
+          if [ -z "$pr" ]; then
+            echo "::notice::no open PR for $SHA; nothing to merge"
+            echo "number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
 
       # App token: the merge must be performed BY the bypass actor. Scoped to
       # this repository and to the two permissions the merge needs.
@@ -76,11 +108,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APP_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.check_suite.head_sha }}
-          PR: ${{ github.event.check_suite.pull_requests[0].number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          PR: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
 
+          [ -n "$PR" ] || { echo "::notice::no pull request resolved"; exit 0; }
           abort() { echo "::error::$*"; exit 1; }
           skip()  { echo "::notice::$*"; echo "merge=false" >> "$GITHUB_OUTPUT"; exit 0; }
 
@@ -196,8 +229,8 @@ jobs:
           # exemption. `--match-head-commit` refuses if the PR moved after the guard.
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.check_suite.head_sha }}
-          PR: ${{ github.event.check_suite.pull_requests[0].number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          PR: ${{ steps.pr.outputs.number }}
           PRODUCT: ${{ steps.guard.outputs.product }}
           OLDER: ${{ steps.guard.outputs.older }}
         run: |
