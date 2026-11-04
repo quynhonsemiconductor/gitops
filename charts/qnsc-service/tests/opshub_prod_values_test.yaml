@@ -4,6 +4,8 @@ templates:
   - templates/externalsecret.yaml
   - templates/deployment.yaml
   - templates/networkpolicy.yaml
+  - templates/web.yaml
+  - templates/web-configmap.yaml
 values:
   - ../../../values/opshub/base.yaml
   - ../../../values/opshub/prod.yaml
@@ -43,6 +45,24 @@ tests:
           path: spec.template.spec.containers[0].env
           content: { name: VALKEY_URL, value: "redis://valkey-opshub.data-prod.svc:6379" }
 
+  - it: the Entra ids are the applied apps, never a <..._PROD_...> placeholder
+    # The chart fails at boot on a placeholder string, but only after prod data has moved; the
+    # values are checked here so the go-live PR cannot leave one behind.
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: ENTRA_CLIENT_ID, value: e64292ea-2a11-4f9b-b970-04d2a5c2a56f }
+
+  - it: the worker mails through the applied "OpsHub Prod Service" app
+    template: templates/deployment.yaml
+    documentIndex: 1
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: GRAPH_CLIENT_ID, value: 12086ba1-9943-4cd1-b611-7a4d7209594a }
+
   - it: the worker logs in as opshub_worker and never sees the api-only secrets
     template: templates/deployment.yaml
     documentIndex: 1
@@ -54,7 +74,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom
           content: { secretRef: { name: opshub-env-api } }
 
-  - it: api:3000 accepts ingress only from platform and its own namespace
+  - it: api:3000 accepts ingress only from platform, its own namespace, and the SPA
     template: templates/networkpolicy.yaml
     documentSelector: { path: metadata.name, value: allow-ingress-api }
     asserts:
@@ -68,6 +88,15 @@ tests:
                 - { protocol: TCP, port: 3000 }
             - from:
                 - podSelector: {}
+              ports:
+                - { protocol: TCP, port: 3000 }
+            # the SPA's only call: Caddy's forward_auth gate (GET /v1/auth/me). Prod serves web
+            # from the cluster (owner decision 3), so this entry is part of the prod shape.
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: web
+                      app.kubernetes.io/instance: opshub
               ports:
                 - { protocol: TCP, port: 3000 }
 
@@ -85,3 +114,18 @@ tests:
       - equal:
           path: spec.egress[0].to[0].namespaceSelector.matchLabels
           value: { kubernetes.io/metadata.name: data-prod }
+
+  # ── the SPA, served from the cluster (owner decision 3, 2026-11-04) ─────────
+  - it: the web Deployment runs the release's own web image, pinned by digest
+    template: templates/web.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/opshub-web@sha256:067c19777ee537dfc584a624804e19a6571bfbeadf4a2e2c545f6658d8a529cb
+
+  - it: the prod config.json is production and same-origin, matching what the Worker deploy wrote
+    template: templates/web-configmap.yaml
+    asserts:
+      - equal:
+          path: data["config.json"]
+          value: '{"apiBaseUrl":"","appEnv":"production","devLoginEnabled":false}'
