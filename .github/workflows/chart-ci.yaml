@@ -189,25 +189,14 @@ jobs:
             -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRD_CATALOG_SHA}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
             /tmp/rendered-head/
 
-      # ── cross-repository contracts ───────────────────────────────────────────
-      # NOT a local script. Every contract that crosses a repository boundary is
-      # checked by ONE tool in `ci`, on the principle that repo-local tooling
-      # stays local and cross-repo contracts live where every repo can reach
-      # them. It replaced two ad-hoc scripts that were growing separately in
-      # gitops/scripts and infra/scripts.
-      #
-      # continue-on-error until `infra` is checked out beside this one — it
-      # reports unmigrated products rather than failing on them.
-      - name: platform conformance
-        continue-on-error: true
-        run: |
-          pip install --quiet pyyaml
-          if [ -d ../infra ]; then
-            ../ci/scripts/platform_conformance.py --root .. ||
-              echo "::warning::a cross-repository contract is broken"
-          else
-            echo "::notice::infra not checked out — conformance skipped"
-          fi
+      # ── cross-repository contracts: NOT HERE ────────────────────────────────
+      # They are checked by ci's platform-conformance workflow, which is the only
+      # one that checks out gitops + infra + tf-modules together (daily and on
+      # its own script changes). This job's runner has THIS repository only, so
+      # the old step here tested `[ -d ../infra ]`, always found it absent, and
+      # passed — a check that could never fail. Removed rather than wired: a
+      # second copy would duplicate that workflow without the cross-repo token,
+      # and a required gate nobody has watched fail is worse than none here.
 
       # A prod row must not be enabled while a values file holds a `<..._PROD_...>` placeholder.
       - name: no prod placeholders behind an enabled row
