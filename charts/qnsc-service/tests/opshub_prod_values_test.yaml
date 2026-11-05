@@ -128,4 +128,4 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.json"]
-          pattern: '^\{"apiBaseUrl":"",("appCommit":"[0-9a-f]{12}",)?"appEnv":"production","appVersion":"(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12})","devLoginEnabled":false\}$'
+          pattern: '^\{"apiBaseUrl":"",("appCommit":"[0-9a-f]{12}([0-9a-f]{28})?",)?"appEnv":"production","appVersion":"(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?|sha-[0-9a-f]{12}([0-9a-f]{28})?)","devLoginEnabled":false\}$'
