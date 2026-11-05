@@ -62,6 +62,53 @@ A name encodes exactly the dimensions the thing varies on:
 {{- end -}}
 
 
+{{/* Commit an image tag names, when it names one.
+
+     The same generated values/<product>/tags.<env>.yaml that carries the tag is
+     the only source: a dev build is tagged `sha-<commit>` (12 characters from the
+     Kubernetes pipeline, 40 from the ECS one, per tags.dev.yaml's header), so the
+     commit is the tag without its prefix. A release tag (`vX.Y.Z`) names no
+     commit, and a digest pins bytes with no tag at all — both return empty, and
+     APP_COMMIT / appCommit are simply absent rather than a lie. The API treats a
+     missing APP_COMMIT as unknown (its own fallback), never as "dev".
+
+     Returns "" or the hexadecimal commit, never the word "nil". */}}
+{{- define "qnsc.appCommit" -}}
+{{- $tag := . | default "" | toString -}}
+{{- if or (regexMatch "^sha-[0-9a-f]{12}$" $tag) (regexMatch "^sha-[0-9a-f]{40}$" $tag) -}}
+{{- trimPrefix "sha-" $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/* The SPA's rendered runtime config (/srv/config.json).
+
+     `web.config` is product-shaped and the chart renders it verbatim, with ONE
+     chart-owned exception: appVersion/appCommit. They come from the web image's
+     tag in the same generated tags file, so a promotion cannot leave the UI
+     reporting the previous version — there is no second place for a human to
+     update. Chart values WIN over a same-named key in web.config, deliberately:
+     the image tag is the fact, and a copied version string drifts.
+
+     appCommit is omitted for a release tag or a digest-only pin (see
+     qnsc.appCommit). A product config that already carries one keeps it only
+     when the tag names no commit — the chart does not delete keys it did not
+     set. The web Deployment hashes THIS output into the pod template, so the
+     ConfigMap and the rollout can never disagree about what config is running. */}}
+{{- define "qnsc.webConfig" -}}
+{{- $w := .Values.web | default dict -}}
+{{- $config := deepCopy ($w.config | default dict) -}}
+{{- $tag := dig "image" "tag" "" $w | toString -}}
+{{- if $tag -}}
+{{- $_ := set $config "appVersion" $tag -}}
+{{- $commit := include "qnsc.appCommit" $tag -}}
+{{- if $commit -}}
+{{- $_ := set $config "appCommit" $commit -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $config -}}
+{{- end }}
+
+
 {{/*
 ────────────────────────────────────────────────────────────────────────────────
 LABELS — one definition, used by every resource.

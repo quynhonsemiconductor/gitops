@@ -151,7 +151,7 @@ tests:
           path: spec.ports[0]
           value: { name: http, port: 8080, targetPort: 8080 }
 
-  - it: renders web.config verbatim as JSON
+  - it: renders web.config as JSON with the image's version merged in
     template: templates/web-configmap.yaml
     set:
       web.enabled: true
@@ -169,9 +169,9 @@ tests:
           value: rova-web-config
       - equal:
           path: data["config.json"]
-          value: '{"apiUrl":"/api","appEnv":"dev","devLogin":true}'
+          value: '{"apiUrl":"/api","appCommit":"7c36d2ef8e8f","appEnv":"dev","appVersion":"sha-7c36d2ef8e8f","devLogin":true}'
 
-  - it: hashes web.config into the pod template so a config change rolls the pod (A)
+  - it: hashes the rendered config (web.config + image version) into the pod template so a config change rolls the pod (A)
     template: templates/web.yaml
     set:
       web.enabled: true
@@ -186,7 +186,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: 8db8c48d78d20182ef433de52318cead64fcf0ec0ed4eb5c8c8b209bd8716912
+          value: b37510f6d57c2c6682e8df8af7b0c7b620d15d0530c568210122f40d1ce50b4d
 
   - it: the pod checksum is different for a different web.config (B)
     template: templates/web.yaml
@@ -203,7 +203,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ee6581111b23d01e7505c0f1c162d369d92bd02ce4433edfd0866310a6687c4d
+          value: bc3ad12f10e1fe95991752f2237a0b93c2b0a8009d484c2a8ee0f9d96978c5b4
 
   - it: has no PDB by default, and one when web.pdb is true
     template: templates/web-pdb.yaml

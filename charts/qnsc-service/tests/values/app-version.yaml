@@ -1,0 +1,36 @@
+# Minimal values for app_version_test.yaml.
+#
+# The version variables come from the image tag in the generated tags file, so
+# this suite owns one service per tag shape instead of leaning on a product's
+# live tags (which CI rewrites):
+#   api        a dev build, sha-<12>
+#   worker     a release, vX.Y.Z — names no commit
+#   digestonly a digest pin — names no version at all
+#   web        a dev build with product config that the chart must merge, not replace
+product: version
+env: dev
+services:
+  api:
+    kind: http
+    port: 3000
+    image: { repo: ghcr.io/quynhonsemiconductor/example-api, tag: sha-0123456789ab }
+  worker:
+    kind: worker
+    image: { repo: ghcr.io/quynhonsemiconductor/example-worker, tag: v1.2.3 }
+  digestonly:
+    kind: worker
+    image:
+      repo: ghcr.io/quynhonsemiconductor/example-digest
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+web:
+  enabled: true
+  image: { repo: ghcr.io/quynhonsemiconductor/example-web, tag: sha-abcdef012345 }
+  config:
+    apiBaseUrl: /api
+# deployment.yaml reads data.postgres unguarded in the envFrom branch; every real
+# product sets it. `none` renders no database env or secret here.
+data:
+  postgres:
+    mode: none
+secrets:
+  clusterSecretStore: kv-qnsc-dev
