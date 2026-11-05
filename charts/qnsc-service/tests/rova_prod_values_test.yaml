@@ -33,6 +33,7 @@ tests:
             - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-prod-better-auth-secret } }
             - { secretKey: GITHUB_WEBHOOK_SECRET, remoteRef: { key: rova-prod-github-webhook-secret } }
             - { secretKey: MCP_ACCESS_AUD, remoteRef: { key: rova-prod-mcp-access-aud } }
+            - { secretKey: MCP_IDEMPOTENCY_SECRET, remoteRef: { key: rova-prod-mcp-idempotency-secret } }
             - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-prod-platform-admin-emails } }
         documentSelector: { path: metadata.name, value: rova-env-api }
       - equal:
