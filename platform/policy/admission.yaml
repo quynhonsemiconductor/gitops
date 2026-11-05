@@ -101,10 +101,13 @@ spec:
     # `resources.memoryLimit`). The request stays the bin-packing unit; the limit
     # stays the OOM guard. Where Guaranteed QoS matters (prod api/worker, the
     # databases) the values keep request == limit.
+    # Compare QUANTITIES, not strings: "1Gi" >= "512Mi" is false as text (2026-11-05: rova/opshub prod
+    # right-size refused with "memory limit must be at least the memory request").
     - expression: >-
         object.spec.template.spec.containers.all(c,
           has(c.resources.limits) && 'memory' in c.resources.limits &&
-          c.resources.limits.memory >= c.resources.requests.memory)
+          (!has(c.resources.requests) || !('memory' in c.resources.requests) ||
+           quantity(c.resources.limits.memory).compareTo(quantity(c.resources.requests.memory)) >= 0))
       message: "memory limit must be at least the memory request (§15d)."
       reason: Invalid
 ---

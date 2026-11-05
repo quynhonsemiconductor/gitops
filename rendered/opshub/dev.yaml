@@ -239,7 +239,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appEnv":"development","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"230c3a5bbbf1","appEnv":"development","appVersion":"sha-230c3a5bbbf1","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -366,6 +366,10 @@ spec:
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=dev,service.version=sha-230c3a5bbbf1
+            - name: APP_VERSION
+              value: "sha-230c3a5bbbf1"
+            - name: APP_COMMIT
+              value: "230c3a5bbbf1"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -496,6 +500,10 @@ spec:
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=dev,service.version=sha-230c3a5bbbf1
+            - name: APP_VERSION
+              value: "sha-230c3a5bbbf1"
+            - name: APP_COMMIT
+              value: "230c3a5bbbf1"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -601,7 +609,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: ed8be5e86e20ad427011ec9aa0af359747b783cc393c34607e40239f80eaa865
+        checksum/config: 2fbf342e429fe882c9a116403a87ad7ad259e6eea305f7205086508a55190e41
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false

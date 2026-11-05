@@ -29,6 +29,7 @@ tests:
           value:
             - { secretKey: BETTER_AUTH_SECRET, remoteRef: { key: rova-dev-better-auth-secret } }
             - { secretKey: MCP_ACCESS_AUD, remoteRef: { key: rova-dev-mcp-access-aud } }
+            - { secretKey: MCP_IDEMPOTENCY_SECRET, remoteRef: { key: rova-dev-mcp-idempotency-secret } }
             - { secretKey: PLATFORM_ADMIN_EMAILS, remoteRef: { key: rova-dev-platform-admin-emails } }
         documentSelector: { path: metadata.name, value: rova-env-api }
 

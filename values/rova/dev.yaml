@@ -86,6 +86,9 @@ services:
       # team origin the JWT `iss` must equal. The AUD tag of the "rova-dev MCP server" Access app is the
       # Key Vault secret rova-dev-mcp-access-aud (secrets.envApiOnly): it exists only after the edge apply.
       - { name: MCP_ENABLED, value: "true" }
+      # MCP v2 write tools (rova#895-#902) ON in dev: create/update/link/label/plan/test tools, each behind the
+      # same REST authz as the UI. Needs MCP_IDEMPOTENCY_SECRET below (API refuses to boot without it).
+      - { name: MCP_WRITES_ENABLED, value: "true" }
       - { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
 
   worker:
@@ -171,6 +174,8 @@ secrets:
     # every Access JWT), but it is only known after the edge apply, so the owner supplies it to the vault
     # once; no second values PR. A token minted for another Access app is rejected against it. API only.
     MCP_ACCESS_AUD: rova-dev-mcp-access-aud
+    # HMAC key for the idempotency keys MCP CREATE tools send (requestId-based, design §11). >= 32 chars. API only.
+    MCP_IDEMPOTENCY_SECRET: rova-dev-mcp-idempotency-secret
   db: rova-dev-db-app
   dbMigrator: rova-dev-db-migrator
   dbWorker: rova-dev-db-worker

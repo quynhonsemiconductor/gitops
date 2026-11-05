@@ -281,7 +281,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appEnv":"development","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"1fcd2130feba","appEnv":"development","appVersion":"sha-1fcd2130feba","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -408,6 +408,10 @@ spec:
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=dev,service.version=sha-1fcd2130feba
+            - name: APP_VERSION
+              value: "sha-1fcd2130feba"
+            - name: APP_COMMIT
+              value: "1fcd2130feba"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -463,6 +467,8 @@ spec:
             - name: DATABASE_POOL_MAX
               value: "10"
             - name: MCP_ENABLED
+              value: "true"
+            - name: MCP_WRITES_ENABLED
               value: "true"
             - name: MCP_CF_TEAM_DOMAIN
               value: https://qnsc.cloudflareaccess.com
@@ -552,6 +558,10 @@ spec:
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=dev,service.version=sha-1fcd2130feba
+            - name: APP_VERSION
+              value: "sha-1fcd2130feba"
+            - name: APP_COMMIT
+              value: "1fcd2130feba"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -669,7 +679,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: ed8be5e86e20ad427011ec9aa0af359747b783cc393c34607e40239f80eaa865
+        checksum/config: 543edecce10c8eb33da93e614d22ea1f19eb93e7a4a0c978c6d8ab662d21b7a4
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -1025,6 +1035,9 @@ spec:
     - secretKey: MCP_ACCESS_AUD
       remoteRef:
         key: rova-dev-mcp-access-aud
+    - secretKey: MCP_IDEMPOTENCY_SECRET
+      remoteRef:
+        key: rova-dev-mcp-idempotency-secret
     - secretKey: PLATFORM_ADMIN_EMAILS
       remoteRef:
         key: rova-dev-platform-admin-emails
