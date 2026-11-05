@@ -15,7 +15,7 @@ metadata:
   name: platform-data-kb-prod
   namespace: argocd
   annotations:
-    # server-side diff through the CNPG webhook, as platform-data-prod (audit G-07)
+    # server-side diff through the CNPG webhook, as platform-data-rova-prod (audit G-07)
     argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
     argocd.argoproj.io/sync-wave: "3"
 spec:

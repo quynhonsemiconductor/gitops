@@ -15,7 +15,9 @@ eso/           External Secrets Operator — the operator only (§8);
 cert-manager/  on-prem chart values — required by the barman plugin's mTLS (§5.1)
 cnpg/          on-prem CloudNativePG operator values + the Postgres 18.6
                ClusterImageCatalog, pinned by digest (§6.3)
-valkey/        the three on-prem StatefulSets — two caches, one broker (§6.4)
+data/          prod data scopes, ONE Application each: rova-prod, opshub-prod, kb-prod
+               (CNPG, barman, dump, valkey, restore test together; audit M2)
+valkey/        the two dev StatefulSets (cache + broker); prod valkeys live in data/ (§6.4)
 networkpolicy/ THE one on-prem NetworkPolicy: data-prod's ingress boundary (§6.2)
 namespaces/onprem.yaml   the on-prem namespace set with `qnsc.vn/env` labels (§6.2)
 alloy/         the host-side collector config — ONPREM-PLAN §12 replaces the

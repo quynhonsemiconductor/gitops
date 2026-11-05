@@ -3,7 +3,7 @@
 # kb gets its OWN single-instance CNPG cluster in `data-prod` rather than a database
 # inside pg-opshub (decision 6: pgvector's working set and the DDL cadence are unlike
 # anything else; own backup and restore pass). Same pattern as pg-opshub
-# (platform/opshub-prod/pg-opshub.yaml); differences:
+# (platform/data/opshub-prod/pg-opshub.yaml); differences:
 #   - three roles, not four: kb uses ONE runtime role for api and worker (its Settings
 #     are validated identically in both, and the dev cluster has always had just
 #     kb_app + kb_migrator), plus the dump role. kb_app's DML grants come from the kb

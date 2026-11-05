@@ -227,7 +227,8 @@ has ever been printed — the 2026-10-31 incident is why.
  0  platform-data            valkey-dev, valkey-kb-dev, pg-dev (+ rova managed roles)
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
  2  platform-cloudflared     traffic arrives last
- 3  platform-data-prod       valkey-rova, pg-rova (+ role timeouts); last, so an unready kv-qnsc-prod cannot hold earlier waves
+ 3  platform-data-rova-prod    valkey-rova, pg-rova (+ role timeouts), rova restore test; last, so an unready kv-qnsc-prod cannot hold earlier waves
+ 3  platform-data-opshub-prod  valkey-opshub, pg-opshub, opshub restore test
  9  platform-argocd          ArgoCD adopts its own release; last, so an upgrade that
                              restarts the controller cannot interrupt a platform wave
 ```

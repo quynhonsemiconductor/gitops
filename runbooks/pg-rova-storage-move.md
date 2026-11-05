@@ -86,7 +86,7 @@ kubectl describe node k3s-01 | sed -n '/Allocated resources/,/Events/p'
 
 ## Procedure
 
-**1. Merge PR A.** ArgoCD (`platform-data-prod`) syncs `instances: 2`. CNPG creates `pg-rova-2` (a join job runs
+**1. Merge PR A.** ArgoCD (`platform-data-rova-prod`) syncs `instances: 2`. CNPG creates `pg-rova-2` (a join job runs
 `pg_basebackup`, then the replica streams).
 
 **2. Confirm the new PVCs use the retain class**, and wait for the replica:
@@ -151,13 +151,13 @@ change (PR B) first.
 kubectl -n $NS get cluster $C                                   # 1 instance, healthy, primary pg-rova-2
 kubectl -n $NS get pvc -l cnpg.io/cluster=$C \
   -o custom-columns=PVC:.metadata.name,CLASS:.spec.storageClassName      # pg-rova-2, pg-rova-2-wal, local-path-retain
-argocd app get platform-data-prod                                # Synced / Healthy. The permanent OutOfSync (gitops#96) is gone.
+argocd app get platform-data-rova-prod                                # Synced / Healthy. The permanent OutOfSync (gitops#96) is gone.
 curl -s -o /dev/null -w '%{http_code}\n' https://rova.qnsc.vn/readyz
 # next morning: the 02:00 ICT nightly Backup (pg-rova-nightly) is completed, and the 03:00 ICT pg-rova-dump Job succeeded
 kubectl -n $NS get backup; kubectl -n $NS get jobs | grep pg-rova-dump
 ```
 
-Record, before step 1, what `argocd app diff platform-data-prod` shows; after step 8 it must be empty. If the
+Record, before step 1, what `argocd app diff platform-data-rova-prod` shows; after step 8 it must be empty. If the
 OutOfSync is still there, it was not the PVC class and needs its own look.
 
 **9. Clean up the old volumes, only after step 8 and one good backup.** The old PVs are `Released` (Retain). They

@@ -1,0 +1,39 @@
+# Prod opshub data plane: pg-opshub (CNPG), its barman ObjectStore/backup, the nightly
+# dump, valkey-opshub and the pg-opshub restore test. ONE Application for the directory
+# (argocd-audit 2026-11-04 M2), the platform/data/kb-prod pattern.
+#
+# ADOPTION, NOT delete+create — pg-opshub owns PVCs. The former Applications
+# (`platform-opshub-prod-data`, `platform-opshub-restore-test`) were removed from
+# apps/ in the same PR that created this one; root is prune:false, so both old
+# Application CRs stay live until the OWNER deletes them with a NON-CASCADING
+# delete (the exact sequence is in the PR body). This app is prune:false too, and
+# the CNPG Cluster and valkey StatefulSet carry
+# `argocd.argoproj.io/sync-options: Prune=false,Delete=false`.
+#
+# Sync wave 3, with the other prod data apps, so an unready kv-qnsc-prod cannot
+# hold earlier waves.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-data-opshub-prod
+  namespace: argocd
+  annotations:
+    # server-side diff through the CNPG/StatefulSet webhooks (audit G-07)
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-prod
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/data/opshub-prod
+    directory: { include: "*.yaml" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
