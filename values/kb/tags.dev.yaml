@@ -24,5 +24,5 @@ services:
       digest: sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
 web:
   image:
-    tag: sha-7cc2d0183d6e
-    digest: sha256:9f55515b50dbc288d1c9b18272fb9e35c9d430150e141e29bc3f544c8568b4d0
+    tag: sha-cf0272384d2d
+    digest: sha256:d269533fae0c042d78291917ce077afaf941f89ccb71065def6966bd74bfea54
