@@ -8,10 +8,9 @@
 # kb never ran on AWS: there is no EKS-era prod file to replace, so the non-secret env below is
 # dev.yaml (which was transcribed from the ECS develop task definition) with the prod hosts.
 #
-# PLACEHOLDERS (`<KB_PROD_...>`) stand for public Entra client ids that do not exist yet: infra#342
-# drafts the "KB Prod" sign-in app and the "KB Prod Service" mail app but has not applied them. The
-# placeholder gate (scripts/check-prod-placeholders.sh, chart-ci) fails the PR that enables the row
-# while any remains.
+# The Entra client ids are the applied "KB Prod" sign-in app and "KB Prod Service" mail app
+# (infra#342, applied 2026-11-05). The placeholder gate (scripts/check-prod-placeholders.sh)
+# still guards against any `<..._PROD_...>` value coming back.
 env: prod
 size: s                      # one node: 1 replica each, no PDB (base.yaml says m / 2 api replicas)
 
@@ -97,6 +96,8 @@ defaults:
   env:
     # KB pins production in EVERY environment so validate_production() runs.
     - { name: ENVIRONMENT, value: "production" }
+    # Deployment identity for telemetry (deployment.environment.name); see values/kb/dev.yaml.
+    - { name: DEPLOYMENT_ENV, value: "prod" }
     - { name: JOB_MODE, value: "celery" }
     - { name: AUTO_CREATE_SCHEMA, value: "false" }
     - { name: ENABLE_RLS, value: "true" }
@@ -112,15 +113,15 @@ defaults:
     - { name: MICROSOFT_LOGIN_REDIRECT_URI, value: "https://kb.qnsc.vn/api/v1/auth/entra/callback" }
     # Delegated SharePoint/Drive connector consent callback — a DIFFERENT Entra flow from sign-in
     # (same host, /api/v1/connectors path); BOTH URIs must be registered on the "KB Prod" app
-    # (infra#342, TF_VAR_kb_prod_redirect_uris).
+    # (infra#342).
     - { name: MICROSOFT_REDIRECT_URI, value: "https://kb.qnsc.vn/api/v1/connectors/oauth/callback" }
     - { name: CONNECTOR_WEBHOOK_BASE_URL, value: "https://kb.qnsc.vn" }
-    # Entra / mail — tenant id is public. ⚠ PLACEHOLDER client ids: infra#342 applies the apps.
+    # Entra / mail — tenant id and client ids are public (apps applied by infra#342, 2026-11-05).
     - { name: MICROSOFT_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
-    - { name: MICROSOFT_CLIENT_ID, value: "<KB_PROD_CLIENT_ID>" }
+    - { name: MICROSOFT_CLIENT_ID, value: "9fc58ec0-e451-4ecd-b9cc-22de10a93808" }
     - { name: EMAIL_PROVIDER, value: "graph" }
     - { name: MICROSOFT_GRAPH_SENDER, value: "noreply-kb@qnsc.vn" }
-    - { name: MAIL_GRAPH_CLIENT_ID, value: "<KB_PROD_SERVICE_APP_ID>" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "45cde606-aa1e-44ff-b809-bd4cd86908ed" }
     - { name: ALLOWED_EMAIL_DOMAINS, value: "qnsc.vn" }
     # R2 stays the object store; the bucket name is the prod one (infra live/storage-prod). The
     # credentials are the kb env bundle's (kb-prod-r2-*), scoped to this bucket.

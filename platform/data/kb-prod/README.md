@@ -26,8 +26,8 @@ digests) are the other half; the appset row is a comment in appsets/products.yam
 
 ## Owner prerequisites (the move PR lists these)
 
-1. **Identity** — infra#342: apply the "KB Prod" sign-in app and the "KB Prod Service" mail app,
-   then replace both `<KB_PROD_...>` ids in values/kb/prod.yaml. The redirect URIs are
+1. **Identity** — infra#342: the "KB Prod" sign-in app and the "KB Prod Service" mail app are
+   applied (2026-11-05) and their client ids are in values/kb/prod.yaml. The redirect URIs are
    `https://kb.qnsc.vn/api/v1/auth/entra/callback` and
    `https://kb.qnsc.vn/api/v1/connectors/oauth/callback`.
 2. **Key Vault** — `platform/bootstrap/secrets.sh --product kb --env prod --vault-app kv-qnsc-prod
