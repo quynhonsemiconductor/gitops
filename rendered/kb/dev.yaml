@@ -353,7 +353,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:99dc211af71e9630065237ab64f62e59939fa04fa3b6f2c1d78ac5fe43ef4215
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:e379881ef89c64b5073b9eb68ca78a6147a0513feb9abd9d7b651b2e87da0bd9
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -387,7 +387,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-5738d8496747
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-e1124f7c018d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -526,7 +526,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:291d51d6ac1c09898b1f92a3c25aeb81803db665ef946f075f550072d1eb5f31
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:5acc893f70aa825f212ac59755958e1205e4057da2c57a85b298355825665c29
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -545,7 +545,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-5738d8496747
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-e1124f7c018d
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -743,7 +743,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-50bcea900ed5
+  name: migrator-a6850b25dbad
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -783,7 +783,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:50bcea900ed509ce6a75ab935b599960dde33cc8bd1e44b16f13713ffedefaae
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:a6850b25dbad9e0e59095c55f4be8f6b176c68671776f925c032daf8f303bf15
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
