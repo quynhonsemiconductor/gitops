@@ -1,9 +1,7 @@
 # GENERATED — DO NOT EDIT BY HAND.
 #
-# PROVISIONAL TAGS (2026-11-04): the latest successful `GHCR · Publish` builds — api / worker /
-# migrator are sha-d1458cb504a0 (the main commit values/kb/tags.dev.yaml runs) and the SPA is
-# sha-cf46c64ed754, both already on GHCR. kb has never had a prod release, and qnsc-kb-frontend
-# has no release-promote workflow yet (P9); the move PR pins the commit kb prod runs.
+# First prod releases (2026-11-05): api / worker / migrator v0.1.3 (qnsc-kb-backend) and web
+# v0.2.0 (qnsc-kb-frontend), written by each repo's Release · Promote workflow (#348, #347).
 #
 # CI writes this file on every deploy, and it is separate from prod.yaml for one
 # reason: `yq -i` REWRITES a whole file, and these values files carry reasoning

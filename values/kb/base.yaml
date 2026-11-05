@@ -82,6 +82,11 @@ services:
     # So the worker stays at one replica, exactly as today. When beat is split out
     # it becomes its own service with `singleton: true`, and only then does
     # a higher `replicas` belongs here.
+    # Until then the WORKER is the singleton: without it the chart renders the default
+    # RollingUpdate, and every rollout overlaps old and new beat for a few seconds — the same
+    # double-run the replica cap prevents (review of the kb prod enable PR, 2026-11-05).
+    # `singleton: true` forces replicas 1 and `strategy: Recreate`.
+    singleton: true
     replicas: 1
 
   migrator:

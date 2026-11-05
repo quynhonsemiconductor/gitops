@@ -1,0 +1,1123 @@
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-platform
+spec:
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-external
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32   # IMDS — pods never use a node role
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-data
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: "pg-kb" }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: "valkey-kb-prod" }
+      ports:
+        - { protocol: TCP, port: 6379 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-ai
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "ai" }
+      ports:
+        - { protocol: TCP, port: 80 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: kb
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, ...). Both selectors are in ONE `from` entry, which
+          # ANDs them; two entries would admit every pod in the namespace.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 8080 }
+
+---
+# Source: qnsc-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: kb
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - from:
+        - podSelector: {}          # same namespace, service to service
+      ports:
+        - { protocol: TCP, port: 8000 }
+
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+  annotations:
+automountServiceAccountToken: false
+
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: migrator
+  labels:
+    app.kubernetes.io/name: migrator
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+automountServiceAccountToken: false
+
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+  annotations:
+automountServiceAccountToken: false
+
+---
+# Source: qnsc-service/templates/web-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kb-web-config
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+data:
+  config.json: |-
+    {"apiBaseUrl":"/api/v1","appVersion":"v0.2.0"}
+
+---
+# Source: qnsc-service/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferClose
+  selector:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+
+---
+# Source: qnsc-service/templates/web-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferClose
+  selector:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+# Source: qnsc-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: kb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: prod
+        qnsc.vn/tenant: product
+    spec:
+      serviceAccountName: api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:eac4218c22a1c8e34759c1b43b56cdd401d91a1fb9050d6f19904520db1e9a72
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          livenessProbe:
+            httpGet: { path: /livez, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8000 }
+            periodSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /livez, port: 8000 }
+            periodSeconds: 5
+            failureThreshold: 60
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy-receiver.platform.svc:4318
+            - name: OTEL_SERVICE_NAME
+              value: kb-api
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=kb,deployment.environment=prod,service.version=v0.1.3
+            - name: APP_VERSION
+              value: "v0.1.3"
+            - name: DATABASE_HOST
+              value: pg-kb-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
+            - name: DATABASE_USER
+              value: "kb_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: ENVIRONMENT
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: FRONTEND_URL
+              value: https://kb.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/connectors/oauth/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: 9fc58ec0-e451-4ecd-b9cc-22de10a93808
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 45cde606-aa1e-44ff-b809-bd4cd86908ed
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: qnsc-kb-prod-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
+            - name: MALWARE_SCANNER_HOST
+              value: clamd.platform.svc
+            - name: MALWARE_SCANNER_PORT
+              value: "3310"
+            - name: ENABLE_API_DOCS
+              value: "false"
+            - name: ALLOW_SELF_REGISTRATION
+              value: "false"
+          envFrom:
+            - secretRef:
+                name: kb-env
+            - secretRef:
+                name: kb-db-app
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+
+---
+# Source: qnsc-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+      app.kubernetes.io/instance: kb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: prod
+        qnsc.vn/tenant: product
+    spec:
+      serviceAccountName: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 2.5Gi
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy-receiver.platform.svc:4318
+            - name: OTEL_SERVICE_NAME
+              value: kb-worker
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=kb,deployment.environment=prod,service.version=v0.1.3
+            - name: APP_VERSION
+              value: "v0.1.3"
+            - name: DATABASE_HOST
+              value: pg-kb-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
+            - name: DATABASE_USER
+              value: "kb_app"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: AZURE_CLIENT_CERTIFICATE_PATH
+              value: "/etc/qnsc/graph/cert.pem"
+            - name: ENVIRONMENT
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: FRONTEND_URL
+              value: https://kb.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/connectors/oauth/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: 9fc58ec0-e451-4ecd-b9cc-22de10a93808
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 45cde606-aa1e-44ff-b809-bd4cd86908ed
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: qnsc-kb-prod-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
+            - name: MALWARE_SCANNER_HOST
+              value: clamd.platform.svc
+            - name: MALWARE_SCANNER_PORT
+              value: "3310"
+            - name: EMBEDDING_ONNX_THREADS
+              value: "3"
+          envFrom:
+            - secretRef:
+                name: kb-env
+            - secretRef:
+                name: kb-db-app
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: graph-cert
+              mountPath: /etc/qnsc/graph/cert.pem
+              subPath: cert.pem
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+        - name: graph-cert
+          secret:
+            secretName: kb-prod-graph-cert
+            items: [{ key: cert.pem, path: cert.pem }]
+
+---
+# Source: qnsc-service/templates/web.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  # Direct read, like deployment.yaml:27 — NOT `| default 1`, which turns an
+  # explicit replicas: 0 (kube-downscaler, or a deliberately parked env) back
+  # into 1 because Sprig's default treats 0 as empty. web.replicas defaults to
+  # 1 in values.yaml, so an omitted key still renders 1.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/instance: kb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: prod
+        qnsc.vn/tenant: product
+      annotations:
+        checksum/config: 276e397971bf93b042046c5a1eb7c64d552411a55722d3f9583fab97707b7d11
+    spec:
+      # A static file server never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:15f430a7514da2e1552e210913d4eccf043390b64bf7e61a8bc11a3914d3232c
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 64Mi
+          livenessProbe:
+            httpGet: { path: /livez, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: web-config
+              mountPath: /srv/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: web-config
+          configMap:
+            name: kb-web-config
+            items: [{ key: config.json, path: config.json }]
+
+---
+# Source: qnsc-service/templates/job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrator-3dc4cc898ea8
+  labels:
+    app.kubernetes.io/name: migrator
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 259200
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrator
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: prod
+        qnsc.vn/tenant: product
+    spec:
+      restartPolicy: Never
+      serviceAccountName: migrator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      containers:
+        - name: migrator
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:3dc4cc898ea89fa11b8f4baf66860ba698a9e789c24681ba9cabd163af4bd69a
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          envFrom:
+            - secretRef:
+                name: kb-migrator
+                optional: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+          env:
+            - name: DATABASE_HOST
+              value: pg-kb-rw.data-prod.svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "kb"
+            - name: DATABASE_USER
+              value: "kb_migrator"
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
+            - name: DATABASE_AUTH
+              value: "password"
+            - name: ENVIRONMENT
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: prod
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: FRONTEND_URL
+              value: https://kb.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb.qnsc.vn/api/v1/connectors/oauth/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: 9fc58ec0-e451-4ecd-b9cc-22de10a93808
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 45cde606-aa1e-44ff-b809-bd4cd86908ed
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: qnsc-kb-prod-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: kb-migrator-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-migrator
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-migrator
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: kb-prod-db-migrator
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-db-app
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-db-app
+  data:
+    - secretKey: DATABASE_PASSWORD
+      remoteRef:
+        key: kb-prod-db-app
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-db-ca
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-kb-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-migrator-db-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: 12h
+  secretStoreRef:
+    name: cnpg-ca-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-migrator-db-ca
+    creationPolicy: Owner
+  data:
+    - secretKey: ca.crt
+      remoteRef:
+        key: pg-kb-ca-pub
+        property: ca.crt
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-prod-graph-cert
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-prod-graph-cert
+  data:
+    - secretKey: cert.pem
+      remoteRef:
+        key: kb-prod-graph-cert
+
+---
+# Source: qnsc-service/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kb-env
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: kv-qnsc-prod
+    kind: ClusterSecretStore
+  target:
+    name: kb-env
+  data:
+    - secretKey: DATA_ENCRYPTION_KEY
+      remoteRef:
+        key: kb-prod-data-encryption-key
+    - secretKey: MICROSOFT_CLIENT_SECRET
+      remoteRef:
+        key: kb-prod-microsoft-client-secret
+    - secretKey: R2_ACCESS_KEY_ID
+      remoteRef:
+        key: kb-prod-r2-access-key-id
+    - secretKey: R2_SECRET_ACCESS_KEY
+      remoteRef:
+        key: kb-prod-r2-secret-access-key
+    - secretKey: REDIS_URL
+      remoteRef:
+        key: kb-prod-redis-url
+    - secretKey: SECRET_KEY
+      remoteRef:
+        key: kb-prod-secret-key
+
+---
+# Source: qnsc-service/templates/slo.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: api-slo
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: prod
+    qnsc.vn/tenant: product
+spec:
+  groups:
+    - name: kb-api.slo
+      rules:
+        - record: slo:request_error_rate:ratio_rate5m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[5m]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate30m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[30m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[30m]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate1h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[1h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[1h]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate2h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[2h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[2h]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate6h
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[6h]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[6h]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate1d
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[1d]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[1d]))
+          labels:
+            service: kb-api
+        - record: slo:request_error_rate:ratio_rate3d
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api",http_response_status_code=~"5.."}[3d]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="kb-api"}[3d]))
+          labels:
+            service: kb-api
+
+    - name: kb-api.burnrate
+      rules:
+        - alert: kb-apiErrorBudgetBurnFast
+          expr: |
+            slo:request_error_rate:ratio_rate1h{service="kb-api"} > (14.4 * 0)
+            and
+            slo:request_error_rate:ratio_rate5m{service="kb-api"} > (14.4 * 0)
+          for: 2m
+          labels:
+            severity: P2
+            product: kb
+            env: prod
+          annotations:
+            summary: "kb-api is burning its error budget 14x — 99% target"
+            runbook: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/api.md"
+
+        - alert: kb-apiErrorBudgetBurnSlow
+          expr: |
+            slo:request_error_rate:ratio_rate6h{service="kb-api"} > (6 * 0)
+            and
+            slo:request_error_rate:ratio_rate30m{service="kb-api"} > (6 * 0)
+          for: 15m
+          labels:
+            severity: P2
+            product: kb
+            env: prod
+          annotations:
+            summary: "kb-api is burning its error budget 6x over 6h"
+        - alert: kb-apiNoTelemetry
+          expr: absent_over_time(http_server_request_duration_seconds_count{service_name="kb-api"}[10m])
+          for: 10m
+          labels:
+            severity: P2
+            product: kb
+            env: prod
+          annotations:
+            summary: "kb-api has reported no metrics for 10 minutes"
