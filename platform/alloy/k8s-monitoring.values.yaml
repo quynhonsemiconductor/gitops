@@ -113,12 +113,14 @@ destinations:
         action        = "drop"
       }
       // node-exporter per-device filesystems on pseudo mounts. Every
-      // filesystem rule in infra/live/observability-alerting already filters
+      // filesystem rule in infra/live/observability-alerting filters
       // fstype!~"squashfs|devtmpfs|nsfs|tmpfs|overlay", so these series are
-      // stored only to be excluded at query time.
+      // stored only to be excluded at query time. ramfs is NOT in that
+      // exclusion list, so it is not dropped here: a full ramfs mount still
+      // has to reach the memory/filesystem rules.
       write_relabel_config {
         source_labels = ["__name__", "fstype"]
-        regex         = "node_filesystem_.*;(tmpfs|overlay|squashfs|devtmpfs|nsfs|ramfs)"
+        regex         = "node_filesystem_.*;(tmpfs|overlay|squashfs|devtmpfs|nsfs)"
         action        = "drop"
       }
       // node-exporter network counters on virtual interfaces: veth/cni/
@@ -138,19 +140,22 @@ destinations:
         regex         = "container_fs_(reads|writes)(_bytes)?_total"
         action        = "drop"
       }
-      // cAdvisor per-container memory duplicates: cache/swap/rss/usage. The
-      // alerting and rightsizing evidence reads container_memory_working_set_bytes
-      // (gitops/values/*/prod.yaml resource comments), which stays.
+      // cAdvisor per-container memory duplicates: cache/swap only. usage_bytes
+      // and rss stay because the stock Kubernetes dashboards Grafana hosts
+      // (not in git, so not reviewable here) are built on them;
+      // container_memory_working_set_bytes stays as the rightsizing evidence
+      // in gitops/values/*/prod.yaml resource comments.
       write_relabel_config {
         source_labels = ["__name__"]
-        regex         = "container_memory_(cache|swap|rss|usage_bytes)"
+        regex         = "container_memory_(cache|swap)"
         action        = "drop"
       }
-      // cAdvisor network: keep bytes only. Packets/errors/dropped have no
-      // consumer and are 4 of the 6 families.
+      // cAdvisor network: keep the byte counters only. The six packet/error
+      // families have no consumer and carry one series per pod interface:
+      // receive|transmit x packets, packets_dropped, errors.
       write_relabel_config {
         source_labels = ["__name__"]
-        regex         = "container_network_(receive|transmit)_(packets|errors|dropped)_total"
+        regex         = "container_network_(receive|transmit)_(packets(_dropped)?|errors)_total"
         action        = "drop"
       }
 
