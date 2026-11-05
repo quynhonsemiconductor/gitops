@@ -223,8 +223,8 @@ has ever been printed — the 2026-10-31 incident is why.
 -2  platform-eso             operator in `external-secrets` + the ClusterSecretStores
 -2  platform-cert-manager
 -1  platform-secrets         grafana-cloud, cloudflared, argocd admin hash, deploy-notification credentials (kv-qnsc-platform)
--1  platform-cnpg            operator + barman plugin in `cnpg-system`
- 0  platform-data            valkey-dev, valkey-kb-dev, Postgres ImageCatalogs, pg-dev (+ rova managed roles)
+-1  platform-cnpg            operator + barman plugin in `cnpg-system`; the cluster-scoped Postgres ClusterImageCatalog
+ 0  platform-data            valkey-dev, valkey-kb-dev, pg-dev (+ rova managed roles)
  1  products (ApplicationSet) rova-dev, opshub-dev, kb-dev
  2  platform-cloudflared     traffic arrives last
  3  platform-data-prod       valkey-rova, pg-rova (+ role timeouts); last, so an unready kv-qnsc-prod cannot hold earlier waves

@@ -29,6 +29,12 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       ref: values
+    # The Postgres ClusterImageCatalog (audit M1): cluster-scoped, so every data
+    # app reads it without owning it. Wave -1 means it exists before any Cluster.
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/cnpg
+      directory: { include: "imagecatalog.yaml" }
   syncPolicy:
     # prune: false (audit G-03): this chart ships CRDs. Pruning one deletes every object of that
     # kind in the cluster (all CNPG Clusters, all ExternalSecrets), so a chart bump that stops

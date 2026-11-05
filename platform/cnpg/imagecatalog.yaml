@@ -1,6 +1,11 @@
-# ── Postgres 18.6 ImageCatalog (ONPREM-PLAN §6.3, §11.4) ────────────────────
+# ── Postgres 18.6 ClusterImageCatalog (ONPREM-PLAN §6.3, §11.4) ─────────────
 #
-# kubectl apply -f cnpg/imagecatalog.yaml   (after the operator, wave -1)
+# Owned by `platform-cnpg` (wave -1, the operator app), NOT by `platform-data`
+# (wave 0, dev). argocd-audit 2026-11-04 M1: prod data must not depend on the
+# dev app. One cluster-scoped object serves every namespace, replacing the three
+# namespaced copies (data-dev, data-prod, restore-test) that `platform-data`
+# used to sync for everyone. The removed copies are left in place (that app is
+# prune:false) and become unused once every Cluster names this kind.
 #
 # Clusters reference this catalog via imageCatalogRef (NOT `imageName:
 # postgresql/18` — found in the local k3d bootstrap rehearsal, 2026-10-26:
@@ -8,14 +13,22 @@
 #   spec.imageName: Invalid value: "postgresql/18": Can't use 'latest' as
 #   image tag as we can't detect upgrades
 # because it cannot tell a catalog reference from an untagged image). The
-# verified shape, so the IMAGE stays pinned in exactly one place and both
-# clusters (pg-rova, pg-dev) move together:
+# verified shape, so the IMAGE stays pinned in exactly one place and every
+# cluster (pg-dev, pg-rova, pg-opshub, pg-kb) moves together:
 #
 #   imageCatalogRef:
 #     apiGroup: postgresql.cnpg.io   # REQUIRED — the CRD rejects a null apiGroup
-#     kind: ImageCatalog
+#     kind: ClusterImageCatalog
 #     name: postgresql
 #     major: 18
+#
+# Changing only `kind: ImageCatalog` -> `kind: ClusterImageCatalog` does not
+# restart Postgres: the operator resolves the ref into `.status.image` (here the
+# same pinned digest from both kinds) and rolls an instance only when that image
+# differs from the one in its pod (CNPG 1.30.1 internal/controller/
+# cluster_upgrade.go checkPodImageIsOutdated). Wave -1 also means this object
+# exists before any Cluster that names it syncs.
+#
 # Pinned BY DIGEST (§11.4): a floating tag re-resolves underneath a running
 # cluster and a restart then runs a different Postgres than its peers.
 #
@@ -30,38 +43,11 @@
 #   sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
 #   (build 202610190957 — a fresh point release; Renovate's regex manager
 #   keeps this current)
-#
-# NOTE: applying nothing yet — no cluster exists. This file is a preparation
-# PR; the catalog is cluster-scoped-CRD content that ArgoCD will own in wave
-# −1/0 (§11.2).
 ---
 apiVersion: postgresql.cnpg.io/v1
-kind: ImageCatalog
+kind: ClusterImageCatalog
 metadata:
   name: postgresql
-  namespace: data-prod
-spec:
-  images:
-    - major: 18
-      image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
----
-apiVersion: postgresql.cnpg.io/v1
-kind: ImageCatalog
-metadata:
-  name: postgresql
-  namespace: data-dev
-spec:
-  images:
-    - major: 18
-      image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
----
-# The restore test (platform/restore-test) recovers pg-rova into a throwaway cluster in
-# its own namespace, and an ImageCatalog is namespaced. Same digest, same file.
-apiVersion: postgresql.cnpg.io/v1
-kind: ImageCatalog
-metadata:
-  name: postgresql
-  namespace: restore-test
 spec:
   images:
     - major: 18
