@@ -32,5 +32,5 @@ services:
 # this key yet (the qnsc-kb-frontend promote wiring, P9).
 web:
   image:
-    tag: sha-cf46c64ed754
-    digest: sha256:675ff06b7927cb17f270cc6ba57aad0151816ae2a235b8dd7041b9a88aa85f11
+    tag: v0.2.0
+    digest: sha256:15f430a7514da2e1552e210913d4eccf043390b64bf7e61a8bc11a3914d3232c
