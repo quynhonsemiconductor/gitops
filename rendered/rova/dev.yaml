@@ -279,7 +279,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"44c2785548fb","appEnv":"development","appVersion":"sha-44c2785548fb","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"0a954ad25b9f","appEnv":"development","appVersion":"sha-0a954ad25b9f","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -375,7 +375,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:1f635c766b55746e1770230db7a778c678327252241736464a00b73369cbcaed
+          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:f4d4616588bedfec6397937942a35260d3875fe968b49816d2b051074939d426
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -405,11 +405,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-44c2785548fb
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0a954ad25b9f
             - name: APP_VERSION
-              value: "sha-44c2785548fb"
+              value: "sha-0a954ad25b9f"
             - name: APP_COMMIT
-              value: "44c2785548fb"
+              value: "0a954ad25b9f"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -536,7 +536,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:c8289026f15a84ce32e55e6a2e419a4af2b57fdd47dd9fa5a1f91d6426a84359
+          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:61b7fc0fa441fe2ce40f306468b2cab9f078fb1a94181f364b9db3b7f31fb277
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -555,11 +555,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-44c2785548fb
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-0a954ad25b9f
             - name: APP_VERSION
-              value: "sha-44c2785548fb"
+              value: "sha-0a954ad25b9f"
             - name: APP_COMMIT
-              value: "44c2785548fb"
+              value: "0a954ad25b9f"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -677,7 +677,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 549697ac5bbb7722b5ed5d8e5d0fd114f0b9cb0374919d0713654eaf576d277e
+        checksum/config: 0a00c1348a7bf56e634b2742d9337c0cc59707fe7effe29585274a1377dcf446
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
