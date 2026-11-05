@@ -365,7 +365,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-e1e5ae207697
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-eab189f677f4
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -495,7 +495,7 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-e1e5ae207697
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-eab189f677f4
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
