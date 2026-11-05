@@ -35,4 +35,4 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: quynhonsemiconductor/ci/actions/pr-title-conventional-commits@b696a7d77e650057b4ee1de16be84bcce3936566 # v1.34.0
+      - uses: quynhonsemiconductor/ci/actions/pr-title-conventional-commits@956804ad4aa2dcf930909553d306d72b3708fd5d # v1.34.1+ci#308
