@@ -106,12 +106,12 @@ spec:
     # prod has no downscaler and replica drift is real drift.
     - list:
         elements:
-          - { product: rova, env: prod, chartVersion: "0.19.1" }
+          - { product: rova, env: prod, chartVersion: "0.19.3" }
           # opshub prod GO-LIVE (2026-11-04): the data layer is live (apps/platform-opshub-prod.yaml;
           # pg-opshub Healthy, first backup complete, ContinuousArchiving=True). This row deploys the
-          # app itself. 0.19.1 is the chart that carries `web` — a row must never pin below the chart
-          # whose values it uses (the #163/#174 ComparisonError).
-          - { product: opshub, env: prod, chartVersion: "0.19.1" }
+          # app itself. 0.19.3 carries `web`, the memoryLimit split and the version variables; a row
+          # must never pin below the chart whose values it uses (the #163/#174 ComparisonError).
+          - { product: opshub, env: prod, chartVersion: "0.19.3" }
         template:
           metadata:
             name: "{{.product}}-{{.env}}"

@@ -38,15 +38,23 @@ data:
     caFile: /etc/qnsc/db-ca/ca.crt     # pg-rova-ca-pub via the cnpg-ca-prod store
   cache:
     # valkey-rova, selected by app.kubernetes.io/instance in allow-egress-data
-    # (chart 0.19.2). No-op while the row pins 0.19.1; required before the prod
-    # pin so 6379 cannot drop out. REDIS_URL (secrets.env) is configured, so the
-    # chart fails the render if this is missing.
+    # (chart 0.19.2). The row now pins 0.19.3, so the rule is live; without it
+    # 6379 would drop out. REDIS_URL (secrets.env) is configured, so the chart
+    # fails the render if this is missing.
     instance: valkey-rova
 
+# ── Prod memory requests, right-sized 2026-11-05 ──────────────────────────────
+# Evidence: container_memory_working_set_bytes p95 over 24h (SA query in
+# sa-notes/reviews/memory-p95-24h-2026-11-04.md) — rova-prod api 208 MiB,
+# worker 135 MiB; opshub-prod api 181 MiB, worker 135 MiB. The old requests
+# (1 Gi / 512 Mi) were the Guaranteed shape from the move, and on a 21.4 Gi
+# node they were the reason requests sat near allocatable. Request = ~2x p95,
+# limit = the old request: memory is still not compressible, so the limit is
+# the OOM guard, not a target. The heap flags stay at 512/256 MiB.
 services:
   api:
     replicas: 1
-    resources: { cpu: 250m, memory: 1Gi }
+    resources: { cpu: 250m, memory: 512Mi, memoryLimit: 1Gi }
     env:
       - { name: PORT, value: "3000" }
       - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
@@ -62,7 +70,7 @@ services:
       - { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
   worker:
     replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
-    resources: { cpu: 100m, memory: 512Mi }
+    resources: { cpu: 100m, memory: 256Mi, memoryLimit: 512Mi }
     env:
       - { name: NODE_OPTIONS, value: "--max-old-space-size=256" }
       - { name: DATABASE_POOL_MAX, value: "10" }

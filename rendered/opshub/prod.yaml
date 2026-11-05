@@ -32,7 +32,13 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-platform
 spec:
-  podSelector: {}
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -46,7 +52,9 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-external
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -67,14 +75,24 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-data
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: "pg-opshub" }
       ports:
         - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: "valkey-opshub" }
+      ports:
         - { protocol: TCP, port: 6379 }
 
 ---
@@ -118,41 +136,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-egress-web
-  labels:
-    app.kubernetes.io/name: web
-    app.kubernetes.io/instance: opshub
-    app.kubernetes.io/part-of: opshub
-    app.kubernetes.io/managed-by: Helm
-    qnsc.vn/product: opshub
-    qnsc.vn/env: prod
-    qnsc.vn/tenant: product
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: web
-      app.kubernetes.io/instance: opshub
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: kube-system }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: api
-              app.kubernetes.io/instance: opshub
-      ports:
-        - { protocol: TCP, port: 3000 }
-
----
-# Source: qnsc-service/templates/networkpolicy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: allow-ingress-api
   labels:
     app.kubernetes.io/name: api
@@ -172,17 +155,17 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
       ports:
         - { protocol: TCP, port: 3000 }
     - from:
         - podSelector: {}          # same namespace, service to service
-      ports:
-        - { protocol: TCP, port: 3000 }
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: web
-              app.kubernetes.io/instance: opshub
       ports:
         - { protocol: TCP, port: 3000 }
 
@@ -256,7 +239,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appEnv":"production","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"a5f72f941ed9","appEnv":"production","appVersion":"sha-a5f72f941ed9","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -365,7 +348,7 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 1Gi
+              memory: 512Mi
             limits:
               memory: 1Gi
           livenessProbe:
@@ -383,6 +366,8 @@ spec:
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.9
+            - name: APP_VERSION
+              value: "v0.4.9"
             - name: DATABASE_HOST
               value: pg-opshub-rw.data-prod.svc
             - name: DATABASE_PORT
@@ -501,7 +486,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               memory: 512Mi
           env:
@@ -511,6 +496,8 @@ spec:
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.9
+            - name: APP_VERSION
+              value: "v0.4.9"
             - name: DATABASE_HOST
               value: pg-opshub-rw.data-prod.svc
             - name: DATABASE_PORT
@@ -614,7 +601,7 @@ spec:
         qnsc.vn/env: prod
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: fc554a9b1b4ddea66254b4bf82fd12ac0522f2b40f3752e9b2f0a1308779cbb3
+        checksum/config: aaa84f35ed016b92d002812cc55055bf31f59086c97a0068e2811132ae7a82a9
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -640,9 +627,6 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          env:
-            - name: WEB_API_UPSTREAM
-              value: "http://api:3000"
           resources:
             requests:
               cpu: 50m
