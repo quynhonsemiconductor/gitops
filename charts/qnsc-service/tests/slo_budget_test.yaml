@@ -1,0 +1,37 @@
+suite: SLO error budget math
+# sprig's `div`/`sub` are INTEGER functions: (100-99.9)/100 rendered as 0, and every
+# burn-rate alert fired on the first error. The rule must keep the fraction.
+templates:
+  - templates/slo.yaml
+values:
+  - ../../../values/rova/base.yaml
+set:
+  env: prod
+  secrets.clusterSecretStore: kv-qnsc-prod
+
+tests:
+  - it: 99.9 availability renders budget 0.001, not 0
+    template: templates/slo.yaml
+    set:
+      services.api.slo.availability: 99.9
+    documentSelector: { path: metadata.name, value: api-slo }
+    asserts:
+      - matchRegex:
+          path: spec.groups[1].rules[0].expr
+          pattern: '14\.4 \* 0\.001'
+      - matchRegex:
+          path: spec.groups[1].rules[1].expr
+          pattern: '6 \* 0\.001'
+
+  - it: 99.0 availability renders budget 0.01
+    template: templates/slo.yaml
+    set:
+      services.api.slo.availability: 99.0
+    documentSelector: { path: metadata.name, value: api-slo }
+    asserts:
+      - matchRegex:
+          path: spec.groups[1].rules[0].expr
+          pattern: '14\.4 \* 0\.01'
+      - matchRegex:
+          path: spec.groups[1].rules[1].expr
+          pattern: '6 \* 0\.01'

@@ -2,7 +2,7 @@ suite: onprem profile
 # The on-prem pieces (ONPREM-PLAN §5.6) are: the networkPolicy gate, the two
 # on-prem mounts (CNPG CA, worker-only Graph PEM) on Deployments AND the
 # migrator Job — a Job that cannot find the database or verify its TLS fails
-# the PreSync hook and stops the sync, which is the one failure that blocks a
+# the wave -1 Job and stops the sync, which is the one failure that blocks a
 # release.
 templates:
   - templates/networkpolicy.yaml
@@ -230,22 +230,20 @@ tests:
           content:
             name: graph-cert
 
-  # ── PreSync prerequisites of the migrator Job ───────────────────────────────
-  - it: only the migrator ServiceAccount is a PreSync hook (wave -1, BeforeHookCreation)
+  # ── migrator prerequisites: normal resources, ordered by sync wave ─────────
+  - it: the migrator ServiceAccount is a normal resource on wave -2 (no hook churn)
     template: templates/serviceaccount.yaml
     documentSelector:
       path: metadata.name
       value: migrator
     asserts:
-      - equal:
+      - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook"]
-          value: PreSync
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
-          value: "-1"
-      - equal:
+          value: "-2"
+      - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook-delete-policy"]
-          value: BeforeHookCreation
 
   - it: the api ServiceAccount is a normal resource (a hook would recreate it and invalidate running pods' tokens)
     template: templates/serviceaccount.yaml
@@ -296,9 +294,14 @@ tests:
         documentSelector:
           path: metadata.name
           value: rova-db-app
-      - equal:
+      - notExists:
           path: metadata.annotations["argocd.argoproj.io/hook"]
-          value: PreSync
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-2"
         documentSelector:
           path: metadata.name
           value: rova-migrator
@@ -514,6 +517,17 @@ tests:
       - equal:
           path: spec.refreshInterval
           value: 12h
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca
+      - notExists:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+        documentSelector:
+          path: metadata.name
+          value: rova-migrator-db-ca
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-2"
         documentSelector:
           path: metadata.name
           value: rova-migrator-db-ca

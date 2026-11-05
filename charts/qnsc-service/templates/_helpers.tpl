@@ -310,27 +310,26 @@ fixed port behind a differently numbered Service).
 {{- end -}}
 
 {{/*
-PreSync prerequisites of the migrator Job (job.yaml). ArgoCD runs ALL hooks before
-ANY normal resource, so what the PreSync Job needs must be a hook, one wave before
-the Job (wave 0). A hook is DELETED and recreated every sync, so ONLY resources
-used exclusively by the Job may be hooks:
+sync-wave for the migrator Job's normal (non-hook) prerequisites. They are ordinary
+resources, NOT hooks: a hook is deleted and recreated on every sync, which churned
+the migrator ServiceAccount UID and the two ExternalSecrets (and their target
+Secrets) for no benefit (argocd-audit 2026-11-04 M3). The Job itself stays a hook
+(`hook: Sync`, wave -1) because its pod template is immutable and a tracked Job's
+TTL would re-run it through selfHeal — see job.yaml.
 
-  ServiceAccount `migrator`            serviceaccount.yaml
-  ExternalSecret <product>-migrator    -> Secret envFrom'd by the Job
-  ExternalSecret <product>-migrator-db-ca -> the Job's own copy of the CNPG CA
-                                      (a missing volume Secret keeps the pod in
-                                      ContainerCreating until the deadline)
+Wave order inside one sync:
+  wave -2  ServiceAccount `migrator`, ExternalSecret <product>-migrator,
+           ExternalSecret <product>-migrator-db-ca   (this helper, normal resources)
+  wave -1  the migrator Job (job.yaml, Sync hook) — applied in wave order, after
+           wave -2, so it never starts before its account, password and CA exist
 
-Argo's built-in health check holds wave 0 until each ExternalSecret is Ready.
-Deliberately NOT hooked (shared with running workloads): the api/worker
-ServiceAccounts (new UID -> bound tokens invalidated) and the shared
-<product>-db-ca (its Secret is mounted by running Deployments). The chart renders
-no SecretStore: every ExternalSecret reads the platform's ClusterSecretStore.
+ArgoCD's built-in ExternalSecret health check (resource_customizations/external-secrets.io/ExternalSecret/health.lua: Ready=False -> Degraded, Ready=True -> Healthy) holds wave -2 until each one is Ready.
+Deliberately NOT waved: the api/worker ServiceAccounts and the shared
+<product>-db-ca (used by running Deployments). The chart renders no SecretStore:
+every ExternalSecret reads the platform's ClusterSecretStore.
 */}}
-{{- define "qnsc.presyncPrereq" -}}
-argocd.argoproj.io/hook: PreSync
-argocd.argoproj.io/sync-wave: "-1"
-argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+{{- define "qnsc.migratorPrereq" -}}
+argocd.argoproj.io/sync-wave: "-2"
 {{- end }}
 
 {{/*
@@ -347,7 +346,7 @@ kind: ClusterSecretStore
      each, so a CNPG managed role and the app that logs in as it read the same value:
        "db"       -> secrets.db         (<product>-<env>-db-app,      api + default worker)
        "dbWorker" -> secrets.dbWorker   (<product>-<env>-db-worker,   optional)
-       "migrator" -> secrets.dbMigrator (<product>-<env>-db-migrator, the PreSync Job only) */}}
+       "migrator" -> secrets.dbMigrator (<product>-<env>-db-migrator, the migrator Job only) */}}
 {{- define "qnsc.remoteKey" -}}
 {{- $root := index . 0 -}}{{- $role := index . 1 -}}
 {{- $sec := $root.Values.secrets | default dict -}}

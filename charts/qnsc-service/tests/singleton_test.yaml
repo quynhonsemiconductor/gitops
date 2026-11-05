@@ -1,0 +1,33 @@
+suite: singleton Deployment strategy
+# Switching a live Deployment from RollingUpdate to Recreate fails admission while the
+# apiserver-defaulted `strategy.rollingUpdate` is still present. The chart must render an
+# explicit null so server-side apply removes it (gitops kb-dev, 2026-11-05).
+templates:
+  - templates/deployment.yaml
+values:
+  - ../../../values/rova/base.yaml
+  - ../../../values/rova/tags.prod.yaml
+set:
+  env: prod
+  secrets.clusterSecretStore: kv-qnsc-prod
+
+tests:
+  - it: singleton renders Recreate with rollingUpdate explicitly null
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: api }
+    set:
+      services.api.singleton: true
+      services.api.replicas: 1
+    asserts:
+      - equal:
+          path: spec.strategy
+          value:
+            type: Recreate
+            rollingUpdate: null
+
+  - it: a non-singleton Deployment renders no strategy (the apiserver default applies)
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: api }
+    asserts:
+      - isNull:
+          path: spec.strategy

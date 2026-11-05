@@ -3,7 +3,7 @@
 {{- if $svc.slo }}
 {{- $sn := printf "%s-%s" (include "qnsc.product" $) $name }}
 {{- $target := $svc.slo.availability | float64 }}
-{{- $budget := div (sub 100.0 $target) 100.0 }}
+{{- $budget := round (divf (subf 100.0 $target) 100.0) 6 }}
 ---
 {{- /* §9e — the SLO is a CHART VALUE, so the alert is rendered beside the
        Deployment rather than built by hand afterwards. That is the structural

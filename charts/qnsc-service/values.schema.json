@@ -546,7 +546,7 @@
         },
         "db": { "type": "string", "description": "Key Vault secret (plain-string password) of the runtime DB role, rendered as <product>-db-app and attached by envFrom to the api (and the worker unless dbWorker is set). Default <product>-<env>-db-app." },
         "dbWorker": { "type": "string", "description": "Key Vault secret (plain-string password) of a separate worker DB role, rendered as <product>-db-worker and attached to worker services only. Unset = the worker uses `db`. Pair it with data.postgres.workerUser." },
-        "dbMigrator": { "type": "string", "description": "Key Vault secret (plain-string password) of the migrator DB role, rendered as <product>-migrator (PreSync hook) for the migrator Job only. Default <product>-<env>-db-migrator." },
+        "dbMigrator": { "type": "string", "description": "Key Vault secret (plain-string password) of the migrator DB role, rendered as <product>-migrator (wave -2 ExternalSecret) for the migrator Job only. Default <product>-<env>-db-migrator." },
         "serviceBundles": {
           "type": "object",
           "additionalProperties": false,
