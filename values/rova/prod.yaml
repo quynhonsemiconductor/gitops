@@ -67,6 +67,8 @@ services:
       # the owner copies the AUD into the vault, THEN this change (MCP_ENABLED=true without the audience
       # refuses to boot).
       - { name: MCP_ENABLED, value: "true" }
+      # MCP v2 write tools ON (owner decision 2026-11-05): each write goes through the same REST authz as the UI.
+      - { name: MCP_WRITES_ENABLED, value: "true" }
       - { name: MCP_CF_TEAM_DOMAIN, value: "https://qnsc.cloudflareaccess.com" }
   worker:
     replicas: 1                # fixed at one: the in-process cron (daily-cleanup) and the outbox relays must not run twice
@@ -141,6 +143,7 @@ secrets:
     PLATFORM_ADMIN_EMAILS: rova-prod-platform-admin-emails   # staff roster: Key Vault, not this public repo
     GITHUB_WEBHOOK_SECRET: rova-prod-github-webhook-secret   # the webhook endpoint answers 503 without it
     MCP_ACCESS_AUD: rova-prod-mcp-access-aud   # AUD tag of the Access app "rova-prod MCP server" (infra live/edge/mcp_rova_prod.tf); not a credential
+    MCP_IDEMPOTENCY_SECRET: rova-prod-mcp-idempotency-secret   # HMAC key for MCP create idempotency keys (>= 32 chars); API only
   db: rova-prod-db-app
   dbMigrator: rova-prod-db-migrator
   dbWorker: rova-prod-db-worker
