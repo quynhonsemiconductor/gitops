@@ -699,7 +699,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:52b06df9d5bc26ad515e175da9fa000e57b1f69dcea54bef1bbb597d64905b65
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:d81ee82b2de973380777c5decb7afef712acae6a295de483e4699c5e9861b1d1
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
