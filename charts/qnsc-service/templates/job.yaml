@@ -11,7 +11,9 @@ metadata:
          the name makes the second sync fail. */}}
   {{- /* Digest wins (same rule as the image ref): name from its first 12 hex, so a
          digest-only values file renders and a rollback to a digest names the same
-         Job again (BeforeHookCreation deletes the old one). */}}
+         Job again. A changed image yields a new name; the Job is a hook, so the
+         previous object is untracked and prune does not remove it — its
+         ttlSecondsAfterFinished deletes it 3 days after it finishes. */}}
   {{- if $svc.image.digest }}
   name: {{ $name }}-{{ $svc.image.digest | trimPrefix "sha256:" | trunc 12 }}
   {{- else }}
@@ -20,12 +22,28 @@ metadata:
   labels:
     {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
   annotations:
-    {{- /* §4 — an ArgoCD PreSync hook, NOT a Helm pre-upgrade hook. With ArgoCD
-           owning the lifecycle, Helm hook failure semantics and ArgoCD's sync
-           state disagree, producing releases that are "failed" in Helm and
-           "Synced" in ArgoCD. PreSync blocks the sync on migration failure, which
-           is the behaviour wanted. */}}
-    argocd.argoproj.io/hook: PreSync
+    {{- /* §4 — the migration runs BEFORE the workload rolls, and blocks the sync on
+           failure, which is the behaviour wanted.
+
+           It is a `Sync` hook, NOT PreSync (argocd-audit M3). PreSync hooks run
+           before ALL normal resources, so the wave -2 ServiceAccount and
+           ExternalSecrets would not exist yet; Sync hooks run during the sync in
+           wave order, so wave -2 lands first and this Job on wave -1 still runs
+           before wave 0 (the api/worker roll).
+
+           It stayed a HOOK for two reasons a normal resource cannot satisfy:
+           a Job's pod template is immutable (a template change without a new
+           image would wedge the sync), and a tracked Job's TTL would delete it
+           after 3 days -> OutOfSync -> selfHeal re-runs migrations every 3 days.
+           As a hook it is untracked: BeforeHookCreation replaces the object
+           (same name -> no immutability error), and the TTL just cleans it up.
+
+           The prereqs (ServiceAccount + two ExternalSecrets) are deliberately
+           NOT hooks: they are ordinary wave -2 resources and keep their UID and
+           Secret across syncs. A failed Job is not retried automatically; when
+           the same name is reused BeforeHookCreation deletes and recreates it. */}}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   {{- /* §4 — explicit, because the default kills a slow migration part-way, which
@@ -125,7 +143,7 @@ spec:
             {{- /* Same endpoint rule as the Deployments (deployment.yaml): cnpg
                    mode goes to the cluster's -rw Service, an explicit host wins
                    otherwise. A migrator that cannot find the database fails the
-                   PreSync hook — the one failure mode that STOPS a sync. */}}
+                   wave -1 Job — the one failure mode that STOPS a sync. */}}
             {{- if eq $pg.mode "cnpg" }}
             - name: DATABASE_HOST
               value: {{ required "data.postgres.cluster is required when mode is cnpg" $pg.cluster }}-rw.{{ required "data.postgres.namespace is required when mode is cnpg" $pg.namespace }}.svc
