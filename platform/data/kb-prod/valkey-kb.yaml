@@ -1,0 +1,171 @@
+# ── valkey-kb-prod — kb's PRODUCTION Celery broker (§6.4) ─────────────────────
+#
+# kb uses Valkey in EVERY environment (valkey-kb-dev is its broker), so prod gets a
+# DEDICATED instance in data-prod rather than an index on pg-opshub's cache. The
+# opposite of a cache: `noeviction` — a full instance returns write errors loudly
+# rather than silently dropping tasks — and AOF persistence on a 2 Gi PVC, because a
+# broker that forgets queued work on restart loses user uploads mid-pipeline.
+#
+# Plain StatefulSet, no operator (§5.1). It requires a login from day one (the ACL
+# ExternalSecret below), unlike valkey-kb-dev: the same hardening as valkey-opshub.
+# Image pinned by digest (§11.4): valkey/valkey:8.1.10, NEVER 8.2 (parity with
+# ElastiCache 8.1).
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey-kb-prod
+  namespace: data-prod
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-prod
+spec:
+  serviceName: valkey-kb-prod
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/instance: valkey-kb-prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/instance: valkey-kb-prod
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # the image's `valkey` user
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.10@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+          args:
+            - valkey-server
+            - --maxmemory
+            - 192mb              # dev parity (valkey-kb-dev); the AOF PVC holds more than RAM
+            - --maxmemory-policy
+            - noeviction        # a broker must never evict (§6.4)
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --aclfile
+            - /etc/valkey-acl/users.acl     # `default` is OFF in that file: no anonymous access
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: valkey, containerPort: 6379 }
+          resources:
+            # §5.7 — 50m / 256Mi, requests = limits (as valkey-kb-dev).
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 256Mi }
+          # §9j — liveness is the process: valkey-cli ping answers without
+          # touching persistence or replication. Authenticated: `default` is off.
+          env:
+            - name: EXPORTER_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-kb-prod-acl, key: exporter-password } }
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli --no-auth-warning --user exporter --pass \"$EXPORTER_PASSWORD\" ping | grep -q PONG"]
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            - name: acl
+              mountPath: /etc/valkey-acl
+              readOnly: true
+        # §12 — the one Alloy scrapes valkey metrics here (9121); the data-prod
+        # NetworkPolicy admits `platform` on exactly this port.
+        - name: exporter
+          image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820   # versions.yaml (verified 2026-10-21, Docker Hub)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - { name: metrics, containerPort: 9121 }
+          env:
+            - { name: REDIS_ADDR, value: "redis://localhost:6379" }
+            - { name: REDIS_USER, value: exporter }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: valkey-kb-prod-acl, key: exporter-password } }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 32Mi }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: acl
+          secret: { secretName: valkey-kb-prod-acl, defaultMode: 0440 }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path-retain   # the AOF must survive a recreated StatefulSet
+        resources:
+          requests:
+            storage: 2Gi        # §6.4 — AOF, 2 Gi PVC (dev parity)
+---
+# ── valkey-kb-prod ACL (the Valkey hardening PR) ───────────────────────────────
+# `default` is off and there are two users:
+#   kb        the app: all keys, every command except @admin and @dangerous (no KEYS,
+#             FLUSHALL, CONFIG, DEBUG, SHUTDOWN, ACL), plus INFO and CLIENT SETNAME/SETINFO
+#             that ioredis sends on connect. EVAL stays allowed (Celery's Lua prefetch,
+#             locks and the idempotency interceptor).
+#   exporter  the metrics sidecar and the probes: PING/INFO/CONFIG GET/DBSIZE/SLOWLOG/
+#             LATENCY/MEMORY, no key access.
+# ONE vault secret, `kb-prod-redis-url` in kv-qnsc-prod, is the whole credential:
+# redis://kb:<hex>@valkey-kb-prod.data-prod.svc:6379/1. kb reads it as REDIS_URL (chart
+# secrets.env); this ExternalSecret derives the ACL file from the SAME value, so the two
+# can never disagree. The exporter password is the sha256 of that URL: derived, not a
+# second secret to rotate. The ACL is read at START: after a rotation, restart the pod
+# (kubectl -n data-prod rollout restart sts/valkey-kb-prod) right after kb's secret refreshes.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: valkey-kb-prod-acl
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: valkey-kb-prod-acl
+    template:
+      data:
+        exporter-password: '{{ .url | sha256sum }}'
+        users.acl: |
+          user default off
+          user kb on >{{ index (splitList ":" (urlParse .url).userinfo) 1 }} ~* &* +@all -@admin -@dangerous +info +client|setname +client|setinfo
+          user exporter on >{{ .url | sha256sum }} +ping +info +config|get +dbsize +slowlog +latency +memory +client|setname +client|setinfo
+  data:
+    - secretKey: url
+      remoteRef: { key: kb-prod-redis-url }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-kb-prod
+  namespace: data-prod
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-prod
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/instance: valkey-kb-prod
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }

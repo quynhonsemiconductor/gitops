@@ -1,0 +1,164 @@
+# kb — on-prem PRODUCTION (kb.qnsc.vn), PREP 2026-11-04. Owner decisions: kb prod launches
+# AFTER TEI (decision 5), on a dedicated pg-kb (decision 6), with the SPA served from the
+# cluster (decision 3) behind staff+MFA Cloudflare Access (decision 2, infra#343).
+# ArgoCD merges base.yaml, this file and tags.prod.yaml.
+#
+# NOT DEPLOYED: the kb prod row in appsets/products.yaml is a comment and the data layer lives in
+# platform/data/kb-prod/ (pg-kb, valkey-kb-prod, backup, dump, restore test), enabled by the move PR.
+# kb never ran on AWS: there is no EKS-era prod file to replace, so the non-secret env below is
+# dev.yaml (which was transcribed from the ECS develop task definition) with the prod hosts.
+#
+# The Entra client ids are the applied "KB Prod" sign-in app and "KB Prod Service" mail app
+# (infra#342, applied 2026-11-05). The placeholder gate (scripts/check-prod-placeholders.sh)
+# still guards against any `<..._PROD_...>` value coming back.
+env: prod
+size: s                      # one node: 1 replica each, no PDB (base.yaml says m / 2 api replicas)
+
+# The SPA, served from the cluster (DELIVERY-DESIGN §3.1, decision 3). kb-frontend builds once and
+# the tag/digest live in tags.prod.yaml (`web:`), like every other image. config is the whole
+# /config.json mounted at /srv/config.json; the same-origin API path as dev, validated by
+# qnsc-kb-frontend src/config/runtime.ts (qnsc-kb-frontend#146). The edge cutover (infra#343:
+# `web = "cluster"` for kb.qnsc.vn, so the tunnel serves every path and no Worker routes exist) is
+# the SA's apply, not this file.
+web:
+  enabled: true
+  image: { repo: ghcr.io/quynhonsemiconductor/kb-web }
+  config:
+    apiBaseUrl: "/api/v1"
+
+networkPolicy:
+  # ON: default-deny ingress and egress. api:8000/web:8080 only from `platform` (cloudflared, Alloy)
+  # and this namespace; egress to DNS, platform, data-prod (5432/6379), ai:80 (tei-e5) and the
+  # internet minus the cluster ranges AND all of RFC1918 (LAN, hypervisor, PBS, router, the node).
+  enabled: true
+  clusterCidrs: [10.42.0.0/16, 10.43.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  # The shared embedding service `tei-e5.ai.svc:80` (platform/ai/tei-e5.yaml). kb prod runs TEI only
+  # (decision 5): no in-process ONNX model, one model copy on the node. tei-e5-clients admits kb-prod.
+  egressNamespaces:
+    - { namespace: ai, ports: [80] }
+
+data:
+  postgres:
+    # Dedicated pg-kb (decision 6), platform/data/kb-prod/pg-kb.yaml. TLS verify-full: the server CA
+    # arrives as the kb-db-ca Secret (via the cnpg-ca-prod store), the chart mounts it and exports
+    # DATABASE_SSL_CA. kb uses ONE runtime role for api and worker (dev parity); kb_app's grants come
+    # from the kb migration qnsc-kb-backend#364.
+    mode: cnpg
+    cluster: pg-kb
+    namespace: data-prod      # DATABASE_HOST = pg-kb-rw.data-prod.svc
+    auth: password     # CNPG managed roles; credentials come from the secret bundles
+    pooling: none      # §6.3 — no pooler anywhere on-prem
+    name: kb
+    user: kb_app
+    migratorUser: kb_migrator
+    caFile: /etc/qnsc/db-ca/ca.crt     # pg-kb-ca-pub via the cnpg-ca-prod store
+  cache:
+    # valkey-kb-prod, selected by its app.kubernetes.io/instance pod label
+    # (chart 0.19.2 scoped the old namespace-wide data rule; 0.19.3 fails the
+    # render if REDIS_URL is set and this is missing). §6.4: the Celery broker,
+    # ACL login, so REDIS_URL comes from kv-qnsc-prod (secrets.env below).
+    instance: valkey-kb-prod
+
+services:
+  api:
+    replicas: 1
+    # Right-sized 2026-11-05 from kb-dev, TEI era: container_memory_working_set_bytes
+    # p95 over 24h = 124 MiB (sa-notes/reviews/memory-p95-24h-2026-11-04.md).
+    # request = ~2x p95; limit = the previous 512 Mi request, kept as the OOM guard
+    # (memory is not compressible, so the limit is a ceiling, not a target). The ONNX
+    # model that used to size 6 Gi on ECS runs in tei-e5 now. cpu stays the dev 250m.
+    resources: { cpu: 250m, memory: 256Mi, memoryLimit: 512Mi }
+    env:
+      - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
+      - { name: MALWARE_SCANNER_PORT, value: "3310" }
+      - { name: ENABLE_API_DOCS, value: "false" }
+      - { name: ALLOW_SELF_REGISTRATION, value: "false" }
+
+  worker:
+    # Celery beat rides inside this container: max_count stays 1 or every scheduled job runs twice
+    # (base.yaml). Right-sized 2026-11-05 like dev: idle p95 140 MiB, but that does not cover an
+    # OCR burst, so the REQUEST drops to 1 Gi while the LIMIT stays dev's 2.5 Gi — scheduling no
+    # longer reserves the burst, the cgroup still admits it (PaddleOCR + work_mem). The same split
+    # is in values/kb/dev.yaml, so dev is no longer a smaller shape than prod.
+    replicas: 1
+    resources: { cpu: 500m, memory: 1Gi, memoryLimit: 2.5Gi }
+    env:
+      - { name: MALWARE_SCANNER_HOST, value: "clamd.platform.svc" }
+      - { name: MALWARE_SCANNER_PORT, value: "3310" }
+      # Unused while EMBEDDING_RUNTIME=tei; kept so a rollback to `onnx` is the one value change
+      # (the baked export stays in the image for one release).
+      - { name: EMBEDDING_ONNX_THREADS, value: "3" }
+
+  migrator: { }
+
+# ── Product-wide env (api and worker validate the same Settings) ─────────────
+defaults:
+  env:
+    # KB pins production in EVERY environment so validate_production() runs.
+    - { name: ENVIRONMENT, value: "production" }
+    # Deployment identity for telemetry (deployment.environment.name); see values/kb/dev.yaml.
+    - { name: DEPLOYMENT_ENV, value: "prod" }
+    - { name: JOB_MODE, value: "celery" }
+    - { name: AUTO_CREATE_SCHEMA, value: "false" }
+    - { name: ENABLE_RLS, value: "true" }
+    - { name: BOOTSTRAP_ADMIN_ENABLED, value: "false" }
+    # REDIS_URL is NOT here: valkey-kb-prod (the dedicated prod broker in data-prod) requires a
+    # login, so the URL carries a password and comes from kv-qnsc-prod/kb-prod-redis-url
+    # (secrets.env below). The ACL file is derived from the same value.
+    #
+    # §8.2 — SAME-ORIGIN: one host per app. The SPA (in-cluster, web above) and this API share
+    # kb.qnsc.vn; /api/* and /readyz route through the Tunnel.
+    - { name: FRONTEND_URL, value: "https://kb.qnsc.vn" }
+    - { name: CORS_ORIGINS, value: "https://kb.qnsc.vn" }
+    - { name: MICROSOFT_LOGIN_REDIRECT_URI, value: "https://kb.qnsc.vn/api/v1/auth/entra/callback" }
+    # Delegated SharePoint/Drive connector consent callback — a DIFFERENT Entra flow from sign-in
+    # (same host, /api/v1/connectors path); BOTH URIs must be registered on the "KB Prod" app
+    # (infra#342).
+    - { name: MICROSOFT_REDIRECT_URI, value: "https://kb.qnsc.vn/api/v1/connectors/oauth/callback" }
+    - { name: CONNECTOR_WEBHOOK_BASE_URL, value: "https://kb.qnsc.vn" }
+    # Entra / mail — tenant id and client ids are public (apps applied by infra#342, 2026-11-05).
+    - { name: MICROSOFT_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
+    - { name: MICROSOFT_CLIENT_ID, value: "9fc58ec0-e451-4ecd-b9cc-22de10a93808" }
+    - { name: EMAIL_PROVIDER, value: "graph" }
+    - { name: MICROSOFT_GRAPH_SENDER, value: "noreply-kb@qnsc.vn" }
+    - { name: MAIL_GRAPH_CLIENT_ID, value: "45cde606-aa1e-44ff-b809-bd4cd86908ed" }
+    - { name: ALLOWED_EMAIL_DOMAINS, value: "qnsc.vn" }
+    # R2 stays the object store; the bucket name is the prod one (infra live/storage-prod). The
+    # credentials are the kb env bundle's (kb-prod-r2-*), scoped to this bucket.
+    - { name: SOURCE_STORAGE_BACKEND, value: "r2" }
+    - { name: SOURCE_STORAGE_BUCKET, value: "qnsc-kb-prod-sources" }
+    - { name: SOURCE_STORAGE_PREFIX, value: "qnsc-sources" }
+    - { name: S3_ENDPOINT_URL, value: "https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com" }
+    # The model MUST match what the image bakes (Dockerfile ARG EMBEDDING_MODEL);
+    # EMBEDDING_DIMENSION is derived from this name in src/core/config.py.
+    - { name: EMBEDDING_MODEL, value: "intfloat/multilingual-e5-large-instruct" }
+    - { name: EMBEDDING_VERSION, value: "e5-large-instruct-v1" }
+    # TEI ONLY in prod (decision 5): the shared service, same model/revision/dtype as dev, so the
+    # vector space does not move. Endpoint shape is exactly http://<service>.<namespace>.svc, no
+    # port (the Service is :80); the NetworkPolicy half is egressNamespaces above.
+    - { name: EMBEDDING_RUNTIME, value: "tei" }
+    - { name: TEI_EMBEDDINGS_URL, value: "http://tei-e5.ai.svc" }
+    # validate_production() refuses to boot with scanning off — it is on everywhere, via the
+    # platform clamd.
+    - { name: MALWARE_SCAN_ENABLED, value: "true" }
+
+# One Key Vault secret per value in kv-qnsc-prod; every name, format and class is in
+# values/kb/prod.secrets.yaml. The OWNER creates them later (platform/bootstrap/secrets.sh
+# --product kb --env prod --vault-app kv-qnsc-prod); nothing here holds a value.
+secrets:
+  clusterSecretStore: kv-qnsc-prod
+  env:
+    SECRET_KEY: kb-prod-secret-key                       # config.py:68, JWT signing; min 32 chars
+    DATA_ENCRYPTION_KEY: kb-prod-data-encryption-key     # config.py:71, separate from SECRET_KEY; min 32 chars
+    GEMINI_API_KEY: kb-prod-gemini-api-key               # config.py:145
+    R2_ACCESS_KEY_ID: kb-prod-r2-access-key-id           # config.py:784
+    R2_SECRET_ACCESS_KEY: kb-prod-r2-secret-access-key   # config.py:785
+    MICROSOFT_CLIENT_SECRET: kb-prod-microsoft-client-secret   # config.py:626, "KB Prod" sign-in + connector app
+    REDIS_URL: kb-prod-redis-url   # redis://kb:<hex>@valkey-kb-prod.data-prod.svc:6379/1; the ACL derives from it
+  db: kb-prod-db-app
+  dbMigrator: kb-prod-db-migrator
+  # §7.1/§7.3 — the Service app certificate (one combined PEM), mounted as a FILE into the worker
+  # only, read through AZURE_CLIENT_CERTIFICATE_PATH.
+  workerOnly:
+    graphCert: kb-prod-graph-cert
+    path: /etc/qnsc/graph/cert.pem
