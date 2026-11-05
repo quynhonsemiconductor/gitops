@@ -1,0 +1,36 @@
+# The ONE Application that deploys this directory (argocd-audit 2026-11-04 M2: one directory +
+# one app per data scope, `directory.include: "*.yaml"`, file name = app name). DISABLED: root
+# syncs apps/*.yaml only, and this file ends in `.disabled`. To enable (the kb prod move PR):
+# `git mv platform/data/kb-prod/application.yaml.disabled apps/platform-data-kb-prod.yaml`.
+# Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier waves.
+# prune false: these own PVCs.
+#
+# One app, not two: pg-kb, valkey-kb-prod, the backup/dump specs and the restore test share the
+# directory. The restore-test manifests carry their own `metadata.namespace: restore-test`, which
+# ArgoCD honours over this destination (the destination namespace applies only to resources that
+# do not name one); the platform project admits both data-prod and restore-test.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-data-kb-prod
+  namespace: argocd
+  annotations:
+    # server-side diff through the CNPG webhook, as platform-data-prod (audit G-07)
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-prod
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/data/kb-prod
+    directory: { include: "*.yaml" }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

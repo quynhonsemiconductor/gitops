@@ -214,7 +214,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [pg-rova-ca-pub, pg-opshub-ca-pub]   # opshub-prod joins with its move (cluster.sh --env prod --pg-cluster pg-opshub creates the mirror)
+    resourceNames: [pg-rova-ca-pub, pg-opshub-ca-pub, pg-kb-ca-pub]   # opshub-prod/kb-prod join with their moves (cluster.sh --env prod --pg-cluster pg-<product> creates the mirror)
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

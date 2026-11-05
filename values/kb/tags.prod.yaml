@@ -1,0 +1,36 @@
+# GENERATED — DO NOT EDIT BY HAND.
+#
+# PROVISIONAL TAGS (2026-11-04): the latest successful `GHCR · Publish` builds — api / worker /
+# migrator are sha-d1458cb504a0 (the main commit values/kb/tags.dev.yaml runs) and the SPA is
+# sha-cf46c64ed754, both already on GHCR. kb has never had a prod release, and qnsc-kb-frontend
+# has no release-promote workflow yet (P9); the move PR pins the commit kb prod runs.
+#
+# CI writes this file on every deploy, and it is separate from prod.yaml for one
+# reason: `yq -i` REWRITES a whole file, and these values files carry reasoning
+# transcribed from the live OpenTofu — why qnsc-kb's api stays off Spot, why
+# clamav needs 2 GB, why the worker is pinned at one replica. A tag bump must not
+# be able to reflow or drop any of it.
+#
+# So the machine owns this file and humans own the others. It also makes a
+# promotion pull request a three-line diff instead of a diff against a file full
+# of prose (§11).
+services:
+  api:
+    image:
+      tag: sha-d1458cb504a0
+      digest: sha256:4bc462cdaa526b767b5b2019020fd68af46b4025cca018da80502edc2ccf42b8
+  migrator:
+    image:
+      tag: sha-d1458cb504a0
+      digest: sha256:ef78291c3c5f0a17b33356991ba7cf42b29cb57694a02baf7c78f199285c3372
+  worker:
+    image:
+      tag: sha-d1458cb504a0
+      digest: sha256:3b9467e43b39056f77f5edeebeff011f6fd59d30e4a5b0d9c0d61d4f2896dff3
+# NOT under `services:`: web is not a service, so the chart reads it from `.Values.web`
+# (values.schema.json, "web"). Hand-seeded from the dev build; bump-dev does not write
+# this key yet (the qnsc-kb-frontend promote wiring, P9).
+web:
+  image:
+    tag: sha-cf46c64ed754
+    digest: sha256:675ff06b7927cb17f270cc6ba57aad0151816ae2a235b8dd7041b9a88aa85f11

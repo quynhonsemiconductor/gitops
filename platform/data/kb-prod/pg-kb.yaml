@@ -1,0 +1,247 @@
+# ── pg-kb: the kb PRODUCTION Postgres on k3s-01 (P3 plan decision 6, 2026-11-04) ──
+#
+# kb gets its OWN single-instance CNPG cluster in `data-prod` rather than a database
+# inside pg-opshub (decision 6: pgvector's working set and the DDL cadence are unlike
+# anything else; own backup and restore pass). Same pattern as pg-opshub
+# (platform/opshub-prod/pg-opshub.yaml); differences:
+#   - three roles, not four: kb uses ONE runtime role for api and worker (its Settings
+#     are validated identically in both, and the dev cluster has always had just
+#     kb_app + kb_migrator), plus the dump role. kb_app's DML grants come from the kb
+#     migration qnsc-kb-backend#364 (20261104_92), not from this file: the migrator
+#     owns every table Alembic creates, and ownership is not access. kb_readonly is
+#     SELECT everywhere and BYPASSRLS (gitops#305): kb tables use RLS, and pg_dump
+#     refuses with "query would be affected by row-level security policy" without it.
+#     The nightly dump runs as kb_readonly, never as the migrator owner.
+#   - the pgvector + pgcrypto extensions are created by the operator through the
+#     Database resource (superuser), as on pg-dev, so kb_migrator never needs
+#     CREATE EXTENSION.
+#   - passwords come from kv-qnsc-prod (kb-prod-db-*), through ClusterSecretStore
+#     kv-qnsc-prod, which only admits namespaces labelled qnsc.vn/env=prod;
+#   - the CA is `pg-kb-ca`, hand-applied from kv-qnsc-admin/platform-cnpg-ca-prod
+#     BEFORE this syncs (cnpg/ca.md) — `cluster.sh --env prod --pg-cluster pg-kb`.
+#
+# SIZING: the pg-opshub shape (one node, 500m / 2 Gi, shared_buffers 512MB, 20 Gi data
+# + 8 Gi WAL on local-path-retain). kb prod starts EMPTY (fresh launch, no data move):
+# SharePoint connectors ingest after go-live, so the 20 Gi is the plan's number
+# (decision 6), not a measurement. maintenance_work_mem 256MB covers pgvector HNSW
+# builds, as on pg-dev. Revisit shared_buffers/2 Gi from pg_stat once the corpus lands.
+#
+# kb_migrator owns the database (initdb) and is NOCREATEROLE, so the restore runs as
+# it and owns every restored object.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-kb
+  namespace: data-prod
+spec:
+  instances: 1
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: postgresql
+    major: 18
+  # local-path-retain (platform/storage): PVs of NEW PVCs survive the deletion of the
+  # PVC or the Cluster. A rebuilt cluster picks this class up.
+  storage:
+    size: 20Gi
+    storageClass: local-path-retain
+  walStorage:
+    size: 8Gi
+    storageClass: local-path-retain
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 2Gi }
+  postgresql:
+    parameters:
+      timezone: UTC
+      max_connections: "100"
+      shared_buffers: 512MB
+      work_mem: 8MB
+      maintenance_work_mem: 256MB   # pgvector HNSW builds
+  certificates:
+    serverCASecret: pg-kb-ca
+  # WAL archiving through the barman-cloud plugin (ObjectStore in pg-kb-backup.yaml).
+  # serverName is the archive's generation: g1 at the first build; after a recovery
+  # into a rebuilt cluster, bump it (g2, ...) so a new timeline never writes into
+  # the old archive (ONPREM-PLAN §6.3). Objects land under pg-kb/pg-kb-g1/.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pg-kb-r2
+        serverName: pg-kb-g1
+  bootstrap:
+    initdb:
+      database: kb
+      owner: kb_migrator
+      secret:
+        name: pg-kb-kb-migrator
+  managed:
+    roles:
+      - name: kb_app
+        ensure: present
+        login: true
+        passwordSecret: { name: pg-kb-kb-app }
+      - name: kb_migrator
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        passwordSecret: { name: pg-kb-kb-migrator }
+      # The dump role: SELECT everywhere, no DDL and no ownership. The nightly
+      # pg-kb-dump connects as this, never as the migrator owner.
+      - name: kb_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        # pg_read_all_data does not bypass row-level security: kb tables use RLS, and pg_dump refuses with
+        # "query would be affected by row-level security policy". A dump role must read every row.
+        bypassrls: true
+        passwordSecret: { name: pg-kb-kb-readonly }
+---
+# kb's database, owned by its migrator. `ensure: present` adopts the database initdb
+# already created and, more importantly, creates the extensions as the OPERATOR
+# (superuser) so kb_migrator does not need CREATE EXTENSION (the pg-dev comment at
+# platform/cnpg/pg-dev.yaml:255 states the reasoning). vector 0.8.2 ships in the
+# `standard` image.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: kb
+  namespace: data-prod
+spec:
+  cluster:
+    name: pg-kb
+  name: kb
+  owner: kb_migrator
+  ensure: present
+  databaseReclaimPolicy: retain
+  extensions:
+    - { name: vector, ensure: present }
+    - { name: pgcrypto, ensure: present }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-kb-kb-app
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-kb-kb-app
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: kb_app
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-prod-db-app
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-kb-kb-migrator
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-kb-kb-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: kb_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-prod-db-migrator
+---
+# Read-only dump role. Its password is a separate kv secret so rotating it never
+# touches the runtime roles.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-kb-kb-readonly
+  namespace: data-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-kb-kb-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: kb_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: kb-prod-db-readonly
+---
+# ── Role timeouts (the dev values) ───────────────────────────────────────────
+# Same mechanism and reasoning as pg-dev-role-timeouts / pg-opshub-role-timeouts:
+# CNPG has no per-role GUC field, and a LOGIN role may ALTER ROLE itself with no
+# CREATEROLE, so kb_app applies its own settings with the password ESO already syncs
+# for it. No superuser credential. kb_migrator is deliberately absent: its DDL
+# (Alembic, including the #364 grants) must be allowed to run longer than 30 s.
+# PostSync, re-run on every sync; ALTER ROLE ... SET is idempotent and a missing
+# role or stale password fails the hook loudly.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-kb-role-timeouts
+  namespace: data-prod
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pg-kb-role-timeouts
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 26          # postgres, the image's user
+        runAsGroup: 26
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: kb-app
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
+          env:
+            - { name: PGHOST, value: pg-kb-rw.data-prod.svc }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: pg-kb-kb-app, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: pg-kb-kb-app, key: password } }
+          # A new pod is admitted by data-prod-admit only once the network-policy
+          # controller has seen it (a few seconds); until then 5432 is refused.
+          # Wait for the server (up to 2 min) instead of failing the first try.
+          command: ["sh", "-c", "for i in $(seq 60); do pg_isready -q -t 2 && break; sleep 2; done; exec psql -v ON_ERROR_STOP=1 -c \"$0\""]
+          args:
+            - "ALTER ROLE kb_app SET statement_timeout = '30s'; ALTER ROLE kb_app SET idle_in_transaction_session_timeout = '60s';"
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
