@@ -8,6 +8,9 @@ kind: StatefulSet
 metadata:
   name: valkey-kb-dev
   namespace: data-dev
+  annotations:
+    # Owns a PVC (broker AOF): never prune or cascade-delete it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/name: valkey
     app.kubernetes.io/instance: valkey-kb-dev

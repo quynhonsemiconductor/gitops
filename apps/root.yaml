@@ -34,5 +34,9 @@ spec:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    # prune: true (argocd-audit 2026-11-04 H3): a deleted apps/*.yaml must remove its
+    # Application object, or the app runs untracked forever. Hand-written Applications
+    # carry no resources-finalizer, so pruning one leaves its workloads running; the
+    # ApplicationSet keeps products' resources through preserveResourcesOnDeletion.
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true]

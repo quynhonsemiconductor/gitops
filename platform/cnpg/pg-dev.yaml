@@ -22,6 +22,10 @@ kind: Cluster
 metadata:
   name: pg-dev
   namespace: data-dev
+  annotations:
+    # Irreversible: the PVCs carry an ownerReference to this Cluster, so deleting it
+    # would garbage-collect the dev data. ArgoCD must never prune or cascade-delete it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   instances: 1
   imageCatalogRef:

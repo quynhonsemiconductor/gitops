@@ -25,6 +25,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: ai
   labels:
     qnsc.vn/env: ai

@@ -8,6 +8,8 @@ kind: StatefulSet
 metadata:
   name: valkey-dev
   namespace: data-dev
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/name: valkey
     app.kubernetes.io/instance: valkey-dev

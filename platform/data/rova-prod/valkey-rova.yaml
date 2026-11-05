@@ -148,6 +148,10 @@ kind: ExternalSecret
 metadata:
   name: valkey-rova-acl
   namespace: data-prod
+  annotations:
+    # ACL file derived from one credential: creationPolicy Owner would GC the
+    # mounted Secret with this ExternalSecret. removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }

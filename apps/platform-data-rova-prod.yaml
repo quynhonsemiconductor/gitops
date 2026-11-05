@@ -4,10 +4,16 @@
 #
 # ADOPTION, NOT delete+create — these objects own PVCs. The former Applications
 # (`platform-data-prod`, `platform-restore-test`) were removed from apps/ in the
-# same PR that created this one; root is prune:false, so both old Application CRs
-# stay live until the OWNER deletes them with a NON-CASCADING delete (the exact
-# sequence is in the PR body). This app is prune:false too, and the CNPG Cluster
-# and valkey StatefulSet carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false`.
+# same PR that created this one. Hand-written Applications carry no resources-finalizer,
+# so removing their CR (root prune, or the OWNER's non-cascading delete — exact sequence
+# in the PR body) never touches the workloads. This app is prune:true (argocd-audit H3): the CNPG
+# Cluster, the valkey StatefulSet and the ObjectStores carry
+# `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, so a prune cleans stale
+# config but can never delete data. ADOPTION NOTE: at creation the live objects are
+# still tracked by the old Applications, so the first sync adopts them (a
+# SharedResourceWarning until the owner deletes the old Application CRs); nothing
+# is pruned meanwhile because the old apps are prune:false and the stateful objects
+# carry Prune=false,Delete=false.
 #
 # Sync wave 3, AFTER products (1) and cloudflared (2), on purpose: this app reads
 # kv-qnsc-prod through ESO, and that store is not Valid until the prod ESO
@@ -33,7 +39,7 @@ spec:
     path: platform/data/rova-prod
     directory: { include: "*.yaml" }
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
     retry:
       limit: 5
