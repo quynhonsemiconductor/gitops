@@ -22,6 +22,20 @@ tests:
           path: spec.ttlSecondsAfterFinished
           value: 259200
 
+  - it: the migrator Job is a Sync hook on wave -1, after its normal wave -2 prerequisites
+    template: templates/job.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: Sync
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook-delete-policy"]
+          value: BeforeHookCreation
+
   - it: a cron Job deletes its pod after three days
     template: templates/cronjob.yaml
     documentIndex: 0

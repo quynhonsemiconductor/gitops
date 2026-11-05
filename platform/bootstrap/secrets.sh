@@ -292,7 +292,7 @@ if grep -q "$PRODUCT-$ENV-platform-admin-emails" "values/$PRODUCT/$ENV.secrets.y
     'PLATFORM_ADMIN_EMAILS (comma-separated, no spaces; staff roster stays out of the public repo)'
 fi
 
-# The pg-rova backup credential (platform/cnpg/pg-rova-backup.yaml, platform/restore-test): an R2 API token
+# The pg-rova backup credential (platform/data/rova-prod/pg-rova-backup.yaml, platform/data/rova-prod/restore-test.yaml): an R2 API token
 # scoped to bucket qnsc-backups, object read+write. Prod vault only; ESO in data-prod/restore-test reads nothing else.
 # The pg-dev dump token (platform/cnpg/pg-dev-dump.yaml): a DEV-ONLY R2 token scoped to the
 # separate bucket qnsc-backups-dev (object read+write; R2 cannot scope by prefix). It has no

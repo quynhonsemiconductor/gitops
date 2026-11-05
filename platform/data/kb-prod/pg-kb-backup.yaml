@@ -18,6 +18,9 @@ kind: ExternalSecret
 metadata:
   name: pg-kb-r2-backup
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -32,6 +35,9 @@ spec:
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
+  annotations:
+    # Irreversible backup configuration: removal is an explicit owner step, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: pg-kb-r2
   namespace: data-prod
 spec:
@@ -64,6 +70,9 @@ kind: ScheduledBackup
 metadata:
   name: pg-kb-nightly
   namespace: data-prod
+  annotations:
+    # Backup schedule: removing it must be an explicit edit + sync, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   schedule: "0 30 19 * * *"          # 19:30 UTC
   immediate: true

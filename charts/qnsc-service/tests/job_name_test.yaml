@@ -1,5 +1,5 @@
 suite: migrator job name (tag vs digest)
-# The Job name changes per image so a PreSync hook never reuses an immutable pod
+# The Job name changes per image so a re-applied Job never reuses an immutable pod
 # template. Digest-only values (what release promotion writes) must still render.
 templates:
   - templates/job.yaml

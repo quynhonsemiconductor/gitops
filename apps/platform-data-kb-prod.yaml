@@ -3,7 +3,8 @@
 # syncs apps/*.yaml only. ENABLED 2026-11-05 (kb prod Phase 2) by
 # `git mv platform/data/kb-prod/application.yaml.disabled apps/platform-data-kb-prod.yaml`.
 # Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier waves.
-# prune false: these own PVCs.
+# prune: true — the PVC-owning objects (Cluster pg-kb, StatefulSet valkey-kb-prod, the
+# ObjectStores) carry Prune=false,Delete=false, so a prune cleans stale config but never data.
 #
 # One app, not two: pg-kb, valkey-kb-prod, the backup/dump specs and the restore test share the
 # directory. The restore-test manifests carry their own `metadata.namespace: restore-test`, which
@@ -13,9 +14,11 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-data-kb-prod
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
-    # server-side diff through the CNPG webhook, as platform-data-prod (audit G-07)
+    # server-side diff through the CNPG webhook, as platform-data-rova-prod (audit G-07)
     argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
     argocd.argoproj.io/sync-wave: "3"
 spec:
@@ -29,7 +32,7 @@ spec:
     path: platform/data/kb-prod
     directory: { include: "*.yaml" }
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
     retry:
       limit: 5

@@ -1,4 +1,4 @@
-# Data plane: the two dev Valkey StatefulSets and the dev Cluster (pg-dev). valkey-rova and pg-rova live in platform-data-prod.yaml. The Postgres image catalog is cluster-scoped and owned by platform-cnpg (audit M1). prune: false — these own PVCs.
+# Data plane: the two dev Valkey StatefulSets and the dev Cluster (pg-dev). valkey-rova and pg-rova live in platform-data-rova-prod.yaml. The Postgres image catalog is cluster-scoped and owned by platform-cnpg (audit M1). prune: true — pg-dev and both StatefulSets carry Prune=false,Delete=false, so the PVC-owning objects survive any prune.
 # Sync wave 0 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
 # each wave's Applications to be Healthy (argocd-cm Application health customization,
 # platform/argocd/values.yaml).
@@ -6,6 +6,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-data
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     # Permanent OutOfSync (audit G-07): the CNPG webhook and the StatefulSet API default fields that
@@ -28,7 +30,7 @@ spec:
       path: platform/cnpg
       directory: { include: "{pg-dev,pg-dev-dump}.yaml" }
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
     retry:
       limit: 5

@@ -62,13 +62,13 @@ spec:
           # 0.19.3 reports the running version (APP_VERSION/APP_COMMIT, web config appVersion)
           # so the UI can show which build serves it (#313).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
-          - { product: rova,   env: dev, chartVersion: "0.19.3" }
-          - { product: opshub, env: dev, chartVersion: "0.19.3" }
+          - { product: rova,   env: dev, chartVersion: "0.20.0" }
+          - { product: opshub, env: dev, chartVersion: "0.20.0" }
           # kb-dev: the values are complete (values/kb/dev.yaml) and the chart exists; this row waits for
           # the owner's kv-qnsc-dev kb-dev-* secrets (values/kb/dev.secrets.yaml) and the "KB Dev" Entra
           # redirects on kb-dev.qnsc.vn — an absent kv secret fails the whole ExternalSecret, so the row
           # is the last switch. All three dev rows move together to 0.19.3.
-          - { product: kb, env: dev, chartVersion: "0.19.3" }
+          - { product: kb, env: dev, chartVersion: "0.20.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is
@@ -103,23 +103,25 @@ spec:
 
     # ── prod ─────────────────────────────────────────────────────────────────
     # ENABLED by the move-night PR (merged on the owner's go, after pg-rova is restored and
-    # verified): the rova prod row. `prune: false`: a prune must never delete
-    # prod objects. Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
+    # verified): the rova prod row. `prune: true` (argocd-audit 2026-11-04 H3): a chart-removed
+    # Deployment/Service/ExternalSecret must go away in prod too; nothing in a product namespace
+    # owns a PVC or a CNPG Cluster (those are platform data apps, protected object by object).
+    # Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
     # prod has no downscaler and replica drift is real drift.
     - list:
         elements:
-          - { product: rova, env: prod, chartVersion: "0.19.3" }
+          - { product: rova, env: prod, chartVersion: "0.20.0" }
           # opshub prod GO-LIVE (2026-11-04): the data layer is live (apps/platform-opshub-prod.yaml;
           # pg-opshub Healthy, first backup complete, ContinuousArchiving=True). This row deploys the
           # app itself. 0.19.3 carries `web`, the memoryLimit split and the version variables; a row
           # must never pin below the chart whose values it uses (the #163/#174 ComparisonError).
-          - { product: opshub, env: prod, chartVersion: "0.19.3" }
+          - { product: opshub, env: prod, chartVersion: "0.20.0" }
           # kb prod (enabled 2026-11-05): pg-kb + valkey-kb-prod live with a passing restore test,
           # the kv-qnsc-prod kb-prod-* secrets exist, no `<KB_PROD_...>` placeholder remains and
           # tags.prod.yaml carries the v0.1.3 / v0.2.0 releases. 0.19.3 is the chart the live prod
           # rows run (`web`, the memoryLimit split, the version variables); values/kb/prod.yaml uses
           # the split (Burstable), so this row must not pin lower.
-          - { product: kb, env: prod, chartVersion: "0.19.3" }
+          - { product: kb, env: prod, chartVersion: "0.20.0" }
         template:
           metadata:
             name: "{{.product}}-{{.env}}"
@@ -130,7 +132,7 @@ spec:
               namespace: "{{.product}}-{{.env}}"
             syncPolicy:
               automated:
-                prune: false
+                prune: true
 
     # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
     # simply has no dev row — §5c: "Absence is the mechanism."

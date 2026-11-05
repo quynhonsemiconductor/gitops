@@ -40,6 +40,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: tei-e5-model-cache
   namespace: ai
+  annotations:
+    # Irreversible: the downloaded model cache is not rebuilt by a sync.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/name: tei-e5
     app.kubernetes.io/part-of: ai
@@ -179,8 +182,10 @@ metadata:
     # and local-path (WaitForFirstConsumer) leaves it Pending.
     # Without this the Application never reports Healthy and the root
     # app-of-apps (sync waves) waits on it forever. Affects Application health
-    # only; the resource is still synced and pruned normally.
+    # only; the resource is still synced, and protected from pruning
+    # (Prune=false,Delete=false): model cache.
     argocd.argoproj.io/ignore-healthcheck: "true"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/name: tei-e5
     app.kubernetes.io/part-of: ai

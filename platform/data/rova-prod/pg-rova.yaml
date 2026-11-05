@@ -24,6 +24,10 @@ kind: Cluster
 metadata:
   name: pg-rova
   namespace: data-prod
+  annotations:
+    # Irreversible: the PVCs carry an ownerReference to this Cluster, so deleting it
+    # would garbage-collect pg-rova's data. ArgoCD must never prune or cascade-delete it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   # One instance again after the move to local-path-retain (runbooks/pg-rova-storage-move.md, 2026-11-03):
   # pg-rova-2 is primary on retain PVCs; CNPG removes the non-primary pod, the old pg-rova-1.
@@ -99,6 +103,9 @@ kind: ExternalSecret
 metadata:
   name: pg-rova-rova-app
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -122,6 +129,9 @@ kind: ExternalSecret
 metadata:
   name: pg-rova-rova-worker
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -145,6 +155,9 @@ kind: ExternalSecret
 metadata:
   name: pg-rova-rova-migrator
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -168,6 +181,9 @@ kind: ExternalSecret
 metadata:
   name: pg-rova-rova-readonly
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }

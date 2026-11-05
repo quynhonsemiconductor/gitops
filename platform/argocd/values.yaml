@@ -32,6 +32,15 @@ configs:
   secret:
     createSecret: false
   cm:
+    # M7 DEFERRED (owner decision 2026-11-05): leave `url` unset. There is no OIDC
+    # today and no notification template uses {{.context.argocdUrl}}, so a real URL
+    # buys nothing yet; the admin hostname is deliberately not published in this
+    # public repo (infra keeps it in TF_VAR_admin_hostnames). Set it in the same PR
+    # that adds ArgoCD OIDC. Explicit empty drops the old chart placeholder
+    # (https://argocd.example.com) from the rendered cm; if that key was applied by
+    # hand before ArgoCD owned it, the owner removes it once:
+    #   kubectl -n argocd patch cm argocd-cm --type json -p '[{"op":"remove","path":"/data/url"}]'
+    url: ""
     # LOCAL ADMIN, NO SSO (ONPREM-PLAN §9: ArgoCD SSO waits for "a second person
     # needs ArgoCD"; today the UI is behind Cloudflare Access with MFA). The admin
     # password is a bcrypt hash synced by ESO into `argocd-secret`
@@ -44,7 +53,10 @@ configs:
     helm.valuesFileSchemes: >-
       secrets+gpg-import,secrets+age-import,secrets,https
 
-    timeout.reconciliation: 180s
+    # 10m (audit M4): the GitHub webhook now drives reconciliation on push, so the
+    # poll only has to catch what no webhook covers (closed PRs miss, a lost
+    # delivery, a repo without the hook). 180s was a fallback for having no hook.
+    timeout.reconciliation: 10m
 
     # ONPREM-PLAN §11.2: root orders its child Applications by sync wave, which only
     # works if an Application reports its OWN health (the default check ignores
@@ -406,6 +418,16 @@ notifications:
         oncePer: app.status.conditions
         send: [qnsc-sync-broken]
         when: any(app.status.conditions ?? [], {.type in ['ComparisonError', 'InvalidSpecError', 'SyncError']})
+    trigger.on-qnsc-out-of-sync: |
+      - description: Application has been OutOfSync for more than an hour
+        # Audit M5. `status.sync.status` carries no timestamp, so the age is
+        # measured from the last completed sync (or the Application's creation,
+        # for one that never synced): that IS how long the current drift has
+        # existed. oncePer the finishedAt so a later drift episode after a new
+        # sync notifies again; it is not another timer.
+        oncePer: app.status.operationState?.finishedAt ?? app.metadata.creationTimestamp
+        send: [qnsc-sync-broken]
+        when: app.status.sync.status == 'OutOfSync' and time.Now().Sub(time.Parse(app.status.operationState?.finishedAt ?? app.metadata.creationTimestamp)).Minutes() >= 60
 
   # A recipient is <service>[:<recipient>]. A webhook defined as
   # `service.webhook.<name>` is the service `<name>` with no recipient, so it is
@@ -427,4 +449,14 @@ notifications:
     - recipients: [teams]
       triggers: [on-qnsc-sync-broken]
       selector: qnsc.vn/env=dev
+    # Platform Applications (root + every platform-*) carry qnsc.vn/env=platform
+    # (audit M5). Before this they matched neither subscription: the two
+    # restore-test apps sat OutOfSync for days with no alert, and a broken
+    # platform-data-prod (prod Postgres) would also have been silent. Deploy
+    # success and Degraded are deliberately not subscribed: platform apps move
+    # on a PR, not on a deploy cadence, and sync-broken covers the real failure.
+    # on-qnsc-out-of-sync catches drift that is not an error condition.
+    - recipients: [teams]
+      triggers: [on-qnsc-sync-broken, on-qnsc-deploy-failed, on-qnsc-out-of-sync]
+      selector: qnsc.vn/env=platform
 

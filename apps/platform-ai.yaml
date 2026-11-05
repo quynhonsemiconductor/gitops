@@ -12,12 +12,15 @@
 # the HELM release lands.
 #
 # `SkipDryRunOnMissingResource` is not needed: nothing here references a CRD.
-# `prune: false`: pruning a Namespace deletes everything in it — removals in
-# this lane are manual, the same rule platform-base follows.
+# `prune: true`: the `ai` Namespace carries Prune=false,Delete=false, so pruning can never
+# delete it (and everything in it); the deletable objects here are PriorityClasses,
+# RuntimeClass and the device-plugin release, all re-creatable.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-ai
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
@@ -48,7 +51,7 @@ spec:
       directory:
         include: "{namespaces.yaml,priorityclasses.yaml,runtimeclass.yaml}"
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true]
     retry:
       limit: 5

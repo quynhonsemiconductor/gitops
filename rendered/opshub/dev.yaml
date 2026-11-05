@@ -201,9 +201,7 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 automountServiceAccountToken: false
 
 ---
@@ -239,7 +237,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"230c3a5bbbf1","appEnv":"development","appVersion":"sha-230c3a5bbbf1","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"6db00c23289f","appEnv":"development","appVersion":"sha-6db00c23289f","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -335,7 +333,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:d398bf788790d54f25663902d137dd8378543a49f4aaefb007936ada6acce741
+          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:ac56075e2055b15c0eda131fb66b785d50cd6304802486bd4ca8886ae2b90d6a
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -365,11 +363,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-230c3a5bbbf1
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-6db00c23289f
             - name: APP_VERSION
-              value: "sha-230c3a5bbbf1"
+              value: "sha-6db00c23289f"
             - name: APP_COMMIT
-              value: "230c3a5bbbf1"
+              value: "6db00c23289f"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -480,7 +478,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:3be26e69feb964c81316e15d7378d15869beaa7fce76448a5f84942d513bdcf8
+          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:34aa8a250d43365cc1fc4387b43b9745206c64ce58d43c701c47a6528f940b92
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -499,11 +497,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-230c3a5bbbf1
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-6db00c23289f
             - name: APP_VERSION
-              value: "sha-230c3a5bbbf1"
+              value: "sha-6db00c23289f"
             - name: APP_COMMIT
-              value: "230c3a5bbbf1"
+              value: "6db00c23289f"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -609,7 +607,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 2fbf342e429fe882c9a116403a87ad7ad259e6eea305f7205086508a55190e41
+        checksum/config: bceeeb4a41ceb952c9d8255beafc98da7fc2768af2dd014977d297a12d9e25ae
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -669,7 +667,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-7aa6bfcc0b18
+  name: migrator-724ef889cf41
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -679,7 +677,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   activeDeadlineSeconds: 600
@@ -709,7 +708,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:7aa6bfcc0b185f972c3626c280cd9d52a0358f388df1fed4b47ab500f718028c
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:724ef889cf414b46a77f4c4fdde030ec26638dcc507708e03093947392ca73d3
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -782,9 +781,7 @@ kind: ExternalSecret
 metadata:
   name: opshub-migrator
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 1h
   secretStoreRef:
@@ -860,9 +857,7 @@ kind: ExternalSecret
 metadata:
   name: opshub-migrator-db-ca
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 12h
   secretStoreRef:
@@ -1018,9 +1013,9 @@ spec:
       rules:
         - alert: opshub-apiErrorBudgetBurnFast
           expr: |
-            slo:request_error_rate:ratio_rate1h{service="opshub-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate1h{service="opshub-api"} > (14.4 * 0.01)
             and
-            slo:request_error_rate:ratio_rate5m{service="opshub-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate5m{service="opshub-api"} > (14.4 * 0.01)
           for: 2m
           labels:
             severity: P2
@@ -1032,9 +1027,9 @@ spec:
 
         - alert: opshub-apiErrorBudgetBurnSlow
           expr: |
-            slo:request_error_rate:ratio_rate6h{service="opshub-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate6h{service="opshub-api"} > (6 * 0.01)
             and
-            slo:request_error_rate:ratio_rate30m{service="opshub-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate30m{service="opshub-api"} > (6 * 0.01)
           for: 15m
           labels:
             severity: P2

@@ -219,9 +219,7 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 automountServiceAccountToken: false
 
 ---
@@ -257,7 +255,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"/api/v1","appCommit":"bbcb0170d7bc","appVersion":"sha-bbcb0170d7bc"}
+    {"apiBaseUrl":"/api/v1","appCommit":"cf0272384d2d","appVersion":"sha-cf0272384d2d"}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -387,11 +385,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-30f0f3887f47
             - name: APP_VERSION
-              value: "sha-590edf33f313"
+              value: "sha-30f0f3887f47"
             - name: APP_COMMIT
-              value: "590edf33f313"
+              value: "30f0f3887f47"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -504,6 +502,7 @@ spec:
   replicas: 1
   strategy:
     type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app.kubernetes.io/name: worker
@@ -551,11 +550,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-30f0f3887f47
             - name: APP_VERSION
-              value: "sha-590edf33f313"
+              value: "sha-30f0f3887f47"
             - name: APP_COMMIT
-              value: "590edf33f313"
+              value: "30f0f3887f47"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -693,7 +692,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: cf3052f7929b634872c1a5ff85f96357286d22ab22cf164232a78ce26d6d9b6e
+        checksum/config: 534da52a9001c9e154b3519fc15dac04fa835982dd595ba2034bfa146705c453
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -709,7 +708,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:15f430a7514da2e1552e210913d4eccf043390b64bf7e61a8bc11a3914d3232c
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:d269533fae0c042d78291917ce077afaf941f89ccb71065def6966bd74bfea54
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -763,7 +762,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   activeDeadlineSeconds: 600
@@ -898,9 +898,7 @@ kind: ExternalSecret
 metadata:
   name: kb-migrator
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 1h
   secretStoreRef:
@@ -958,9 +956,7 @@ kind: ExternalSecret
 metadata:
   name: kb-migrator-db-ca
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 12h
   secretStoreRef:
@@ -1095,9 +1091,9 @@ spec:
       rules:
         - alert: kb-apiErrorBudgetBurnFast
           expr: |
-            slo:request_error_rate:ratio_rate1h{service="kb-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate1h{service="kb-api"} > (14.4 * 0.01)
             and
-            slo:request_error_rate:ratio_rate5m{service="kb-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate5m{service="kb-api"} > (14.4 * 0.01)
           for: 2m
           labels:
             severity: P2
@@ -1109,9 +1105,9 @@ spec:
 
         - alert: kb-apiErrorBudgetBurnSlow
           expr: |
-            slo:request_error_rate:ratio_rate6h{service="kb-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate6h{service="kb-api"} > (6 * 0.01)
             and
-            slo:request_error_rate:ratio_rate30m{service="kb-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate30m{service="kb-api"} > (6 * 0.01)
           for: 15m
           labels:
             severity: P2

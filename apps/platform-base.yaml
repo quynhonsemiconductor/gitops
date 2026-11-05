@@ -1,6 +1,8 @@
 # Namespaces (with their qnsc.vn labels), admission policies, the data-prod NetworkPolicy and the
 # read-only cluster identity (platform/access).
-# prune: false — pruning a Namespace deletes everything in it, so removals are manual.
+# prune: true (argocd-audit 2026-11-04 H3): stale policies/RBAC/NetworkPolicies go away.
+# Every Namespace carries `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, so a
+# removed namespace file never deletes the namespace (and everything in it).
 # Sync wave -3 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
 # each wave's Applications to be Healthy (argocd-cm Application health customization,
 # platform/argocd/values.yaml).
@@ -8,6 +10,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-base
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
@@ -38,7 +42,7 @@ spec:
       path: platform/access
       directory: { include: "*.yaml" }
   syncPolicy:
-    automated: { prune: false, selfHeal: true }
+    automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true]
     retry:
       limit: 5

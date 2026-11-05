@@ -3,7 +3,7 @@
 # kb gets its OWN single-instance CNPG cluster in `data-prod` rather than a database
 # inside pg-opshub (decision 6: pgvector's working set and the DDL cadence are unlike
 # anything else; own backup and restore pass). Same pattern as pg-opshub
-# (platform/opshub-prod/pg-opshub.yaml); differences:
+# (platform/data/opshub-prod/pg-opshub.yaml); differences:
 #   - three roles, not four: kb uses ONE runtime role for api and worker (its Settings
 #     are validated identically in both, and the dev cluster has always had just
 #     kb_app + kb_migrator), plus the dump role. kb_app's DML grants come from the kb
@@ -34,6 +34,10 @@ kind: Cluster
 metadata:
   name: pg-kb
   namespace: data-prod
+  annotations:
+    # Irreversible: the PVCs carry an ownerReference to this Cluster, so deleting it
+    # would garbage-collect pg-kb's data. ArgoCD must never prune or cascade-delete it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   instances: 1
   imageCatalogRef:
@@ -127,6 +131,9 @@ kind: ExternalSecret
 metadata:
   name: pg-kb-kb-app
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -150,6 +157,9 @@ kind: ExternalSecret
 metadata:
   name: pg-kb-kb-migrator
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -175,6 +185,9 @@ kind: ExternalSecret
 metadata:
   name: pg-kb-kb-readonly
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }

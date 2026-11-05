@@ -13,7 +13,7 @@
 # Two containers, one emptyDir: the init container dumps (pg_dump 18 from the CNPG image,
 # as opshub_readonly: pg_read_all_data is enough to dump everything), the main container
 # uploads (aws-cli with the R2 checksum variables, the same credential barman uses:
-# Secret pg-dump-r2, defined in platform/cnpg/pg-rova-dump.yaml and shared with the rova dump job). Success is two log lines: `DUMP-READY ...` and `DUMP-OK <key> ...`.
+# Secret pg-dump-r2, defined in platform/data/rova-prod/pg-rova-dump.yaml and shared with the rova dump job). Success is two log lines: `DUMP-READY ...` and `DUMP-OK <key> ...`.
 #
 # opshub_readonly has statement_timeout 30 s as a role setting (the ad-hoc-query guard in
 # pg-opshub.yaml); the dump overrides it for ITS session with PGOPTIONS, which a role may do.
