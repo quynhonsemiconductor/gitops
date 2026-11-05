@@ -281,7 +281,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"054015b7d511","appEnv":"development","appVersion":"sha-054015b7d511","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"8f8a43ce259a","appEnv":"development","appVersion":"sha-8f8a43ce259a","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -377,7 +377,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:ee7fe724ce6314d4d581f8b67ceb2edbd0cacc97cf5b56e3b41f29a181246960
+          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:0a6ce3e39186de1f7d3c239c581bfc44f6986f06f228fc31f778754cbb1f5726
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -407,11 +407,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-054015b7d511
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-8f8a43ce259a
             - name: APP_VERSION
-              value: "sha-054015b7d511"
+              value: "sha-8f8a43ce259a"
             - name: APP_COMMIT
-              value: "054015b7d511"
+              value: "8f8a43ce259a"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -557,11 +557,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-054015b7d511
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-8f8a43ce259a
             - name: APP_VERSION
-              value: "sha-054015b7d511"
+              value: "sha-8f8a43ce259a"
             - name: APP_COMMIT
-              value: "054015b7d511"
+              value: "8f8a43ce259a"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -679,7 +679,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 49c44a980292a4ca4d8395e2fcc4bec7099a716ba7e6b7e2f42f586ce1a635a9
+        checksum/config: b4f1360fa10d3767a2ef3a5cb95a03171116fb768778425ce10194d5be0f1a05
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
