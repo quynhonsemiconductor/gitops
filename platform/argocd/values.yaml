@@ -44,7 +44,10 @@ configs:
     helm.valuesFileSchemes: >-
       secrets+gpg-import,secrets+age-import,secrets,https
 
-    timeout.reconciliation: 180s
+    # 10m (audit M4): the GitHub webhook now drives reconciliation on push, so the
+    # poll only has to catch what no webhook covers (closed PRs miss, a lost
+    # delivery, a repo without the hook). 180s was a fallback for having no hook.
+    timeout.reconciliation: 10m
 
     # ONPREM-PLAN §11.2: root orders its child Applications by sync wave, which only
     # works if an Application reports its OWN health (the default check ignores
