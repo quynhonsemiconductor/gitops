@@ -17,16 +17,16 @@
 services:
   api:
     image:
-      tag: sha-d1458cb504a0
-      digest: sha256:4bc462cdaa526b767b5b2019020fd68af46b4025cca018da80502edc2ccf42b8
+      tag: v0.1.3
+      digest: sha256:eac4218c22a1c8e34759c1b43b56cdd401d91a1fb9050d6f19904520db1e9a72
   migrator:
     image:
-      tag: sha-d1458cb504a0
-      digest: sha256:ef78291c3c5f0a17b33356991ba7cf42b29cb57694a02baf7c78f199285c3372
+      tag: v0.1.3
+      digest: sha256:3dc4cc898ea89fa11b8f4baf66860ba698a9e789c24681ba9cabd163af4bd69a
   worker:
     image:
-      tag: sha-d1458cb504a0
-      digest: sha256:3b9467e43b39056f77f5edeebeff011f6fd59d30e4a5b0d9c0d61d4f2896dff3
+      tag: v0.1.3
+      digest: sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
 # NOT under `services:`: web is not a service, so the chart reads it from `.Values.web`
 # (values.schema.json, "web"). Hand-seeded from the dev build; bump-dev does not write
 # this key yet (the qnsc-kb-frontend promote wiring, P9).
