@@ -73,6 +73,14 @@ destinations:
         regex         = "kube_pod_status_phase;(Running|Succeeded)"
         action        = "drop"
       }
+      // Unknown is the phase KSM reports when the kubelet is unreachable; it
+      // is a zero row on every healthy pod. Pending and Failed stay: they are
+      // the two a triage query actually asks for.
+      write_relabel_config {
+        source_labels = ["__name__", "phase"]
+        regex         = "kube_pod_status_phase;Unknown"
+        action        = "drop"
+      }
       // kube_pod_status_ready: keep condition="true" — the two PostgreSQL
       // readiness alerts read it (onprem-workloads.tf). false/unknown are the
       // not-ready samples those rules do not query.
@@ -92,6 +100,57 @@ destinations:
       write_relabel_config {
         source_labels = ["__name__"]
         regex         = "node_cpu_guest_seconds_total"
+        action        = "drop"
+      }
+      // kubelet internals beyond the three duration histograms above (~196
+      // series: pleg relist histograms, runtime operations, rest_client,
+      // storage_operation, volume_manager). The only kubelet family any rule
+      // reads is kubelet_volume_stats_* (volume free-space alerts), which this
+      // regex deliberately does not match.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "kubelet_(pleg_.*|runtime_operations.*|rest_client_.*|storage_operation.*|volume_manager_.*)"
+        action        = "drop"
+      }
+      // node-exporter per-device filesystems on pseudo mounts. Every
+      // filesystem rule in infra/live/observability-alerting already filters
+      // fstype!~"squashfs|devtmpfs|nsfs|tmpfs|overlay", so these series are
+      // stored only to be excluded at query time.
+      write_relabel_config {
+        source_labels = ["__name__", "fstype"]
+        regex         = "node_filesystem_.*;(tmpfs|overlay|squashfs|devtmpfs|nsfs|ramfs)"
+        action        = "drop"
+      }
+      // node-exporter network counters on virtual interfaces: veth/cni/
+      // flannel/cali/bridge/loopback. Rules read up{job="node"} and host
+      // memory/filesystem, never node_network_*; keep the physical NICs so a
+      // bandwidth panel still has something to draw.
+      write_relabel_config {
+        source_labels = ["__name__", "device"]
+        regex         = "node_network_.*;(veth.*|cni.*|flannel.*|cali.*|tunl.*|br-.*|docker.*|virbr.*|dummy.*|lo)"
+        action        = "drop"
+      }
+      // cAdvisor filesystem read/write counters (4 families x ~78): no rule or
+      // dashboard in this repo reads them. container_fs_usage_bytes, which a
+      // disk-pressure panel would use, is untouched.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "container_fs_(reads|writes)(_bytes)?_total"
+        action        = "drop"
+      }
+      // cAdvisor per-container memory duplicates: cache/swap/rss/usage. The
+      // alerting and rightsizing evidence reads container_memory_working_set_bytes
+      // (gitops/values/*/prod.yaml resource comments), which stays.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "container_memory_(cache|swap|rss|usage_bytes)"
+        action        = "drop"
+      }
+      // cAdvisor network: keep bytes only. Packets/errors/dropped have no
+      // consumer and are 4 of the 6 families.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "container_network_(receive|transmit)_(packets|errors|dropped)_total"
         action        = "drop"
       }
 
@@ -710,9 +769,12 @@ collectors:
 
       prometheus.relabel "cloudflared" {
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        // The tunnel-down rule reads cloudflared_tunnel_ha_connections only
+        // (infra onprem-signals.tf). The rest of the exporter is request
+        // latency histograms and rpc counters — ~136 series with no consumer.
         rule {
           source_labels = ["__name__"]
-          regex         = "cloudflared_.*|up|scrape_samples_scraped"
+          regex         = "cloudflared_tunnel_ha_connections|up|scrape_samples_scraped"
           action        = "keep"
         }
       }
@@ -934,9 +996,14 @@ collectors:
 
       prometheus.relabel "eso" {
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        // Only the failing condition is read: the sync-failure rule
+        // (infra onprem-signals.tf) queries
+        // externalsecret_status_condition{condition="Ready",status="False"}.
+        // Every ExternalSecret also exports status="True", and one healthy
+        // series per secret is pure cardinality.
         rule {
-          source_labels = ["__name__"]
-          regex         = "externalsecret_status_condition|up|scrape_samples_scraped"
+          source_labels = ["__name__", "condition", "status"]
+          regex         = "(externalsecret_status_condition;Ready;False|up;;|scrape_samples_scraped;;)"
           action        = "keep"
         }
       }
