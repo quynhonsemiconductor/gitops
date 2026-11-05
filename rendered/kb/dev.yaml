@@ -257,7 +257,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"/api/v1","appCommit":"60feb6fa98fa","appVersion":"sha-60feb6fa98fa"}
+    {"apiBaseUrl":"/api/v1","appCommit":"bbcb0170d7bc","appVersion":"sha-bbcb0170d7bc"}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -353,7 +353,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:e515ad24e4800014e6b157597cfd116c6c274943facd0d89b40db5bcfddef9be
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:eac4218c22a1c8e34759c1b43b56cdd401d91a1fb9050d6f19904520db1e9a72
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -387,11 +387,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-642a8e05b24b
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
             - name: APP_VERSION
-              value: "sha-642a8e05b24b"
+              value: "sha-590edf33f313"
             - name: APP_COMMIT
-              value: "642a8e05b24b"
+              value: "590edf33f313"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -530,7 +530,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:812c6ee89dc445870cf005d8d27324caefc067c984a1c3645c37c0bfe2bab515
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -549,11 +549,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-642a8e05b24b
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
             - name: APP_VERSION
-              value: "sha-642a8e05b24b"
+              value: "sha-590edf33f313"
             - name: APP_COMMIT
-              value: "642a8e05b24b"
+              value: "590edf33f313"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -691,7 +691,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 55b81e301639d77ee3922db6aec9e7314af7df4d0478a4d87479480f94b02ea6
+        checksum/config: cf3052f7929b634872c1a5ff85f96357286d22ab22cf164232a78ce26d6d9b6e
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -707,7 +707,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:388c30fbb059904df3b507705733b75b1a42dbcb268ad90f9102ce8dfc0cb640
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:15f430a7514da2e1552e210913d4eccf043390b64bf7e61a8bc11a3914d3232c
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -751,7 +751,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-024ba0218ed8
+  name: migrator-3dc4cc898ea8
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -791,7 +791,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:024ba0218ed8b9cb18d29b6af92c9067e03e50ee9e981d76e94f9890a8a4bc1a
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:3dc4cc898ea89fa11b8f4baf66860ba698a9e789c24681ba9cabd163af4bd69a
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
