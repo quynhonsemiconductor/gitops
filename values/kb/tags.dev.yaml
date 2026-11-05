@@ -12,15 +12,15 @@
 services:
   api:
     image:
-      tag: sha-642a8e05b24b
+      tag: sha-70fbba42d862
       digest: sha256:e515ad24e4800014e6b157597cfd116c6c274943facd0d89b40db5bcfddef9be
   migrator:
     image:
-      tag: sha-642a8e05b24b
+      tag: sha-70fbba42d862
       digest: sha256:024ba0218ed8b9cb18d29b6af92c9067e03e50ee9e981d76e94f9890a8a4bc1a
   worker:
     image:
-      tag: sha-642a8e05b24b
+      tag: sha-70fbba42d862
       digest: sha256:812c6ee89dc445870cf005d8d27324caefc067c984a1c3645c37c0bfe2bab515
 web:
   image:
