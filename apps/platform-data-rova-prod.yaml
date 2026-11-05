@@ -23,6 +23,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-data-rova-prod
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     # server-side diff through the CNPG/StatefulSet webhooks (audit G-07)

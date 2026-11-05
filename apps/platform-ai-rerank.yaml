@@ -7,6 +7,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-ai-rerank
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"

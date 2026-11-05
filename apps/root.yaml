@@ -11,6 +11,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: root
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
