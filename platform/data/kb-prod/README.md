@@ -2,7 +2,7 @@
 
 Born in the argocd-audit M2 layout: ONE directory per data scope, ONE Application for it, the
 restore test inside the same directory. Nothing here is synced: root reads `apps/*.yaml` only, and
-`application.yaml.disabled` is the switch. kb prod is a FRESH launch (kb never had a prod
+`apps/platform-data-kb-prod.yaml` (moved from `application.yaml.disabled`, 2026-11-05) is the switch. kb prod is a FRESH launch (kb never had a prod
 environment): no data move, so the cluster starts empty and the connectors ingest after the
 cutover.
 
@@ -13,7 +13,7 @@ cutover.
 | `pg-kb-dump.yaml` | nightly `pg_dump -Fc` as kb_readonly (never the owner) -> `dumps/daily|weekly|monthly/pg-kb-<date>.dump`, write-once, 21:00 UTC |
 | `valkey-kb.yaml` | dedicated prod Celery broker: `noeviction` + AOF on a 2 Gi PVC, ACL (user `kb`, derived from ONE kv secret) |
 | `restore-test-kb.yaml` | on-demand restore test (suspended CronJob in `restore-test`), including the kb_app grant proof from qnsc-kb-backend#364 and the kb_readonly BYPASSRLS check |
-| `application.yaml.disabled` | the ONE Application (`platform-data-kb-prod`, `directory.include: "*.yaml"`), disabled until the move PR |
+| `apps/platform-data-kb-prod.yaml` | the ONE Application (`platform-data-kb-prod`, `directory.include: "*.yaml"`), enabled 2026-11-05 |
 
 Shared platform files already carry the prep (inert until pods exist): namespace `kb-prod`
 (platform/namespaces/onprem.yaml), the products-project destination (apps/project.yaml), the

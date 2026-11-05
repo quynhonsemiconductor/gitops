@@ -1,6 +1,6 @@
 # The ONE Application that deploys this directory (argocd-audit 2026-11-04 M2: one directory +
-# one app per data scope, `directory.include: "*.yaml"`, file name = app name). DISABLED: root
-# syncs apps/*.yaml only, and this file ends in `.disabled`. To enable (the kb prod move PR):
+# one app per data scope, `directory.include: "*.yaml"`, file name = app name). Root
+# syncs apps/*.yaml only. ENABLED 2026-11-05 (kb prod Phase 2) by
 # `git mv platform/data/kb-prod/application.yaml.disabled apps/platform-data-kb-prod.yaml`.
 # Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier waves.
 # prune false: these own PVCs.
