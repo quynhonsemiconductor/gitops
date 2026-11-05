@@ -468,6 +468,8 @@ spec:
               value: "10"
             - name: MCP_ENABLED
               value: "true"
+            - name: MCP_WRITES_ENABLED
+              value: "true"
             - name: MCP_CF_TEAM_DOMAIN
               value: https://qnsc.cloudflareaccess.com
           envFrom:
@@ -1033,6 +1035,9 @@ spec:
     - secretKey: MCP_ACCESS_AUD
       remoteRef:
         key: rova-dev-mcp-access-aud
+    - secretKey: MCP_IDEMPOTENCY_SECRET
+      remoteRef:
+        key: rova-dev-mcp-idempotency-secret
     - secretKey: PLATFORM_ADMIN_EMAILS
       remoteRef:
         key: rova-dev-platform-admin-emails
