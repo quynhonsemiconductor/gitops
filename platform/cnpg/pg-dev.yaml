@@ -82,6 +82,9 @@ spec:
         ensure: present
         login: true
         inRoles: [pg_read_all_data]
+        # pg_read_all_data does not bypass row-level security: kb tables use RLS, and pg_dump refuses with
+        # "query would be affected by row-level security policy". A dump role must read every row.
+        bypassrls: true
         passwordSecret:
           name: pg-dev-rova-readonly
       # opshub joins with its dev move (the same three-role shape as rova: app and
@@ -105,6 +108,9 @@ spec:
         ensure: present
         login: true
         inRoles: [pg_read_all_data]
+        # pg_read_all_data does not bypass row-level security: kb tables use RLS, and pg_dump refuses with
+        # "query would be affected by row-level security policy". A dump role must read every row.
+        bypassrls: true
         passwordSecret:
           name: pg-dev-opshub-readonly
       # kb joins with its dev move: app (api + worker, one role) and the migrator that owns the database.
@@ -122,6 +128,9 @@ spec:
         ensure: present
         login: true
         inRoles: [pg_read_all_data]
+        # pg_read_all_data does not bypass row-level security: kb tables use RLS, and pg_dump refuses with
+        # "query would be affected by row-level security policy". A dump role must read every row.
+        bypassrls: true
         passwordSecret:
           name: pg-dev-kb-readonly
 ---
