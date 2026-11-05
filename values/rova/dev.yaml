@@ -122,8 +122,11 @@ defaults:
     # tenant and ONE dev sign-in app for both estates.
     - { name: ENTRA_TENANT_ID, value: "dc0f2078-ac28-4ff2-b21a-d4b28df32361" }
     - { name: ENTRA_CLIENT_ID, value: "45fabceb-e51c-446b-894e-af4c4b7f30f8" }
-    # B2B guest provisioning stays on in dev; JIT sign-up stays off.
-    - { name: ENTRA_GUEST_INVITE_ENABLED, value: "true" }
+    # B2B guest provisioning is PROD-ONLY (SA decision 2026-11-05): the dev
+    # service app must not hold User.Invite.All, so a dev-vault certificate can
+    # never invite guests into the production tenant. Dev tests invitation with
+    # the feature off; JIT sign-up stays off too.
+    - { name: ENTRA_GUEST_INVITE_ENABLED, value: "false" }
     - { name: SSO_JIT_ENABLED, value: "false" }
     - { name: INTERNAL_EMAIL_DOMAINS, value: "qnsc.vn" }
     # §7.3 — Graph mail: the dev mailbox and the "Rova Dev Service" app. The

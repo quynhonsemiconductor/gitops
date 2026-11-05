@@ -439,7 +439,7 @@ spec:
             - name: ENTRA_CLIENT_ID
               value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
             - name: ENTRA_GUEST_INVITE_ENABLED
-              value: "true"
+              value: "false"
             - name: SSO_JIT_ENABLED
               value: "false"
             - name: INTERNAL_EMAIL_DOMAINS
@@ -591,7 +591,7 @@ spec:
             - name: ENTRA_CLIENT_ID
               value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
             - name: ENTRA_GUEST_INVITE_ENABLED
-              value: "true"
+              value: "false"
             - name: SSO_JIT_ENABLED
               value: "false"
             - name: INTERNAL_EMAIL_DOMAINS
@@ -833,7 +833,7 @@ spec:
             - name: ENTRA_CLIENT_ID
               value: 45fabceb-e51c-446b-894e-af4c4b7f30f8
             - name: ENTRA_GUEST_INVITE_ENABLED
-              value: "true"
+              value: "false"
             - name: SSO_JIT_ENABLED
               value: "false"
             - name: INTERNAL_EMAIL_DOMAINS
