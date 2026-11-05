@@ -45,7 +45,7 @@ spec:
                the SPA serving the old config until something else restarted it.
                Hashing the config into the pod template makes every config change
                a new ReplicaSet, which is what actually rolls the pod. */}}
-        checksum/config: {{ toJson ($w.config | default dict) | sha256sum }}
+        checksum/config: {{ include "qnsc.webConfig" $ | sha256sum }}
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false

@@ -126,4 +126,4 @@ tests:
     asserts:
       - equal:
           path: data["config.json"]
-          value: '{"apiBaseUrl":"","appEnv":"production","devLoginEnabled":false}'
+          value: '{"apiBaseUrl":"","appCommit":"a5f72f941ed9","appEnv":"production","appVersion":"sha-a5f72f941ed9","devLoginEnabled":false}'

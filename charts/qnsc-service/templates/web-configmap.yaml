@@ -14,5 +14,5 @@ metadata:
     {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
 data:
   config.json: |-
-    {{- toJson (.Values.web.config | default dict) | nindent 4 }}
+    {{- include "qnsc.webConfig" $ | nindent 4 }}
 {{- end }}

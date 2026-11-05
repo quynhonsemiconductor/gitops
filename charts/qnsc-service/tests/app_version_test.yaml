@@ -1,0 +1,83 @@
+suite: running version (APP_VERSION / APP_COMMIT and the web config)
+# Owner request 2026-11-05: the UI must be able to show which version runs.
+# The image tag in values/<product>/tags.<env>.yaml is the single source — CI
+# writes it on every deploy, so a promotion cannot leave the UI reporting the
+# previous build. A sha-<commit> tag also names the commit; a release tag or a
+# digest pin names none, and the chart then omits the variable instead of
+# inventing one.
+templates:
+  - templates/deployment.yaml
+  - templates/web-configmap.yaml
+values:
+  - values/app-version.yaml
+
+tests:
+  # ── api/worker containers ──────────────────────────────────────────────────
+  - it: a sha-<commit> tag becomes APP_VERSION and APP_COMMIT on the api
+    template: templates/deployment.yaml
+    documentIndex: 0        # api
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: APP_VERSION, value: sha-0123456789ab }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: APP_COMMIT, value: "0123456789ab" }
+
+  - it: a release tag is APP_VERSION with no APP_COMMIT on the worker
+    template: templates/deployment.yaml
+    documentIndex: 2        # worker (map order: api, digestonly, worker)
+    asserts:
+      # Whole list, because the point is the ABSENT APP_COMMIT: a release tag
+      # names no commit and a guessed one would be shown as fact.
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: http://alloy-receiver.platform.svc:4318 }
+            - { name: OTEL_SERVICE_NAME, value: version-worker }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=version,deployment.environment=dev,service.version=v1.2.3" }
+            - { name: APP_VERSION, value: v1.2.3 }
+
+  - it: a digest-only pin reports neither version nor commit
+    template: templates/deployment.yaml
+    documentIndex: 1        # digestonly
+    asserts:
+      # Whole list: the point is that NO APP_* entry exists. A digest names no
+      # tag, so both variables are absent rather than defaulted to "dev".
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: http://alloy-receiver.platform.svc:4318 }
+            - { name: OTEL_SERVICE_NAME, value: version-digestonly }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=version,deployment.environment=dev,service.version=" }
+
+  # ── web runtime config ─────────────────────────────────────────────────────
+  - it: merges appVersion and appCommit into the web config, keeping its keys
+    template: templates/web-configmap.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: data["config.json"]
+          value: '{"apiBaseUrl":"/api","appCommit":"abcdef012345","appVersion":"sha-abcdef012345"}'
+
+  - it: the chart owns appVersion, so a copied one in web.config cannot win
+    template: templates/web-configmap.yaml
+    documentIndex: 0
+    set:
+      web.config:
+        apiBaseUrl: /api
+        appVersion: v0.0.0-stale
+    asserts:
+      - equal:
+          path: data["config.json"]
+          value: '{"apiBaseUrl":"/api","appCommit":"abcdef012345","appVersion":"sha-abcdef012345"}'
+
+  - it: a release-tagged web image gets appVersion but no appCommit
+    template: templates/web-configmap.yaml
+    documentIndex: 0
+    set:
+      web.image.tag: v2.0.0
+    asserts:
+      - equal:
+          path: data["config.json"]
+          value: '{"apiBaseUrl":"/api","appVersion":"v2.0.0"}'

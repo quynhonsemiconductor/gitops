@@ -221,7 +221,26 @@ spec:
               value: {{ printf "%s-%s" (include "qnsc.product" $) $name }}
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ printf "service.namespace=%s,deployment.environment=%s,service.version=%s"
-                        (include "qnsc.product" $) (include "qnsc.env" $) ($svc.image.tag) }}
+                        (include "qnsc.product" $) (include "qnsc.env" $) ($svc.image.tag | default "") }}
+            {{- /* ── What is actually running (owner request 2026-11-05) ─────────
+                   The image tag is already the one fact every promotion diff
+                   carries, so it is the version the process reports: no second
+                   copy in values for a human to forget. CI writes the tag on
+                   every deploy; a release is `vX.Y.Z`, a dev build `sha-<commit>`
+                   (tags.<env>.yaml). A digest-only pin names no version and gets
+                   neither variable — an absent value is honest, a defaulted one
+                   becomes a lie the UI shows to a customer.
+                   APP_COMMIT is derived from a sha tag and omitted for a release
+                   tag; the API reports it as unknown until one is known. */}}
+            {{- with $svc.image.tag }}
+            - name: APP_VERSION
+              value: {{ . | quote }}
+            {{- $commit := include "qnsc.appCommit" . }}
+            {{- if $commit }}
+            - name: APP_COMMIT
+              value: {{ $commit | quote }}
+            {{- end }}
+            {{- end }}
             {{- /* §5d / §6.3 — HOW THE DATABASE ENDPOINT IS CHOSEN.
                    `mode: cnpg` (on-prem): straight to the CNPG cluster's -rw
                    Service — a SAN on CNPG's server certificate, which is what

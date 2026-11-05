@@ -13,9 +13,15 @@ One chart per product (api, worker, migrator, optional web). Values live in
 - both probes `GET /healthz`
 - pod/container securityContext: restricted (non-root uid 1001, read-only root
   filesystem, all capabilities dropped, RuntimeDefault seccomp)
-- `web.config` is rendered verbatim as JSON and mounted at `/srv/config.json`
-  through `subPath`. A pod annotation `checksum/config` hashes it, so changing
-  the config rolls the pod — a subPath mount never updates in place.
+- `web.config` is rendered as JSON and mounted at `/srv/config.json` through
+  `subPath`. The chart adds two keys of its own from the web image tag —
+  `appVersion`, and `appCommit` when the tag is `sha-<commit>` — so the UI
+  reports the build it was served from without a hand-copied version string.
+  A pod annotation `checksum/config` hashes the rendered config, so changing the
+  config or the image tag rolls the pod — a subPath mount never updates in place.
+- every service container also gets `APP_VERSION` (the image tag) and, for a
+  `sha-<commit>` tag, `APP_COMMIT`. A release tag (`vX.Y.Z`) and a digest-only
+  pin carry no commit, so `APP_COMMIT` is absent rather than guessed.
 - the image repo/tag/digest follows the other services: repo in `base.yaml`,
   tag/digest in `tags.<env>.yaml`.
 
