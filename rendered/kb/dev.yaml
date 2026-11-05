@@ -387,11 +387,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-30f0f3887f47
             - name: APP_VERSION
-              value: "sha-590edf33f313"
+              value: "sha-30f0f3887f47"
             - name: APP_COMMIT
-              value: "590edf33f313"
+              value: "30f0f3887f47"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -551,11 +551,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-590edf33f313
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-30f0f3887f47
             - name: APP_VERSION
-              value: "sha-590edf33f313"
+              value: "sha-30f0f3887f47"
             - name: APP_COMMIT
-              value: "590edf33f313"
+              value: "30f0f3887f47"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
