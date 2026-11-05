@@ -19,9 +19,8 @@ size: s                      # 1 replica, no PDB, no topology spread
 web:
   enabled: true
   # rova's Caddyfile reverse-proxies /guide-assets/* to the api (User Guide gate:
-  # GET /v1/auth/me). 0.19.2 renders WEB_API_UPSTREAM + web egress to the api.
-  # Dev only: the prod row still pins 0.19.1, whose schema rejects this key.
-  apiUpstream: true
+  # GET /v1/auth/me). `apiUpstream: true` lives in base.yaml now that the prod
+  # row also accepts it.
   config:
     appEnv: development
 

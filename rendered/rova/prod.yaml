@@ -32,7 +32,13 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-platform
 spec:
-  podSelector: {}
+  # The optional SPA (`web`) is a static file server: DNS is all it needs. Every
+  # egress allow below is scoped to the product's other workloads (api, worker,
+  # migrator, and any future Job/CronJob), so the web pod cannot reach `platform`,
+  # the internet or the data namespace if it is compromised.
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -46,7 +52,9 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-external
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
@@ -67,14 +75,24 @@ kind: NetworkPolicy
 metadata:
   name: allow-egress-data
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: NotIn, values: [web] }
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { cnpg.io/cluster: "pg-rova" }
       ports:
         - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: "data-prod" }
+          podSelector:
+            matchLabels: { app.kubernetes.io/instance: "valkey-rova" }
+      ports:
         - { protocol: TCP, port: 6379 }
 
 ---
@@ -101,6 +119,13 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: "platform" }
+          # Only the tunnel connector, not every pod in `platform` (ArgoCD,
+          # operators, Alloy, ...). Both selectors in ONE `from` entry AND
+          # them; two entries would admit every pod in the namespace. Alloy
+          # does not scrape the product API (no metrics annotations; the
+          # k8s-monitoring values scrape KSM/node only), so no Alloy entry.
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
       ports:
         - { protocol: TCP, port: 3000 }
     - from:
@@ -244,7 +269,7 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 1Gi
+              memory: 512Mi
             limits:
               memory: 1Gi
           livenessProbe:
@@ -262,6 +287,8 @@ spec:
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=v0.8.9
+            - name: APP_VERSION
+              value: "v0.8.9"
             - name: DATABASE_HOST
               value: pg-rova-rw.data-prod.svc
             - name: DATABASE_PORT
@@ -398,7 +425,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               memory: 512Mi
           env:
@@ -408,6 +435,8 @@ spec:
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=rova,deployment.environment=prod,service.version=v0.8.9
+            - name: APP_VERSION
+              value: "v0.8.9"
             - name: DATABASE_HOST
               value: pg-rova-rw.data-prod.svc
             - name: DATABASE_PORT
