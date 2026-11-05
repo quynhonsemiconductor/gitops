@@ -281,7 +281,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"1fcd2130feba","appEnv":"development","appVersion":"sha-1fcd2130feba","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"a03fe2248089","appEnv":"development","appVersion":"sha-a03fe2248089","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -377,7 +377,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:2d45bd3fc53bded30143ee3f8d954615c6b4b924504673358bac97febf25864f
+          image: ghcr.io/quynhonsemiconductor/rova-api@sha256:f9a9ef3d7439201dc5627aaf54fe8dc1049731c2bfcc235c78139ff51c9414f4
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -407,11 +407,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-1fcd2130feba
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-a03fe2248089
             - name: APP_VERSION
-              value: "sha-1fcd2130feba"
+              value: "sha-a03fe2248089"
             - name: APP_COMMIT
-              value: "1fcd2130feba"
+              value: "a03fe2248089"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -538,7 +538,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:1f7e379996bc80c707daf721acd889f54950d33ab564b2727cbc32865e5845ee
+          image: ghcr.io/quynhonsemiconductor/rova-worker@sha256:203750e0cca78e2e17d9f67e9545265ed8b7f9e518282ac1003d5a39081bc88d
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -557,11 +557,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-1fcd2130feba
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-a03fe2248089
             - name: APP_VERSION
-              value: "sha-1fcd2130feba"
+              value: "sha-a03fe2248089"
             - name: APP_COMMIT
-              value: "1fcd2130feba"
+              value: "a03fe2248089"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -679,7 +679,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 543edecce10c8eb33da93e614d22ea1f19eb93e7a4a0c978c6d8ab662d21b7a4
+        checksum/config: 20c18b80f4e6db60d1d2d4cf0706b261db18e7458113d9f6202dbb60ef89befc
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -695,7 +695,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/rova-web@sha256:15d2afb53d35e5331d6213adecc702e97ce0a7b9d215047fcd6767a590f6d9a8
+          image: ghcr.io/quynhonsemiconductor/rova-web@sha256:dbf855f4dc4ac4fda3d79fb0a5048271e329311f37028083b0cdc6047449ef58
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -742,7 +742,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-7a594e47f46d
+  name: migrator-0410acaa0a4b
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: rova
@@ -782,7 +782,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/rova-migrator@sha256:7a594e47f46d597afd08d4bfa3baaf35a3140d6e637c28a579324446528dfa6b
+          image: ghcr.io/quynhonsemiconductor/rova-migrator@sha256:0410acaa0a4b92a93d0a446b96838f9b730b14b3e493a2e013f30a0274a78456
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
