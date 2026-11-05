@@ -156,7 +156,7 @@ drift_check() {
   # knows it is deliberately not a plain secret.
   handled+="$p-graph-cert "
   # kb names its secrets after the env var they carry (values/kb/dev.secrets.yaml)
-  handled+="$p-secret-key $p-data-encryption-key $p-gemini-api-key $p-r2-access-key-id $p-r2-secret-access-key $p-microsoft-client-secret "
+  handled+="$p-secret-key $p-data-encryption-key $p-r2-access-key-id $p-r2-secret-access-key $p-microsoft-client-secret "
   local missing=0 n
   while read -r n; do
     [[ $handled == *" $n "* ]] || { echo "  ! $f names $n, which this script does not create" >&2; missing=1; }
@@ -253,7 +253,6 @@ listed "$PRODUCT-$ENV-storage-secret-access-key" && ask "$VAULT_APP" "$PRODUCT-$
 if [[ -f $SECFILE ]]; then
   listed "$PRODUCT-$ENV-microsoft-client-secret" && ask "$VAULT_APP" "$PRODUCT-$ENV-microsoft-client-secret" "$EXP_6M" \
     "Entra '$PRODUCT $ENV' app client secret value (6 months)"
-  listed "$PRODUCT-$ENV-gemini-api-key" && ask "$VAULT_APP" "$PRODUCT-$ENV-gemini-api-key" "$EXP_1Y" 'Gemini API key'
   listed "$PRODUCT-$ENV-r2-access-key-id" && ask "$VAULT_APP" "$PRODUCT-$ENV-r2-access-key-id" "$EXP_1Y" \
     'R2 API token Access Key ID (sources bucket, object read/write)'
   listed "$PRODUCT-$ENV-r2-secret-access-key" && ask "$VAULT_APP" "$PRODUCT-$ENV-r2-secret-access-key" "$EXP_1Y" \

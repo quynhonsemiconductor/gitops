@@ -85,13 +85,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: pg-kb-restore-test
+  # NOT the restored cluster's name: CNPG creates its own ServiceAccount/Role/RoleBinding named after the
+  # cluster (pg-kb-restore-test) and overwrites a same-named Role mid-test (opshub 2026-11-04, kb 2026-11-05).
+  name: pg-kb-restore-runner
   namespace: restore-test
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: pg-kb-restore-test
+  name: pg-kb-restore-runner
   namespace: restore-test
 rules:
   - apiGroups: [postgresql.cnpg.io]
@@ -110,11 +112,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: pg-kb-restore-test
+  name: pg-kb-restore-runner
   namespace: restore-test
-roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-kb-restore-test }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-kb-restore-runner }
 subjects:
-  - { kind: ServiceAccount, name: pg-kb-restore-test, namespace: restore-test }
+  - { kind: ServiceAccount, name: pg-kb-restore-runner, namespace: restore-test }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -250,7 +252,7 @@ spec:
           labels:
             app.kubernetes.io/name: pg-kb-restore-test
         spec:
-          serviceAccountName: pg-kb-restore-test
+          serviceAccountName: pg-kb-restore-runner
           restartPolicy: Never
           terminationGracePeriodSeconds: 330   # the EXIT trap deletes the cluster (<= 300 s)
           securityContext:
