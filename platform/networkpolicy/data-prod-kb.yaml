@@ -1,0 +1,45 @@
+# ── data-prod: kb-prod's access to ITS data only (prep, nothing runs yet) ───────────────
+#
+# data-prod-admit (data-prod.yaml) admits rova-prod, restore-test and cnpg-system to EVERY pod in
+# data-prod. NetworkPolicies add up, so kb-prod gets two narrow policies of its own instead of a
+# new line in that one: kb-prod reaches only pg-kb (5432) and valkey-kb-prod (6379), selected by
+# the pods' own labels. The CNPG operator (cnpg-system), the restore test and Alloy are already
+# admitted by data-prod-admit.
+#
+# kb also reaches tei-e5 in `ai` on 80; that is the CHART's half (values/kb/prod.yaml
+# networkPolicy.egressNamespaces) and tei-e5-clients already admits kb-prod.
+#
+# FOLLOW-UP once kb-prod runs (not now: rova-prod and opshub-prod are live/soaking): the
+# other prod namespaces are still admitted to every data-prod pod by data-prod-admit. Scope
+# that rule per store when the prod set stops changing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-kb-postgres
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: pg-kb }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kb-prod }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-kb-valkey
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/instance: valkey-kb-prod }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kb-prod }
+      ports:
+        - { protocol: TCP, port: 6379 }
