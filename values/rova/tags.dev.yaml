@@ -22,15 +22,15 @@
 services:
   api:
     image:
-      tag: sha-ca26c2f8e91a
-      digest: sha256:f9a9ef3d7439201dc5627aaf54fe8dc1049731c2bfcc235c78139ff51c9414f4
+      tag: sha-054015b7d511
+      digest: sha256:ee7fe724ce6314d4d581f8b67ceb2edbd0cacc97cf5b56e3b41f29a181246960
   migrator:
     image:
-      tag: sha-ca26c2f8e91a
+      tag: sha-054015b7d511
       digest: sha256:0410acaa0a4b92a93d0a446b96838f9b730b14b3e493a2e013f30a0274a78456
   worker:
     image:
-      tag: sha-ca26c2f8e91a
+      tag: sha-054015b7d511
       digest: sha256:203750e0cca78e2e17d9f67e9545265ed8b7f9e518282ac1003d5a39081bc88d
 # ── the SPA image (web) ──────────────────────────────────────────────────────
 # NOT under `services:`: web is not a service, so the chart reads it from
@@ -40,5 +40,5 @@ services:
 # `.services.<name>`, so it leaves this block alone.
 web:
   image:
-    tag: sha-ca26c2f8e91a
+    tag: sha-054015b7d511
     digest: sha256:dbf855f4dc4ac4fda3d79fb0a5048271e329311f37028083b0cdc6047449ef58
