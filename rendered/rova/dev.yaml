@@ -243,9 +243,7 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 automountServiceAccountToken: false
 
 ---
@@ -752,7 +750,8 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   activeDeadlineSeconds: 600
@@ -869,9 +868,7 @@ kind: ExternalSecret
 metadata:
   name: rova-migrator
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 1h
   secretStoreRef:
@@ -947,9 +944,7 @@ kind: ExternalSecret
 metadata:
   name: rova-migrator-db-ca
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 12h
   secretStoreRef:
@@ -1114,9 +1109,9 @@ spec:
       rules:
         - alert: rova-apiErrorBudgetBurnFast
           expr: |
-            slo:request_error_rate:ratio_rate1h{service="rova-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate1h{service="rova-api"} > (14.4 * 0.005)
             and
-            slo:request_error_rate:ratio_rate5m{service="rova-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate5m{service="rova-api"} > (14.4 * 0.005)
           for: 2m
           labels:
             severity: P1
@@ -1128,9 +1123,9 @@ spec:
 
         - alert: rova-apiErrorBudgetBurnSlow
           expr: |
-            slo:request_error_rate:ratio_rate6h{service="rova-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate6h{service="rova-api"} > (6 * 0.005)
             and
-            slo:request_error_rate:ratio_rate30m{service="rova-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate30m{service="rova-api"} > (6 * 0.005)
           for: 15m
           labels:
             severity: P2
