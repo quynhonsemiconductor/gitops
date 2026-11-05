@@ -219,9 +219,7 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 automountServiceAccountToken: false
 
 ---
@@ -500,6 +498,7 @@ spec:
   replicas: 1
   strategy:
     type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app.kubernetes.io/name: worker
@@ -755,7 +754,8 @@ metadata:
     qnsc.vn/env: prod
     qnsc.vn/tenant: product
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   activeDeadlineSeconds: 600
@@ -888,9 +888,7 @@ kind: ExternalSecret
 metadata:
   name: kb-migrator
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 1h
   secretStoreRef:
@@ -948,9 +946,7 @@ kind: ExternalSecret
 metadata:
   name: kb-migrator-db-ca
   annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-1"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
 spec:
   refreshInterval: 12h
   secretStoreRef:
@@ -1088,9 +1084,9 @@ spec:
       rules:
         - alert: kb-apiErrorBudgetBurnFast
           expr: |
-            slo:request_error_rate:ratio_rate1h{service="kb-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate1h{service="kb-api"} > (14.4 * 0.01)
             and
-            slo:request_error_rate:ratio_rate5m{service="kb-api"} > (14.4 * 0)
+            slo:request_error_rate:ratio_rate5m{service="kb-api"} > (14.4 * 0.01)
           for: 2m
           labels:
             severity: P2
@@ -1102,9 +1098,9 @@ spec:
 
         - alert: kb-apiErrorBudgetBurnSlow
           expr: |
-            slo:request_error_rate:ratio_rate6h{service="kb-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate6h{service="kb-api"} > (6 * 0.01)
             and
-            slo:request_error_rate:ratio_rate30m{service="kb-api"} > (6 * 0)
+            slo:request_error_rate:ratio_rate30m{service="kb-api"} > (6 * 0.01)
           for: 15m
           labels:
             severity: P2
