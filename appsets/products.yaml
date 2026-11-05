@@ -103,8 +103,10 @@ spec:
 
     # ── prod ─────────────────────────────────────────────────────────────────
     # ENABLED by the move-night PR (merged on the owner's go, after pg-rova is restored and
-    # verified): the rova prod row. `prune: false`: a prune must never delete
-    # prod objects. Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
+    # verified): the rova prod row. `prune: true` (argocd-audit 2026-11-04 H3): a chart-removed
+    # Deployment/Service/ExternalSecret must go away in prod too; nothing in a product namespace
+    # owns a PVC or a CNPG Cluster (those are platform data apps, protected object by object).
+    # Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
     # prod has no downscaler and replica drift is real drift.
     - list:
         elements:
@@ -130,7 +132,7 @@ spec:
               namespace: "{{.product}}-{{.env}}"
             syncPolicy:
               automated:
-                prune: false
+                prune: true
 
     # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
     # simply has no dev row — §5c: "Absence is the mechanism."

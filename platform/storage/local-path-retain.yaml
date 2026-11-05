@@ -15,6 +15,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: local-path-retain
+  annotations:
+    # Deleting the class does not delete the PVs, but it must be a deliberate edit:
+    # the data PVCs name it, and a recreate would race the running clusters.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 provisioner: rancher.io/local-path
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer

@@ -22,6 +22,9 @@ kind: ExternalSecret
 metadata:
   name: pg-rova-r2-backup
   namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
   secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
@@ -70,6 +73,9 @@ kind: ScheduledBackup
 metadata:
   name: pg-rova-nightly
   namespace: data-prod
+  annotations:
+    # Backup schedule: removing it must be an explicit edit + sync, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   schedule: "0 0 19 * * *"
   immediate: true

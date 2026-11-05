@@ -17,6 +17,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: data-prod
   labels:
     qnsc.vn/env: prod
@@ -28,6 +30,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: data-dev
   labels:
     qnsc.vn/env: dev
@@ -39,6 +43,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: restore-test
   labels:
     qnsc.vn/env: prod
@@ -53,6 +59,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: rova-prod
   labels:
     qnsc.vn/env: prod
@@ -65,6 +73,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: opshub-prod
   labels:
     qnsc.vn/env: prod
@@ -77,6 +87,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: rova-dev
   labels:
     qnsc.vn/env: dev
@@ -89,6 +101,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: opshub-dev
   labels:
     qnsc.vn/env: dev
@@ -101,6 +115,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: kb-dev
   labels:
     qnsc.vn/env: dev
@@ -116,6 +132,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: kb-prod
   labels:
     qnsc.vn/env: prod
@@ -134,6 +152,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: cnpg-system
   labels:
     pod-security.kubernetes.io/enforce: baseline
@@ -144,6 +164,8 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: cert-manager
   labels:
     pod-security.kubernetes.io/enforce: baseline
