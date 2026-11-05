@@ -18,7 +18,6 @@ tests:
           path: spec.data
           value:
             - { secretKey: DATA_ENCRYPTION_KEY, remoteRef: { key: kb-dev-data-encryption-key } }
-            - { secretKey: GEMINI_API_KEY, remoteRef: { key: kb-dev-gemini-api-key } }
             - { secretKey: MICROSOFT_CLIENT_SECRET, remoteRef: { key: kb-dev-microsoft-client-secret } }
             - { secretKey: R2_ACCESS_KEY_ID, remoteRef: { key: kb-dev-r2-access-key-id } }
             - { secretKey: R2_SECRET_ACCESS_KEY, remoteRef: { key: kb-dev-r2-secret-access-key } }

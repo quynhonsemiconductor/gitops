@@ -150,7 +150,6 @@ secrets:
   env:
     SECRET_KEY: kb-prod-secret-key                       # config.py:68, JWT signing; min 32 chars
     DATA_ENCRYPTION_KEY: kb-prod-data-encryption-key     # config.py:71, separate from SECRET_KEY; min 32 chars
-    GEMINI_API_KEY: kb-prod-gemini-api-key               # config.py:145
     R2_ACCESS_KEY_ID: kb-prod-r2-access-key-id           # config.py:784
     R2_SECRET_ACCESS_KEY: kb-prod-r2-secret-access-key   # config.py:785
     MICROSOFT_CLIENT_SECRET: kb-prod-microsoft-client-secret   # config.py:626, "KB Prod" sign-in + connector app

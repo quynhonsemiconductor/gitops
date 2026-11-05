@@ -1008,9 +1008,6 @@ spec:
     - secretKey: DATA_ENCRYPTION_KEY
       remoteRef:
         key: kb-dev-data-encryption-key
-    - secretKey: GEMINI_API_KEY
-      remoteRef:
-        key: kb-dev-gemini-api-key
     - secretKey: MICROSOFT_CLIENT_SECRET
       remoteRef:
         key: kb-dev-microsoft-client-secret
