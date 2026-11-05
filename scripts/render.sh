@@ -8,9 +8,10 @@
 #
 # WHAT IS RENDERED — what ArgoCD will apply, not the chart at HEAD. Each
 # Application pins its own chart in appsets/products.yaml (OCI + `targetRevision`),
-# so this script reads the (product, env, chartVersion) rows from BOTH generators
-# and renders with `oci://…/qnsc-service --version <chartVersion>`, passing the
-# same three value files in the same order as the ApplicationSet template
+# so this script reads the (product, env, chartVersion) rows from the single
+# list generator in that ApplicationSet (it was split into two generators until
+# argocd-audit M6), and renders with `oci://…/qnsc-service --version <chartVersion>`,
+# passing the same three value files in the same order as the ApplicationSet template
 # (base.yaml, <env>.yaml, tags.<env>.yaml). Rows that are commented out are
 # skipped, exactly as ArgoCD skips them.
 #
@@ -32,12 +33,13 @@ HEAD_CHART=charts/qnsc-service
 
 die() { echo "::error::$*" >&2; exit 1; }
 
-# The (product, env, chartVersion) rows of both generators. The pattern anchors
+# The (product, env, chartVersion) rows of the list generator. The pattern anchors
 # a list item at the start of the line, so a leading `#` (a disabled row) cannot
-# match and is skipped.
+# match and is skipped. Fields after chartVersion are allowed (the row still has
+# to end in `}`); the declared/parsed count check below keeps the format closed.
 rows() {
   sed -nE \
-    's/^[[:space:]]*-[[:space:]]*\{[[:space:]]*product:[[:space:]]*([a-z0-9-]+),[[:space:]]*env:[[:space:]]*(dev|prod),[[:space:]]*chartVersion:[[:space:]]*"([^"]+)"[[:space:]]*\}[[:space:]]*$/\1 \2 \3/p' \
+    's/^[[:space:]]*-[[:space:]]*\{[[:space:]]*product:[[:space:]]*([a-z0-9-]+),[[:space:]]*env:[[:space:]]*(dev|prod),[[:space:]]*chartVersion:[[:space:]]*"([^"]+)".*\}[[:space:]]*$/\1 \2 \3/p' \
     "$APPSSET"
 }
 
