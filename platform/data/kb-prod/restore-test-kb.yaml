@@ -41,8 +41,8 @@
 # R2 token the other restore tests use (bucket qnsc-backups, object read;
 # kv-qnsc-prod r2-backup-ro-*): this namespace can never write to
 # s3://qnsc-backups/pg-kb/, whatever the Job or the restored cluster does. The
-# `postgresql` ImageCatalog it needs is declared next to the others in
-# platform/cnpg/imagecatalog.yaml (one file, one digest). Mutation resistance: stop the archive
+# `postgresql` ClusterImageCatalog it needs is the one cluster-scoped object in
+# platform/cnpg/imagecatalog.yaml (owned by platform-cnpg, one digest). Mutation resistance: stop the archive
 # (wrong serverName) and the Cluster never becomes Ready, so the Job times out FAIL.
 ---
 apiVersion: external-secrets.io/v1
@@ -134,7 +134,7 @@ data:
       instances: 1
       imageCatalogRef:
         apiGroup: postgresql.cnpg.io
-        kind: ImageCatalog
+        kind: ClusterImageCatalog
         name: postgresql
         major: 18
       storage:

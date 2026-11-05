@@ -1,4 +1,4 @@
-# Data plane: the two dev Valkey StatefulSets, the Postgres ImageCatalogs and the dev Cluster (pg-dev). valkey-rova and pg-rova live in platform-data-prod.yaml. prune: false — these own PVCs.
+# Data plane: the two dev Valkey StatefulSets and the dev Cluster (pg-dev). valkey-rova and pg-rova live in platform-data-prod.yaml. The Postgres image catalog is cluster-scoped and owned by platform-cnpg (audit M1). prune: false — these own PVCs.
 # Sync wave 0 (ONPREM-PLAN §11.2): root orders its children by wave and waits for
 # each wave's Applications to be Healthy (argocd-cm Application health customization,
 # platform/argocd/values.yaml).
@@ -26,7 +26,7 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: platform/cnpg
-      directory: { include: "{imagecatalog,pg-dev,pg-dev-dump}.yaml" }
+      directory: { include: "{pg-dev,pg-dev-dump}.yaml" }
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]

@@ -30,7 +30,7 @@ spec:
   instances: 1
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
-    kind: ImageCatalog
+    kind: ClusterImageCatalog
     name: postgresql
     major: 18
   # local-path-retain (platform/storage): PVs of NEW PVCs survive the deletion of the PVC or the
