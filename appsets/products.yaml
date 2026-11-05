@@ -63,12 +63,12 @@ spec:
           # so the UI can show which build serves it (#313).
           # Never pin 0.11.1 (PreSync deadlock, fixed in 0.11.2, gitops#45).
           - { product: rova,   env: dev, chartVersion: "0.20.0" }
-          - { product: opshub, env: dev, chartVersion: "0.19.3" }
+          - { product: opshub, env: dev, chartVersion: "0.20.0" }
           # kb-dev: the values are complete (values/kb/dev.yaml) and the chart exists; this row waits for
           # the owner's kv-qnsc-dev kb-dev-* secrets (values/kb/dev.secrets.yaml) and the "KB Dev" Entra
           # redirects on kb-dev.qnsc.vn — an absent kv secret fails the whole ExternalSecret, so the row
           # is the last switch. All three dev rows move together to 0.19.3.
-          - { product: kb, env: dev, chartVersion: "0.19.3" }
+          - { product: kb, env: dev, chartVersion: "0.20.0" }
         template:
           # The CRD requires every generator template to carry a FULL Application
           # skeleton (metadata.name, spec.project, spec.destination) — it is
