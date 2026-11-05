@@ -28,6 +28,10 @@ kind: StatefulSet
 metadata:
   name: valkey-rova
   namespace: data-prod
+  annotations:
+    # Stateless cache, but the pod identity and its ACL are referenced by name; never
+    # let ArgoCD prune or cascade-delete it during an app move.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/name: valkey
     app.kubernetes.io/instance: valkey-rova

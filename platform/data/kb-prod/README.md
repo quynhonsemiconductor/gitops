@@ -31,7 +31,7 @@ digests) are the other half; the appset row is a comment in appsets/products.yam
    `https://kb.qnsc.vn/api/v1/auth/entra/callback` and
    `https://kb.qnsc.vn/api/v1/connectors/oauth/callback`.
 2. **Key Vault** — `platform/bootstrap/secrets.sh --product kb --env prod --vault-app kv-qnsc-prod
-   --skip-site`: the nine `kb-prod-*` names in values/kb/prod.secrets.yaml (the Graph
+   --skip-site`: the ten `kb-prod-*` names in values/kb/prod.secrets.yaml (the Graph
    certificate comes from the identity lane).
 3. **R2** — create the bucket `qnsc-kb-prod-sources` (infra live/storage-prod) and a bucket-scoped
    token for kb-prod-r2-access-key-id / kb-prod-r2-secret-access-key.

@@ -32,6 +32,9 @@ spec:
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
+  annotations:
+    # Irreversible backup configuration: removal is an explicit owner step, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: pg-kb-r2
   namespace: data-prod
 spec:
