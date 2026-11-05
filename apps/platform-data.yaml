@@ -6,6 +6,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: platform-data
+  labels:
+    qnsc.vn/env: platform
   namespace: argocd
   annotations:
     # Permanent OutOfSync (audit G-07): the CNPG webhook and the StatefulSet API default fields that
