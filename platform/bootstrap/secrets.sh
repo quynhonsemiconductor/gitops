@@ -148,7 +148,7 @@ drift_check() {
   handled+="$p-platform-admin-emails $p-entra-client-secret "
   handled+="$p-storage-access-key-id $p-storage-secret-access-key "
   handled+="$p-db-app $p-db-worker $p-db-migrator $p-db-readonly "
-  handled+="$p-github-webhook-secret $p-redis-url $p-github-app-private-key "
+  handled+="$p-github-webhook-secret $p-redis-url $p-github-app-private-key $p-mcp-idempotency-secret "
   # Not generated: the Cloudflare Access AUD tag, copied from the Access app. It must still be
   # asked for, or the values file lists a secret the script can never create.
   handled+="$p-mcp-access-aud "
@@ -213,6 +213,8 @@ echo "== $VAULT_APP: $PRODUCT-$ENV generated app secrets"
 listed "$PRODUCT-$ENV-cookie-secret" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-cookie-secret" "$EXP_1Y"
 listed "$PRODUCT-$ENV-csrf-secret" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-csrf-secret" "$EXP_1Y"
 listed "$PRODUCT-$ENV-better-auth-secret" && openssl rand -base64 48 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-better-auth-secret" "$EXP_1Y"
+# rova: HMAC key for the MCP create idempotency keys, required once MCP_WRITES_ENABLED=true (>= 32 chars).
+listed "$PRODUCT-$ENV-mcp-idempotency-secret" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-mcp-idempotency-secret" "$EXP_1Y"
 # kb: the JWT signing key and the data-at-rest key, two DIFFERENT values (config.py:68, :71)
 for n in secret-key data-encryption-key; do
   [[ -f $SECFILE ]] && listed "$PRODUCT-$ENV-$n" && openssl rand -hex 32 | tr -d '\n' | put "$VAULT_APP" "$PRODUCT-$ENV-$n" "$EXP_1Y"
