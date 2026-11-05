@@ -257,7 +257,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"/api/v1","appCommit":"bbcb0170d7bc","appVersion":"sha-bbcb0170d7bc"}
+    {"apiBaseUrl":"/api/v1","appCommit":"7cc2d0183d6e","appVersion":"sha-7cc2d0183d6e"}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -693,7 +693,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: cf3052f7929b634872c1a5ff85f96357286d22ab22cf164232a78ce26d6d9b6e
+        checksum/config: 14349282ec434450c04974be413ba3001cb9dccc9e851a7858c7c39c8e2b9f80
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -709,7 +709,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: web
-          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:15f430a7514da2e1552e210913d4eccf043390b64bf7e61a8bc11a3914d3232c
+          image: ghcr.io/quynhonsemiconductor/kb-web@sha256:9f55515b50dbc288d1c9b18272fb9e35c9d430150e141e29bc3f544c8568b4d0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
