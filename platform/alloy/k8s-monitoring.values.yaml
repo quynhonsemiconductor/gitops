@@ -1017,7 +1017,7 @@ collectors:
 
       // NVIDIA DCGM exporter on the GPU node (platform/ai/dcgm-exporter.yaml,
       // deployed by platform-ai into namespace `gpu-monitoring` — `ai` enforces
-      // PSA baseline and rejects a privileged/hostPID pod). Five fields on ONE
+      // PSA baseline and rejects a privileged pod). Five fields on ONE
       // physical GPU: utilisation,
       // memory utilisation, framebuffer used, temperature, XID errors — plus
       // `up`/`scrape_samples_scraped`, so this whole job is 7 series. The

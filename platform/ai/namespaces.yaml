@@ -37,9 +37,9 @@ metadata:
 
 ---
 # ── gpu-monitoring: the DCGM exporter ONLY (observability audit 2026-11-06) ──
-# `ai` enforces PSA baseline, which REJECTS privileged containers and host
-# namespaces — and DCGM needs both (NVML/driver access, hostPID for the GPU
-# device tree). 2026-11-06 review: the exporter is never run in `ai`.
+# `ai` enforces PSA baseline, which REJECTS privileged containers, and DCGM
+# needs one (NVML/driver access). 2026-11-06 review: the exporter is never run
+# in `ai`, and `ai` is not relaxed.
 #
 # The obi precedent (../namespaces/obi.yaml), not a relaxation of `ai`: the
 # exception is a namespace of its own, audit and warn stay at `restricted`, and
