@@ -83,15 +83,12 @@ coder:
     # CODER_OIDC_ICON_URL is deliberately unset: it needs a publicly reachable
     # icon asset, and none is hosted for this deployment (no third-party hotlink).
     - { name: CODER_OIDC_SIGN_IN_TEXT, value: "Sign in with Microsoft" }
-    # TEMPORARY — revert in PR-B after the owner is promoted (2026-11-07).
-    # 2.38.1 refuses EVERY password login when this is true, Owner included
-    # (tested: POST /api/v2/users/login -> "Password authentication is disabled.";
-    # the "owners can still sign in" sentence in `--help` does NOT hold). The
-    # break-glass Owner therefore cannot sign in to promote NghiaVT. Only that
-    # one account has a password (OIDC users are login_type=oidc) and
-    # coder.qnsc.vn is WARP-only, so the window is small.
+    # Password login is DISABLED for everyone. 2.38.1 does NOT exempt Owners
+    # (tested 2026-11-07: POST /api/v2/users/login -> "Password authentication
+    # is disabled."), so a break-glass sign-in needs a one-line PR flipping this
+    # to false, then a revert. Procedure: README, "Break-glass".
     # https://coder.com/docs/reference/cli/server#--disable-password-auth
-    - { name: CODER_DISABLE_PASSWORD_AUTH, value: "false" }
+    - { name: CODER_DISABLE_PASSWORD_AUTH, value: "true" }
     # No usage data leaves the platform.
     # https://coder.com/docs/reference/cli/server#--telemetry-enable
     - { name: CODER_TELEMETRY_ENABLE, value: "false" }
