@@ -105,6 +105,16 @@ jobs:
           ./scripts/test-appproject-destinations.sh
           ./scripts/check-appproject-destinations.sh
 
+      # ── the owner-run Coder CLI ──────────────────────────────────────────
+      # scripts/coder-push-template.sh runs intermittently against the pinned
+      # coder image, so a flag the image does not have (or the missing
+      # entrypoint override, #399) fails on the owner's laptop at 01:00. This
+      # checks the flags against `--help` of the very image the script pins.
+      - name: coder CLI flags exist in the pinned image
+        run: |
+          ./scripts/test-coder-cli-flags.sh
+          ./scripts/check-coder-cli-flags.sh
+
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
