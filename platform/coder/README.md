@@ -173,11 +173,17 @@ Pushed from Git, never edited in the UI:
 ```sh
 export CODER_URL=https://coder.qnsc.vn          # over WARP
 export CODER_TOKEN=...                          # coder tokens create; vault/ESO, never Git
+export VLSI_NODE_SSH=qnsc@vlsi-01               # storage gate: local-path must be on sdb
 ./scripts/coder-push-template.sh
 ```
 
-The script runs the pinned `ghcr.io/coder/coder:2.38.1` CLI in Docker, pushes
-the directory, activates the version and sets the TTL metadata. A CI job can
+The script runs the pinned `ghcr.io/coder/coder:2.38.1` CLI in Docker (with
+`--entrypoint /opt/coder`: the image entrypoint already runs `coder server`),
+pipes the directory in over stdin so nothing on the host is writable from the
+container, activates the version and sets the 2 h default TTL. Provider pins come
+from the committed `.terraform.lock.hcl`. There is no max-TTL on OSS 2.38.1
+(`--max-ttl` is absent from `templates edit --help`), so the 2 h default plus the
+agent's activity bump is the policy. A CI job can
 call the same script with the token delivered by ESO; the token is read from
 the environment, never argv or output.
 

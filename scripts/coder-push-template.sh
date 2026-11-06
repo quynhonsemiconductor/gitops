@@ -6,6 +6,7 @@
 #
 #   export CODER_URL=https://coder.qnsc.vn          # over WARP
 #   export CODER_TOKEN=...                          # `coder tokens create`, never committed
+#   export VLSI_NODE_SSH=qnsc@vlsi-01               # the storage-gate node
 #   ./scripts/coder-push-template.sh
 #
 # The token is read from the environment and passed to the pinned coder image by
@@ -19,6 +20,9 @@
 #
 # The Coder CLI runs in the digest-pinned server image (no local install):
 #   ghcr.io/coder/coder:v2.38.1@sha256:...  (versions.yaml, `coder.image`)
+# The template directory carries .terraform.lock.hcl (generated with
+# `terraform init -backend=false`), so the push does not warn about unpinned
+# providers; re-run that command and commit the lock file when a provider moves.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,20 +43,32 @@ printf '%s\n' "$mount" | grep -Eq '/dev/sdb' \
   || { echo "STOP: /var/lib/rancher/k3s/storage on $VLSI_NODE_SSH is not on /dev/sdb (got: $mount). local-path enforces no size; a pilot now would fill the 40 GB root. Wait for the #428 mount." >&2; exit 1; }
 echo "storage gate: local-path on sdb ($mount)"
 
-docker run --rm \
-  -e CODER_URL -e CODER_TOKEN \
-  -v "$TEMPLATE_DIR:/tpl:ro" \
-  "$IMAGE" \
-  coder templates push "$NAME" \
-    --directory /tpl \
-    --yes \
-    --activate
+# The image ENTRYPOINT is ["/opt/coder","server"], so every CLI call must
+# override it and must NOT repeat the `coder` word: `docker run IMAGE coder
+# templates ...` becomes `coder server coder templates ...`.
+#
+# The template goes in over STDIN (`--directory -`), not a bind mount: nothing
+# in the host directory is writable from the container, and a future CLI that
+# wants to write (a lock file, for example) cannot touch the git tree.
+tar -C "$TEMPLATE_DIR" -cf - . \
+  | docker run --rm -i \
+      --entrypoint /opt/coder \
+      -e CODER_URL -e CODER_TOKEN \
+      "$IMAGE" \
+      templates push "$NAME" \
+        --directory - \
+        --yes \
+        --activate
 
-# TTL is template metadata, not HCL: 2 h default with the agent's activity bump,
-# 12 h hard ceiling. Re-running is idempotent.
+# TTL is template metadata, not HCL: 2 h default, reset by the agent's activity
+# bump. There is NO hard ceiling on OSS 2.38.1: `--max-ttl` is not in
+# `templates edit --help` (checked on the pinned image), so a max TTL is a
+# Premium/UI feature and the 2 h default + bump is the policy. Re-running is
+# idempotent.
 docker run --rm \
+  --entrypoint /opt/coder \
   -e CODER_URL -e CODER_TOKEN \
   "$IMAGE" \
-  coder templates edit "$NAME" --default-ttl 2h --max-ttl 12h
+  templates edit "$NAME" --default-ttl 2h
 
-echo "pushed $NAME from $TEMPLATE_DIR (TTL 2h/12h). The UI copy is not the source."
+echo "pushed $NAME from $TEMPLATE_DIR (TTL 2h default + activity bump). The UI copy is not the source."
