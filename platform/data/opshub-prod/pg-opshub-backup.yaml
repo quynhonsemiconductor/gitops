@@ -4,8 +4,9 @@
 # the retention window (PITR). Same design as pg-rova-backup.yaml. ⚠ INFRA FIRST: infra
 # live/onprem/backups.tf locks only `pg-rova/pg-rova-g1/wals/`; the `pg-opshub/pg-opshub-g1/wals/` lock
 # rule does not exist yet (infra lane, the same one-line rule), and without it opshub's WAL archive is
-# deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately does not), so
-# retentionPolicy equals the lock window.
+# deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately does not):
+# the 14-day lock is the immutability floor and barman's own retentionPolicy
+# (30 days, the prod policy in product-docs platform/RETENTION.md) is the age cap.
 #
 # Credential: an R2 API token scoped to bucket qnsc-backups only, object read+write
 # (barman needs delete to prune; the Bucket Lock is the immutability control, not a
@@ -47,7 +48,7 @@ metadata:
   name: pg-opshub-r2
   namespace: data-prod
 spec:
-  retentionPolicy: "14d"
+  retentionPolicy: "30d"
   configuration:
     destinationPath: s3://qnsc-backups/pg-opshub/
     endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com

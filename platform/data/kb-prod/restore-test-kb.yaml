@@ -248,16 +248,21 @@ metadata:
   name: pg-kb-restore-test
   namespace: restore-test
 spec:
+  # RETENTION: one successful and one failed Job (history limits above), and the
+  # Job spec has a SINGLE ttlSecondsAfterFinished — "1 day for success, 3 for
+  # failure" cannot be expressed in one template, so this job keeps the failed
+  # run (the evidence: restore-test logs are not shipped to Loki) for 3 days.
+  # product-docs platform/RETENTION.md.
   schedule: "0 20 * * 0"         # weekly, Sunday 20:00 UTC (same as pg-rova / pg-opshub)
   suspend: false                 # live since the 2026-11-06 G1 REQUIRE_DATA=1 PASS
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       backoffLimit: 0            # a failed restore test is a result, not something to retry
       activeDeadlineSeconds: 3000
-      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
+      ttlSecondsAfterFinished: 259200   # 3 days — see the retention note below the schedule
       template:
         metadata:
           labels:

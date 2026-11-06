@@ -1,10 +1,11 @@
 suite: terminated pod hygiene
-# Every Job keeps its pods for 3 days, then Kubernetes deletes the Job and its
+# Every Job keeps its pods for 1 day, then Kubernetes deletes the Job and its
 # pod. Without it, a Succeeded pod per migrator run/dump/restore-test lives
 # forever and becomes the biggest object count in the cluster.
 templates:
   - templates/job.yaml
   - templates/cronjob.yaml
+  - templates/deployment.yaml
 values:
   - ../../../values/rova/base.yaml
   - ../../../values/rova/tags.prod.yaml
@@ -14,13 +15,13 @@ set:
   secrets.clusterSecretStore: kv-qnsc-prod
 
 tests:
-  - it: the migrator Job deletes its pod after three days
+  - it: the migrator Job deletes its pod after one day
     template: templates/job.yaml
     documentIndex: 0
     asserts:
       - equal:
           path: spec.ttlSecondsAfterFinished
-          value: 259200
+          value: 86400
 
   - it: the migrator Job is a Sync hook on wave -1, after its normal wave -2 prerequisites
     template: templates/job.yaml
@@ -36,10 +37,27 @@ tests:
           path: metadata.annotations["argocd.argoproj.io/hook-delete-policy"]
           value: BeforeHookCreation
 
-  - it: a cron Job deletes its pod after three days
+  - it: a cron Job deletes its pod after one day
     template: templates/cronjob.yaml
     documentIndex: 0
     asserts:
       - equal:
           path: spec.jobTemplate.spec.ttlSecondsAfterFinished
-          value: 259200
+          value: 86400
+      # One Job of history each way: the retention policy in product-docs
+      # platform/RETENTION.md. The TTL is what removes the pod; the history
+      # limits bound how many Jobs can exist at once.
+      - equal:
+          path: spec.successfulJobsHistoryLimit
+          value: 1
+      - equal:
+          path: spec.failedJobsHistoryLimit
+          value: 1
+
+  - it: Deployments keep three ReplicaSets, not the default ten
+    template: templates/deployment.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.revisionHistoryLimit
+          value: 3

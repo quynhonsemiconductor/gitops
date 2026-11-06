@@ -18,6 +18,8 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
+  # Three revisions, not the default ten (each is a full rendered manifest set).
+  revisionHistoryLimit: 3
   sources:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main

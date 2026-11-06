@@ -94,6 +94,10 @@ spec:
         qnsc.vn/env: "{{.env}}"
     spec:
       project: products
+      # Three revisions, not ArgoCD's default ten: each revision is the full
+      # rendered manifest set, so this is the history a whole product keeps in
+      # etcd. Set on every Application this repo owns (apps/*.yaml too).
+      revisionHistoryLimit: 3
       # ONE k3s cluster; environments are namespaces (ONPREM-PLAN §6.2). The
       # namespace is declared in git (platform/namespaces/onprem.yaml) with its
       # qnsc.vn/env and qnsc.vn/tenant labels, never created by a sync.
