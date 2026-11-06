@@ -1,0 +1,32 @@
+# ── data-prod: the Coder control plane's access to ITS database only ───────
+#
+# pg-coder lives in data-prod with pg-rova/pg-opshub/pg-kb (SA decision
+# 2026-11-06, R2 token audit), so the prod namespace policies cover it:
+# data-prod-admit already admits the CNPG operator (cnpg-system), the pods in
+# data-prod itself (the pg-coder-dump CronJob) and the one Alloy collector on
+# the metrics port. What is missing is the Coder server, which stays in
+# namespace `coder`. NetworkPolicies add up, so this narrow policy admits
+# namespace `coder` to the pg-coder pods on 5432 and nothing else — it does not
+# widen `coder` to the other databases in this namespace.
+#
+# The reverse half (coder's egress to pg-coder) is in
+# platform/coder/networkpolicy.yaml: namespace data-prod, pod label
+# cnpg.io/cluster=pg-coder, port 5432.
+#
+# The restore test is NOT covered here: it restores into its own CNPG cluster
+# in namespace restore-test from the R2 archive and never talks to pg-coder.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-prod-coder-postgres
+  namespace: data-prod
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: pg-coder }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: coder }
+      ports:
+        - { protocol: TCP, port: 5432 }

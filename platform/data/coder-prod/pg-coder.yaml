@@ -1,0 +1,94 @@
+# ── pg-coder: the Coder control plane's Postgres, in data-prod (design §9) ──
+#
+# Coder's database holds workspaces, templates, users and sessions — state worth
+# backing up — so it is a CNPG cluster with the pg-rova pattern (continuous WAL +
+# base backups to R2, a nightly logical dump, a restore test), and it lives in
+# data-prod with pg-rova/pg-opshub/pg-kb, NOT in `coder` (SA decision
+# 2026-11-06, from the R2 token audit): every data cluster in one namespace, so
+# barman, the dump and the restore test reuse the prod R2 credentials that
+# already exist there (r2-backup-rw / r2-dump-rw / r2-backup-ro in
+# kv-qnsc-prod) instead of a second copy of the same tokens in
+# kv-qnsc-platform. Rotation then touches one vault.
+#
+# WHAT DOES **NOT** MOVE: the coder_migrator / coder_readonly passwords stay in
+# kv-qnsc-platform (the owner's seven coder secrets), because the Coder server's
+# CODER_PG_CONNECTION_URL is assembled in namespace `coder` from the platform
+# vault (platform/coder/database.yaml). To give THIS cluster those two
+# passwords without a second copy, role-secrets.yaml mirrors the two Secrets
+# from namespace `coder` into data-prod through a kubernetes-provider
+# ClusterSecretStore whose RBAC is limited to those two Secret names.
+#
+# The CA is the shared prod CA like every other prod cluster: `pg-coder-ca` /
+# `pg-coder-ca-pub` are created in data-prod from kv-qnsc-prod by
+# `cluster.sh --env prod --pg-cluster pg-coder` BEFORE this syncs
+# (platform/cnpg/ca.md). The dump verifies TLS against `pg-coder-ca-pub`.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-coder
+  namespace: data-prod
+  annotations:
+    # Irreversible: the PVCs carry an ownerReference to this Cluster, so deleting it
+    # would garbage-collect pg-coder's data. ArgoCD must never prune or cascade-delete it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  instances: 1
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ClusterImageCatalog
+    name: postgresql
+    major: 18
+  storage:
+    size: 5Gi
+    storageClass: local-path-retain
+  walStorage:
+    size: 2Gi
+    storageClass: local-path-retain
+  resources:
+    # The control plane is light: ten users and a handful of templates.
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { memory: 512Mi }
+  postgresql:
+    parameters:
+      timezone: UTC
+      max_connections: "50"
+      shared_buffers: 256MB
+      work_mem: 8MB
+  certificates:
+    serverCASecret: pg-coder-ca
+  # WAL archiving through the barman-cloud plugin (ObjectStore in pg-coder-backup.yaml).
+  # serverName is the archive's generation: g1 at the first build; after a recovery
+  # into a rebuilt cluster, bump it (g2, ...) so a new timeline never writes into
+  # the old archive (ONPREM-PLAN §6.3). Objects land under pg-coder/pg-coder-g1/.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pg-coder-r2
+        serverName: pg-coder-g1
+  bootstrap:
+    initdb:
+      database: coder
+      owner: coder_migrator
+      secret:
+        name: pg-coder-coder-migrator
+  managed:
+    roles:
+      # Coder runs its migrations at boot with the SINGLE CODER_PG_CONNECTION_URL,
+      # so it connects as the database owner. A separate coder_app role would own
+      # neither the database nor `public` (PG 15+ revoked CREATE from PUBLIC) and
+      # migrations would fail. The owner role has no CREATEROLE/SUPERUSER.
+      - name: coder_migrator
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        passwordSecret: { name: pg-coder-coder-migrator }
+      # The dump role: SELECT everywhere, no DDL and no ownership.
+      - name: coder_readonly
+        ensure: present
+        login: true
+        inRoles: [pg_read_all_data]
+        passwordSecret: { name: pg-coder-coder-readonly }

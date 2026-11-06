@@ -1,88 +1,25 @@
-# ── pg-coder: the Coder control plane's Postgres (design §9, §5.2) ───────────
+# ── Coder's database credentials in namespace `coder` ──────────────────────
 #
-# Coder's database holds workspaces, templates, users and sessions — state worth
-# backing up, so it gets its own CNPG cluster with the pg-rova pattern rather
-# than pg-dev: continuous WAL + base backups to R2, a nightly logical dump, and
-# a restore test (restore-test.yaml).
+# The DATABASE ITSELF IS NOT HERE. pg-coder runs in data-prod with the other
+# prod databases (platform/data/coder-prod/pg-coder.yaml), so its barman
+# backup, dump and restore test use the prod R2 credentials that already exist
+# there (r2-backup-rw / r2-dump-rw / r2-backup-ro in kv-qnsc-prod) instead of a
+# coder-r2-* copy in kv-qnsc-platform — SA decision 2026-11-06 from the R2 token
+# audit; rotating a token then touches one vault.
 #
-# Namespace `coder` is labelled qnsc.vn/env=platform, so the ClusterSecretStore
-# kv-qnsc-platform admits it. The OWNER creates these in kv-qnsc-platform
-# (plain strings unless noted; passwords hex):
-#   coder-db-migrator        coder_migrator password (owns the database)
-#   coder-db-readonly        coder_readonly password
-#   coder-oidc-issuer-url    Entra OIDC issuer, https://login.microsoftonline.com/<tenant>/v2.0
-#   coder-oidc-client-id     F's Coder app (client) id
-#   coder-oidc-client-secret F's Coder app client secret
-#   coder-oidc-allowed-groups grp-qnsc-vlsi object id
-#   coder-r2-backup-*        qnsc-backups R2 token, object read+write (barman)
-#   coder-r2-dump-*          qnsc-backups R2 token, object read+write (dump)
-#   coder-r2-ro-*            qnsc-backups R2 token, object read (restore test)
+# What this file keeps is the half that belongs to the namespace:
+#   - the two role password Secrets, from kv-qnsc-platform (the owner's seven
+#     coder secrets) — the Coder server builds its connection URL from them;
+#   - `coder-env`, the one Secret the chart reads: CODER_PG_CONNECTION_URL plus
+#     the OIDC settings.
+# data-prod gets copies of the same two passwords through
+# platform/data/coder-prod/role-secrets.yaml (a kubernetes-provider store whose
+# RBAC is limited to these Secret names), so there is one source of truth and no
+# second vault copy.
 #
-# The CA is CNPG-generated (pg-coder-ca): no hand-applied CA, since nothing
-# outside the cluster consumes this database. Coder connects with sslmode=require
-# over the pod network, which the coder NetworkPolicy bounds.
----
-apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
-metadata:
-  name: pg-coder
-  namespace: coder
-  annotations:
-    # Irreversible: the PVCs carry an ownerReference to this Cluster.
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  instances: 1
-  imageCatalogRef:
-    apiGroup: postgresql.cnpg.io
-    kind: ClusterImageCatalog
-    name: postgresql
-    major: 18
-  storage:
-    size: 5Gi
-    storageClass: local-path-retain
-  walStorage:
-    size: 2Gi
-    storageClass: local-path-retain
-  resources:
-    # The control plane is light; ten users and a handful of templates.
-    requests: { cpu: 200m, memory: 512Mi }
-    limits: { memory: 512Mi }
-  postgresql:
-    parameters:
-      timezone: UTC
-      max_connections: "50"
-      shared_buffers: 256MB
-      work_mem: 8MB
-  plugins:
-    - name: barman-cloud.cloudnative-pg.io
-      isWALArchiver: true
-      parameters:
-        barmanObjectName: pg-coder-r2
-        serverName: pg-coder-g1
-  bootstrap:
-    initdb:
-      database: coder
-      owner: coder_migrator
-      secret:
-        name: pg-coder-coder-migrator
-  managed:
-    roles:
-      # Coder runs its migrations at boot with the SINGLE CODER_PG_CONNECTION_URL,
-      # so it connects as the database owner. A separate coder_app role would own
-      # neither the database nor `public` (PG 15+ revoked CREATE from PUBLIC) and
-      # migrations would fail. The owner role has no CREATEROLE/SUPERUSER.
-      - name: coder_migrator
-        ensure: present
-        login: true
-        superuser: false
-        createdb: false
-        createrole: false
-        passwordSecret: { name: pg-coder-coder-migrator }
-      - name: coder_readonly
-        ensure: present
-        login: true
-        inRoles: [pg_read_all_data]
-        passwordSecret: { name: pg-coder-coder-readonly }
+# The CA in data-prod is the shared prod CA (`pg-coder-ca` / `pg-coder-ca-pub`,
+# created by `cluster.sh --env prod --pg-cluster pg-coder`); Coder connects with
+# sslmode=require over the pod network, which the coder egress policy bounds.
 ---
 # ── role password Secrets (CNPG re-reads on change) ─────────────────────────
 apiVersion: external-secrets.io/v1
@@ -144,8 +81,9 @@ spec:
     name: coder-env
     template:
       data:
-        # CNPG's read-write Service; sslmode=require because the CA is cluster-local.
-        CODER_PG_CONNECTION_URL: "postgresql://coder_migrator:{{ .dbpass }}@pg-coder-rw.coder.svc.cluster.local:5432/coder?sslmode=require"
+        # CNPG's read-write Service in data-prod; sslmode=require (the CA is
+        # cluster-local and Coder does not mount it).
+        CODER_PG_CONNECTION_URL: "postgresql://coder_migrator:{{ .dbpass }}@pg-coder-rw.data-prod.svc.cluster.local:5432/coder?sslmode=require"
         CODER_OIDC_ISSUER_URL: "{{ .issuer }}"
         CODER_OIDC_CLIENT_ID: "{{ .clientid }}"
         CODER_OIDC_CLIENT_SECRET: "{{ .clientsecret }}"
@@ -156,65 +94,3 @@ spec:
     - { secretKey: clientid, remoteRef: { key: coder-oidc-client-id } }
     - { secretKey: clientsecret, remoteRef: { key: coder-oidc-client-secret } }
     - { secretKey: allowedgroups, remoteRef: { key: coder-oidc-allowed-groups } }
----
-# ── barman: continuous WAL + nightly base backup to qnsc-backups/pg-coder/ ──
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: pg-coder-r2-backup
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
-  target:
-    name: pg-coder-r2-backup
-  data:
-    - { secretKey: ACCESS_KEY_ID, remoteRef: { key: coder-r2-backup-access-key-id } }
-    - { secretKey: ACCESS_SECRET_KEY, remoteRef: { key: coder-r2-backup-secret-access-key } }
----
-apiVersion: barmancloud.cnpg.io/v1
-kind: ObjectStore
-metadata:
-  name: pg-coder-r2
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  retentionPolicy: "14d"
-  configuration:
-    destinationPath: s3://qnsc-backups/pg-coder/
-    endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
-    s3Credentials:
-      accessKeyId: { name: pg-coder-r2-backup, key: ACCESS_KEY_ID }
-      secretAccessKey: { name: pg-coder-r2-backup, key: ACCESS_SECRET_KEY }
-    wal:
-      compression: gzip
-      maxParallel: 2
-    data:
-      compression: gzip
-  instanceSidecarConfiguration:
-    env:
-      - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
-      - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
-    resources:
-      requests: { cpu: 50m, memory: 128Mi }
-      limits: { memory: 256Mi }
----
-apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
-metadata:
-  name: pg-coder-nightly
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  # 02:00 ICT (19:00 UTC), the same window as pg-rova.
-  schedule: "0 0 19 * * *"
-  immediate: true
-  backupOwnerReference: self
-  cluster: { name: pg-coder }
-  method: plugin
-  pluginConfiguration:
-    name: barman-cloud.cloudnative-pg.io

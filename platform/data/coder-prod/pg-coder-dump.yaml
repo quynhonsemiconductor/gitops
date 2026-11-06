@@ -2,41 +2,34 @@
 #
 # The pg-rova pattern (platform/data/rova-prod/pg-rova-dump.yaml), for a small
 # database: a plain `pg_dump -Fc` that restores into any Postgres without the
-# barman plugin or the WAL archive. Names carry the product so the shared
-# dumps/ prefixes stay unambiguous:
+# barman plugin or the WAL archive. Prefixes carry the product so the shared
+# dumps/ stays unambiguous:
 #   dumps/daily/coder-YYYY-MM-DD.dump    lifecycle 15 d
 #   dumps/weekly/...                     Sundays, 35 d
 #   dumps/monthly/...                    the 1st, 100 d
 # dumps/ is Bucket-Locked 14 d, so an object is written ONCE; the uploader
 # skips an existing key, which makes a retried Job a logged no-op.
 #
-# The dump credential is the separate coder-r2-dump-* token (KV), never
-# barman's. TLS is verified against the CNPG-generated pg-coder-ca secret.
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: pg-coder-dump-r2
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
-  target:
-    name: pg-coder-dump-r2
-  data:
-    - { secretKey: ACCESS_KEY_ID, remoteRef: { key: coder-r2-dump-access-key-id } }
-    - { secretKey: ACCESS_SECRET_KEY, remoteRef: { key: coder-r2-dump-secret-access-key } }
----
+# Credential: the SHARED prod dump Secret `pg-dump-r2` in data-prod (defined by
+# platform/data/rova-prod/pg-rova-dump.yaml and already used by the opshub dump)
+# — kv-qnsc-prod `r2-dump-rw-*`, read+write on qnsc-backups. pg-coder adds NO
+# ExternalSecret of its own: this is the R2 reuse that put pg-coder in data-prod.
+# The open risk is the same as opshub's: `pg-dump-r2` is owned by the rova
+# Application, so a rova-app prune/sync failure would show here too.
+#
+# The role is coder_readonly (pg_read_all_data), never the owner. TLS is
+# verified against the pg-coder-ca-pub mirror; the pod waits for pg_isready
+# because data-prod-admit admits a new pod a few seconds after it starts (#91).
+#
+# Run on demand:  kubectl -n data-prod create job --from=cronjob/pg-coder-dump pg-coder-dump-manual-1
+# Restore:        pg_restore -d <empty db> --no-owner <file>   (after download with any S3 client)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: pg-coder-dump
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  namespace: data-prod
 spec:
-  schedule: "0 20 * * *"          # 20:00 UTC = 03:00 ICT, an hour after the base backup
+  schedule: "30 21 * * *"          # 21:30 UTC = 04:30 ICT, after the other prod dumps (20:00, 20:30, 21:00)
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
@@ -46,7 +39,7 @@ spec:
     spec:
       backoffLimit: 2
       activeDeadlineSeconds: 1800
-      ttlSecondsAfterFinished: 259200
+      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
       template:
         metadata:
           labels:
@@ -62,7 +55,7 @@ spec:
             - name: dump
               image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9
               env:
-                - { name: PGHOST, value: pg-coder-rw.coder.svc }
+                - { name: PGHOST, value: pg-coder-rw.data-prod.svc }
                 - { name: PGDATABASE, value: coder }
                 - { name: PGSSLMODE, value: verify-full }
                 - { name: PGSSLROOTCERT, value: /etc/pg-ca/ca.crt }
@@ -102,9 +95,9 @@ spec:
                 - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
                 - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
                 - name: AWS_ACCESS_KEY_ID
-                  valueFrom: { secretKeyRef: { name: pg-coder-dump-r2, key: ACCESS_KEY_ID } }
+                  valueFrom: { secretKeyRef: { name: pg-dump-r2, key: ACCESS_KEY_ID } }
                 - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom: { secretKeyRef: { name: pg-coder-dump-r2, key: ACCESS_SECRET_KEY } }
+                  valueFrom: { secretKeyRef: { name: pg-dump-r2, key: ACCESS_SECRET_KEY } }
               command:
                 - bash
                 - -c
@@ -118,6 +111,7 @@ spec:
                   [ "$(date -u +%d)" = 01 ] && prefixes="$prefixes monthly"
                   for p in $prefixes; do
                     key="dumps/$p/$name"
+                    # write-once: the bucket lock refuses an overwrite, so never try one
                     if aws s3api head-object --bucket qnsc-backups --key "$key" >/dev/null 2>&1; then
                       echo "DUMP-SKIP $key already exists"
                       continue
@@ -140,4 +134,4 @@ spec:
             - name: tmp
               emptyDir: { sizeLimit: 64Mi }
             - name: pg-ca
-              secret: { secretName: pg-coder-ca }
+              secret: { secretName: pg-coder-ca-pub }

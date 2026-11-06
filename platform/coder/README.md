@@ -8,12 +8,22 @@ Owner decision 2026-11-02: option A, cloud-native; **go** (2026-11-06).
 | File | Object |
 |---|---|
 | `values.yaml` | the Coder chart values (OCI `ghcr.io/coder/chart/coder`, 2.38.1) |
-| `database.yaml` | `pg-coder` CNPG cluster, its three role Secrets, Coder's env Secret, the barman ObjectStore + nightly base backup |
-| `dump.yaml` | nightly `pg_dump` to R2 `dumps/…/coder-YYYY-MM-DD.dump` |
-| `restore-test.yaml` | the on-demand restore test (recover from the archive, sanity-check, delete) |
+| `database.yaml` | the two role password Secrets (from kv-qnsc-platform, mirrored into data-prod) and Coder's env Secret (`CODER_PG_CONNECTION_URL`, OIDC) |
 | `tls.yaml` | namespaced ACME Issuers (staging + prod) and the wildcard Certificate |
-| `networkpolicy.yaml` | control-plane ingress (cloudflared only) and bounded egress |
+| `networkpolicy.yaml` | control-plane ingress (cloudflared only) and bounded egress (incl. pg-coder in data-prod) |
 | `../../apps/platform-coder.yaml` | the Application itself, sync wave 3 |
+
+The database is **not** in this namespace. `pg-coder` runs in data-prod with
+pg-rova/pg-opshub/pg-kb (SA decision 2026-11-06, R2 token audit), deployed by
+`apps/platform-data-coder-prod.yaml` from `../data/coder-prod/`:
+
+| File (data-prod) | Object |
+|---|---|
+| `pg-coder.yaml` | the CNPG cluster: 5 Gi + 2 Gi WAL on `local-path-retain`, roles `coder_migrator` (database owner, no CREATEROLE/SUPERUSER) and `coder_readonly` (`pg_read_all_data`, the dump role) |
+| `pg-coder-backup.yaml` | barman-cloud ObjectStore -> `s3://qnsc-backups/pg-coder/` and the nightly base backup (19:45 UTC) |
+| `pg-coder-dump.yaml` | nightly `pg_dump -Fc` to `dumps/…/coder-YYYY-MM-DD.dump`, uploading with the SHARED data-prod dump Secret `pg-dump-r2` |
+| `restore-test-coder.yaml` | the on-demand restore test in namespace `restore-test` (recover, sanity-check, delete) |
+| `role-secrets.yaml` | copies of the two role Secrets from namespace `coder` through the `coder-db-secrets` kubernetes store (narrow RBAC) |
 
 The namespace `coder` is declared in `../namespaces/onprem.yaml` with
 `qnsc.vn/env: platform` (so its ExternalSecrets reach `kv-qnsc-platform`) and PSA
@@ -39,10 +49,29 @@ Create these plain-string secrets in **kv-qnsc-platform**:
 | `coder-oidc-allowed-groups` | the `grp-qnsc-vlsi` object id |
 | `coder-db-migrator` | hex password for `coder_migrator` — the role Coder connects as (DB owner, migrations) |
 | `coder-db-readonly` | hex password for `coder_readonly` |
-| `coder-r2-backup-access-key-id` / `-secret-access-key` | R2 token, bucket `qnsc-backups`, object read+write (barman) |
-| `coder-r2-dump-access-key-id` / `-secret-access-key` | R2 token, `qnsc-backups`, object read+write (dump) |
-| `coder-r2-ro-access-key-id` / `-secret-access-key` | R2 token, `qnsc-backups`, object read (restore test) |
 | `coder-cloudflare-dns-api-token` | Cloudflare token, zone `qnsc.vn`, **DNS:Edit only** (ACME DNS-01) |
+
+**Seven secrets, not fourteen.** There are no `coder-r2-*` keys: pg-coder lives
+in data-prod, so barman, the dump and the restore test read the prod R2
+credentials that already exist there (`r2-backup-rw` / `r2-dump-rw` /
+`r2-backup-ro` in kv-qnsc-prod). One token per role, rotated in one vault.
+
+The two DB passwords stay here (the platform vault) because namespace `coder`
+assembles `CODER_PG_CONNECTION_URL` from them; `platform/data/coder-prod/role-secrets.yaml`
+mirrors the same Secrets into data-prod for CNPG through a kubernetes-provider
+store whose RBAC is limited to those two Secret names — one source of truth, no
+second vault copy.
+
+### Owner step: the database CA
+
+Before `platform-data-coder-prod` syncs, create the shared prod CA for this
+cluster (same one every prod database uses):
+
+```sh
+./platform/bootstrap/cluster.sh --env prod --pg-cluster pg-coder   # pg-coder-ca / pg-coder-ca-pub in data-prod
+```
+
+Without it the Cluster cannot issue certificates and never becomes Ready.
 
 The Coder app's redirect URI must be `https://coder.qnsc.vn/api/v2/oauth2/callback`
 (OIDC), and its group claim must carry `grp-qnsc-vlsi`; the allowed-groups value
@@ -73,13 +102,14 @@ PR does not add that tunnel rule. Until it lands the Service is ClusterIP and
 ## Restore test
 
 ```sh
-kubectl -n coder create job --from=cronjob/pg-coder-restore-test rt-$(date +%s)
-kubectl -n coder logs -f job/<job>
-kubectl -n coder get cm pg-coder-restore-test-result -o yaml
+kubectl -n restore-test create job --from=cronjob/pg-coder-restore-test rt-$(date +%s)
+kubectl -n restore-test logs -f job/<job>          # ends RESTORE-TEST: PASS|FAIL
+kubectl -n restore-test get cm pg-coder-restore-test-result -o yaml
 ```
 
 Use `REQUIRE_DATA=1` (patch the Job env) once real workspaces exist, so an
-empty database cannot pass.
+empty database cannot pass. The Job restores into `restore-test`, never into
+data-prod, and deletes the throwaway cluster on exit.
 
 ## Not here yet
 

@@ -9,8 +9,8 @@
 #   - DNS (kube-dns only);
 #   - the Kubernetes API Service (10.43.0.1:443, k3s's ClusterIP) — the
 #     provisioner's only cluster-internal destination;
-#   - pg-coder in this namespace on 5432 (in-cluster, selected by pod label
-#     cnpg.io/cluster=pg-coder);
+#   - pg-coder in data-prod on 5432 (the cluster moved there with the other prod
+#     databases; the server-side half is platform/networkpolicy/data-prod-coder.yaml);
 #   - the internet minus every RFC 1918 range. That covers Entra, Cloudflare and
 #     GHCR as the addresses move, and keeps the server off the LAN, the other
 #     products and the node IPs (the same shape as the product dump policy).
@@ -83,7 +83,9 @@ spec:
       ports:
         - { protocol: TCP, port: 6443 }
     - to:
-        - podSelector:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: data-prod }
+          podSelector:
             matchLabels: { cnpg.io/cluster: pg-coder }
       ports:
         - { protocol: TCP, port: 5432 }

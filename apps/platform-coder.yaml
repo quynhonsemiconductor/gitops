@@ -1,13 +1,17 @@
 # Coder OSS control plane for the VLSI platform (design §3, §5; owner "go VLSI").
 #
-# ONE Application for the namespace directory (the platform/data/<product>
-# pattern): the chart, pg-coder and its ExternalSecrets, backup/dump, the
-# wildcard certificate and the NetworkPolicies.
+# ONE Application for the namespace directory: the chart, the wildcard
+# certificate, the NetworkPolicies and Coder's own secrets (the DB role
+# passwords and CODER_PG_CONNECTION_URL/OIDC env, all from kv-qnsc-platform).
+#
+# The DATABASE is not here: pg-coder lives in data-prod with the other prod
+# databases and is deployed by apps/platform-data-coder-prod.yaml (SA decision
+# 2026-11-06, R2 token audit — its backup/dump/restore then reuse the prod R2
+# credentials instead of a coder-r2-* copy in the platform vault).
 #
 # Sync wave 3: AFTER products (1) and cloudflared (2), and after CNPG/ESO/
 # cert-manager (negative waves). The ExternalSecrets need the platform store
-# (Valid once the ESO workload identity is exchanged) and the Cluster needs the
-# CNPG operator and its image catalog.
+# (Valid once the ESO workload identity is exchanged).
 #
 # Reachability is NOT in this PR: the private WARP route for coder.qnsc.vn and
 # *.coder.qnsc.vn is an infra live/edge tunnel rule (design §10, still open).

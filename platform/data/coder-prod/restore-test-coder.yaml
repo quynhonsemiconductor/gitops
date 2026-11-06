@@ -1,45 +1,66 @@
-# ── pg-coder restore test (the pg-rova pattern, design §9) ──────────────────
+# ── pg-coder restore test (ONPREM-PLAN §10.4 pattern) ──────────────────────
 #
-# A backup is only a backup once it is restored. ON DEMAND, never scheduled:
+# A backup is only a backup once it has been restored. ON DEMAND, never
+# scheduled until the first manual PASS (like pg-rova and pg-opshub):
 #
-#   kubectl -n coder create job --from=cronjob/pg-coder-restore-test rt-$(date +%s)
-#   kubectl -n coder logs -f job/<job>                    # ends RESTORE-TEST: PASS|FAIL
-#   kubectl -n coder get cm pg-coder-restore-test-result -o yaml
+#   kubectl -n restore-test create job --from=cronjob/pg-coder-restore-test rt-$(date +%s)
+#   kubectl -n restore-test logs -f job/<job>              # ends RESTORE-TEST: PASS|FAIL
+#   kubectl -n restore-test get cm pg-coder-restore-test-result -o yaml
 #
 # The Job applies a throwaway Cluster `pg-coder-restore-test` that RECOVERS from
 # s3://qnsc-backups/pg-coder/ (latest base backup + archived WAL), waits for
 # Ready, runs sanity queries inside the restored instance, and ALWAYS deletes
-# the Cluster on exit. It uses a READ-ONLY R2 token (coder-r2-ro-*), so nothing
-# here can write into the production archive. The restored cluster has NO
-# plugins block: it never archives WAL of its own.
+# the Cluster on exit. It uses the READ-ONLY prod restore token in
+# kv-qnsc-prod (r2-backup-ro-*), so nothing here can write into the archive; the
+# restored cluster has NO `plugins:` block, so it never archives WAL of its own.
 #
-# Stays in namespace `coder` (env=platform) so it can read kv-qnsc-platform. The
-# runner's RBAC is a Role in that namespace only; the storage class is the
-# default so the throwaway PVC is deleted with the cluster (no retained PV per
-# run, unlike local-path-retain).
+# Credential: the same prod R2 read token the rova/opshub/kb restore tests use.
+# pg-coder adds no coder-r2-* copy in kv-qnsc-platform — the reason it lives in
+# data-prod. The ExternalSecret here is per-database only so a restore run never
+# depends on another product's Application.
+#
+# Isolation: own namespace (restricted PSS), reachable from nothing, the
+# runner's RBAC is a Role in THIS namespace only. Mutation resistance: stop the
+# archive (wrong serverName) and the Cluster never becomes Ready, so the Job
+# times out FAIL.
+#
+# Sanity checks (any failure = FAIL, exit 1):
+#   - the instance is out of recovery, database `coder` exists, owned by coder_migrator;
+#   - coder_migrator has no CREATEROLE/SUPERUSER and coder_readonly exists (the
+#     dump connects as it);
+#   - application tables (Coder keeps them in `public`) and the goose migration
+#     rows are PRINTED; with REQUIRE_DATA=1 zero tables or zero migrations fails;
+#   - coder_migrator can SELECT every application table: the migrator owns the
+#     database, so a restore that loses the ownership chain shows up here.
+# Before data exists (a fresh pg-coder) run it with REQUIRE_DATA=0 (the default):
+# that proves the backup/WAL/recovery chain only.
+---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: pg-coder-r2-restore
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  namespace: restore-test
 spec:
   refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
   target:
     name: pg-coder-r2-restore
   data:
-    - { secretKey: ACCESS_KEY_ID, remoteRef: { key: coder-r2-ro-access-key-id } }
-    - { secretKey: ACCESS_SECRET_KEY, remoteRef: { key: coder-r2-ro-secret-access-key } }
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-backup-ro-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-backup-ro-secret-access-key }
 ---
+# Read side of the same archive, in this namespace (an ObjectStore is namespaced).
+# No retentionPolicy: this one must never prune.
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
   annotations:
+    # Irreversible backup configuration: removal is an explicit owner step, never a prune.
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
-  name: pg-coder-r2-read
-  namespace: coder
+  name: pg-coder-r2
+  namespace: restore-test
 spec:
   configuration:
     destinationPath: s3://qnsc-backups/pg-coder/
@@ -47,7 +68,8 @@ spec:
     s3Credentials:
       accessKeyId: { name: pg-coder-r2-restore, key: ACCESS_KEY_ID }
       secretAccessKey: { name: pg-coder-r2-restore, key: ACCESS_SECRET_KEY }
-    wal: { compression: gzip }
+    wal:
+      compression: gzip
   instanceSidecarConfiguration:
     env:
       - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
@@ -56,68 +78,51 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  # NOT the restored cluster's name: CNPG creates its own ServiceAccount/Role/RoleBinding named after the
+  # cluster (pg-coder-restore-test) and overwrites a same-named Role mid-test (opshub 2026-11-04, kb 2026-11-05).
   name: pg-coder-restore-runner
-  namespace: coder
+  namespace: restore-test
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: pg-coder-restore-runner
-  namespace: coder
+  namespace: restore-test
 rules:
-  # Create/read are needed to run a restore at all; DELETE is narrowed to the ONE
-  # throwaway cluster this runner owns, so the Role can never delete pg-coder.
   - apiGroups: [postgresql.cnpg.io]
     resources: [clusters]
-    verbs: [get, list, watch, create]
-  - apiGroups: [postgresql.cnpg.io]
-    resources: [clusters]
-    resourceNames: ["pg-coder-restore-test"]
-    verbs: [delete, patch, update]
-  # The restored cluster's pod name is fixed by its Cluster name.
+    verbs: [get, list, watch, create, delete]
   - apiGroups: [""]
-    resources: [pods]
-    verbs: [list]
-  - apiGroups: [""]
-    resources: [pods]
-    resourceNames: ["pg-coder-restore-test-1"]
-    verbs: [get, watch]
+    resources: [pods, persistentvolumeclaims]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods/exec]
-    resourceNames: ["pg-coder-restore-test-1"]
-    verbs: [create]
-  - apiGroups: [""]
-    resources: [persistentvolumeclaims]
-    verbs: [list]
-  - apiGroups: [""]
-    resources: [configmaps]
     verbs: [create]
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: ["pg-coder-restore-test-result"]
-    verbs: [get, patch, update]
+    verbs: [get, create, patch, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: pg-coder-restore-runner
-  namespace: coder
+  namespace: restore-test
 roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: pg-coder-restore-runner }
 subjects:
-  - { kind: ServiceAccount, name: pg-coder-restore-runner, namespace: coder }
+  - { kind: ServiceAccount, name: pg-coder-restore-runner, namespace: restore-test }
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: pg-coder-restore-test-script
-  namespace: coder
+  namespace: restore-test
 data:
   cluster.yaml: |
     apiVersion: postgresql.cnpg.io/v1
     kind: Cluster
     metadata:
       name: pg-coder-restore-test
-      namespace: coder
+      namespace: restore-test
     spec:
       instances: 1
       imageCatalogRef:
@@ -142,13 +147,13 @@ data:
           plugin:
             name: barman-cloud.cloudnative-pg.io
             parameters:
-              barmanObjectName: pg-coder-r2-read
+              barmanObjectName: pg-coder-r2
               serverName: pg-coder-g1
       # NO `plugins:` block: this cluster must not archive WAL anywhere.
   run.sh: |
     #!/usr/bin/env bash
     set -uo pipefail
-    NS=coder C=pg-coder-restore-test POD=pg-coder-restore-test-1
+    NS=restore-test C=pg-coder-restore-test POD=pg-coder-restore-test-1
     REQUIRE_DATA=${REQUIRE_DATA:-0}
     TIMEOUT=${READY_TIMEOUT:-1800}
     status=FAIL detail="did not finish"
@@ -163,7 +168,7 @@ data:
     }
     cleanup() {
       echo "teardown: deleting cluster $C"
-      trap '' TERM INT
+      trap '' TERM INT   # a second signal must not interrupt the teardown
       kubectl -n "$NS" delete cluster "$C" --wait=true --timeout=300s --ignore-not-found &
       wait $! || true
       record
@@ -171,17 +176,23 @@ data:
       [ "$status" = PASS ]
     }
     trap 'cleanup; exit $?' EXIT
+    # PID 1 ignores SIGTERM unless a handler exists; 143 makes the EXIT trap run the teardown.
     trap 'exit 143' TERM INT
 
     q() { kubectl -n "$NS" exec "$POD" -c postgres -- psql -X -At -v ON_ERROR_STOP=1 -d coder -c "$1"; }
     fail() { detail="$1"; echo "FAIL: $1"; exit 1; }
 
+    # A leftover cluster from a killed run would be "restored" without a restore.
     kubectl -n "$NS" get cluster "$C" >/dev/null 2>&1 && fail "leftover cluster $C exists; delete it first"
 
     echo "restoring latest pg-coder-g1 backup + WAL into $C"
     kubectl -n "$NS" apply -f /work/cluster.yaml || fail "apply cluster"
+    # Background + `wait $!`: bash as PID 1 defers a trap until the foreground command
+    # returns, so a SIGTERM (activeDeadlineSeconds, job delete) would otherwise wait out
+    # the whole timeout and be SIGKILLed with the cluster and PVC still there.
     kubectl -n "$NS" wait --for=condition=Ready "cluster/$C" --timeout="${TIMEOUT}s" &
-    wait $! || fail "cluster not Ready within ${TIMEOUT}s (restore failed or no backup)"
+    wait $! \
+      || fail "cluster not Ready within ${TIMEOUT}s (restore failed or no backup)"
 
     [ "$(q 'select pg_is_in_recovery()')" = f ] || fail "still in recovery"
     [ "$(q "select pg_get_userbyid(datdba) from pg_database where datname='coder'")" = coder_migrator ] \
@@ -212,20 +223,18 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: pg-coder-restore-test
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  namespace: restore-test
 spec:
   schedule: "0 20 * * 0"
-  suspend: true                  # on demand only
+  suspend: true                  # on demand until the first manual PASS
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 0
+      backoffLimit: 0            # a failed restore test is a result, not something to retry
       activeDeadlineSeconds: 3000
-      ttlSecondsAfterFinished: 259200
+      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
       template:
         metadata:
           labels:
@@ -233,7 +242,7 @@ spec:
         spec:
           serviceAccountName: pg-coder-restore-runner
           restartPolicy: Never
-          terminationGracePeriodSeconds: 330
+          terminationGracePeriodSeconds: 330   # the EXIT trap deletes the cluster (<= 300 s)
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -244,16 +253,20 @@ spec:
               image: alpine/k8s:1.36.5@sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
               command: ["bash", "/work/run.sh"]
               env:
-                - { name: REQUIRE_DATA, value: "0" }
+                - { name: REQUIRE_DATA, value: "0" }   # set it to 1 once real workspaces exist
+                - { name: HOME, value: /tmp }          # kubectl's cache dir; the root filesystem is read-only
               resources:
-                requests: { cpu: 50m, memory: 64Mi }
+                requests: { cpu: 20m, memory: 64Mi }
                 limits: { memory: 128Mi }
-              volumeMounts:
-                - { name: work, mountPath: /work, readOnly: true }
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: work, mountPath: /work, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
           volumes:
             - name: work
-              configMap: { name: pg-coder-restore-test-script }
+              configMap: { name: pg-coder-restore-test-script, defaultMode: 0555 }
+            - name: tmp
+              emptyDir: { sizeLimit: 16Mi }
