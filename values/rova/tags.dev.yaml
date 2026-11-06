@@ -22,16 +22,16 @@
 services:
   api:
     image:
-      tag: sha-757473381d5a
-      digest: sha256:7124438212ead55678333e708169d88092f1f794a376ab9c15ff87d3b454055c
+      tag: sha-0d3f90d7db87
+      digest: sha256:89e1e610b24e223c901a0f65306505247c67013665ed55ce84e94d2df861ba0f
   migrator:
     image:
-      tag: sha-757473381d5a
-      digest: sha256:d2f8f41c7e8f554a97aa4f4c7445db36f1421fbb4db8a119af590a873dfebd4b
+      tag: sha-0d3f90d7db87
+      digest: sha256:53b017f840804e0588344fd167b26070c4411cbdd2f10be7f03cccbf337c239b
   worker:
     image:
-      tag: sha-757473381d5a
-      digest: sha256:87b0a95a87455125bac34b3a393fb76ee81fe1e64be4c028266ba51e78a49abd
+      tag: sha-0d3f90d7db87
+      digest: sha256:4896193aca3a92daf4e710be6d500f8d13c793dd6a01c924608d7ea4c3d51b8e
 # ── the SPA image (web) ──────────────────────────────────────────────────────
 # NOT under `services:`: web is not a service, so the chart reads it from
 # `.Values.web` (values.schema.json, "web"). Hand-seeded for the dev web proof;
@@ -40,5 +40,5 @@ services:
 # `.services.<name>`, so it leaves this block alone.
 web:
   image:
-    tag: sha-757473381d5a
+    tag: sha-0d3f90d7db87
     digest: sha256:dbf855f4dc4ac4fda3d79fb0a5048271e329311f37028083b0cdc6047449ef58
