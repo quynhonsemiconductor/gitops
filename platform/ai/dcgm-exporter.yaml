@@ -1,0 +1,150 @@
+# ── NVIDIA DCGM exporter on the GPU node (observability audit 2026-11-06) ────
+#
+# The audit found NO GPU metrics anywhere: ai-01 had only TEI's HTTP metrics,
+# so utilisation, memory and temperature were invisible and an Xid fault would
+# have shown up as an unexplained TEI outage. The device plugin exposes no
+# Prometheus endpoint, so this is the cheapest producer that gives all three:
+# DCGM's own exporter, one DaemonSet confined to the GPU node.
+#
+# SERIES BUDGET (Grafana Cloud Free, 10k cap; ~1.9k headroom at the audit):
+# the custom collector list below is FIVE fields on ONE physical GPU (ai-01 is
+# a passthrough card, time-sliced by the device plugin):
+#   DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_MEM_COPY_UTIL, DCGM_FI_DEV_FB_USED,
+#   DCGM_FI_DEV_GPU_TEMP, DCGM_FI_DEV_XID_ERRORS   = 5 series
+# plus `up` + `scrape_samples_scraped` = 7 from the scrape itself, and the pod's
+# own cAdvisor/KSM families (~20) — under 30 in total, well inside the 50 limit
+# this PR was allowed. Do NOT switch to the image's default collector list:
+# it is ~150 fields per GPU.
+#
+# The scrape lives in platform/alloy/k8s-monitoring.values.yaml (extraConfig,
+# `dcgm-exporter` block with the same five-name allowlist, so the budget is
+# enforced twice).
+#
+# PRIVILEGE: DCGM talks to the driver through NVML and must see the GPU — a
+# privileged container and the node's driver directory. It does NOT use hostPID:
+# the five fields are device-level, and host-process mapping (the only reason to
+# share the PID namespace) is not exposed. `ai` enforces PSA baseline, which REJECTS both privileged
+# containers and host namespaces, so the exporter does NOT run there
+# (2026-11-06 review). It gets its own namespace `gpu-monitoring`
+# (namespaces.yaml, the obi precedent: enforce=privileged, audit/warn
+# restricted, nothing else may run there), plus a default-deny NetworkPolicy
+# that admits exactly the Alloy scrape on 9400 from namespace `platform` and
+# denies all egress. The pod holds no Secret and mounts nothing writable from
+# the host.
+#
+# IMAGE: docker.io/nvidia/dcgm-exporter 4.6.1-4.8.4-distroless, published
+# 2026-09-18 — older than the repo's two-week age floor; the tag digest was read
+# from the Docker Hub registry API on 2026-11-06. Distroless: no shell, so the
+# entrypoint is the exporter binary with a config path argument only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcgm-exporter-collectors
+  namespace: gpu-monitoring
+data:
+  custom-collectors.csv: |
+    # DCGM FIELD, Prometheus metric type, help
+    DCGM_FI_DEV_GPU_UTIL, gauge, GPU utilization (percent).
+    DCGM_FI_DEV_MEM_COPY_UTIL, gauge, Memory utilization (percent).
+    DCGM_FI_DEV_FB_USED, gauge, Framebuffer memory used (MiB).
+    DCGM_FI_DEV_GPU_TEMP, gauge, GPU temperature (C).
+    DCGM_FI_DEV_XID_ERRORS, gauge, Value of the last XID error encountered (0 = none).
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  namespace: gpu-monitoring
+  labels:
+    app.kubernetes.io/name: dcgm-exporter
+    app.kubernetes.io/component: gpu-monitoring
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcgm-exporter
+        app.kubernetes.io/component: gpu-monitoring
+    spec:
+      # The pool label selects ai-01; the taint keeps it off every other node.
+      nodeSelector: { qnsc.vn/pool: ai }
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      runtimeClassName: nvidia
+      priorityClassName: ai
+      # NO hostPID: the five fields above are DEVICE-level (NVML). hostPID is
+      # only needed to map GPU processes to pods (/proc of the host), which this
+      # exporter does not expose; adding it back is a deliberate change.
+      containers:
+        - name: exporter
+          image: nvidia/dcgm-exporter:4.6.1-4.8.4-distroless@sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
+          args: ["-f", "/etc/dcgm-exporter/custom-collectors.csv"]
+          ports:
+            - { name: metrics, containerPort: 9400, protocol: TCP }
+          # The exporter is privileged for NVML/driver access (see the header).
+          # readOnlyRootFilesystem is deliberately NOT set: the embedded
+          # hostengine writes under /var/run, and a distroless image gives no
+          # shell to diagnose a read-only root after the fact.
+          #
+          # The three Semgrep findings on this context are accepted by design;
+          # each carries its rule id and the reason. The namespace is the
+          # boundary: gpu-monitoring enforces PSA privileged, runs nothing but
+          # this pod, and its NetworkPolicies deny all ingress but the Alloy
+          # scrape on 9400 and deny all egress.
+          securityContext:   # nosemgrep: yaml.kubernetes.security.allow-privilege-escalation.allow-privilege-escalation -- privileged: true already implies allowPrivilegeEscalation; setting false would be a no-op and a misleading guarantee
+            privileged: true   # nosemgrep: yaml.kubernetes.security.privileged-container.privileged-container -- DCGM needs NVML and the node driver; gpu-monitoring is the dedicated privileged namespace, default-deny ingress+egress
+            runAsNonRoot: false   # nosemgrep: yaml.kubernetes.security.run-as-non-root-unsafe-value.run-as-non-root-unsafe-value -- the vendor image declares USER root:root and DCGM's supported mode is root with the GPU device nodes; a non-root UID is not supported by the distroless packaging
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: collectors, mountPath: /etc/dcgm-exporter, readOnly: true }
+            - { name: driver, mountPath: /run/nvidia/driver, readOnly: true }
+      volumes:
+        - name: collectors
+          configMap:
+            name: dcgm-exporter-collectors
+        # The NVIDIA container toolkit installs the driver libraries here on
+        # this node (runtime configuration is node state, see runtimeclass.yaml).
+        - name: driver
+          hostPath:
+            path: /run/nvidia/driver
+            type: Directory
+---
+# ── the only traffic this namespace serves: the Alloy scrape ────────────────
+# Namespace-wide default deny first, then the one allow. Egress is denied too:
+# the exporter answers on 9400 and never dials out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gpu-monitoring-default-deny
+  namespace: gpu-monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dcgm-exporter-scrape
+  namespace: gpu-monitoring
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: alloy }
+      ports:
+        - { protocol: TCP, port: 9400 }
+  egress: []
