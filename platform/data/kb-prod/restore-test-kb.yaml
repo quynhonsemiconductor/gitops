@@ -1,17 +1,25 @@
 # ── G1: the pg-kb restore test (ONPREM-PLAN §10.4) ─────────────────────────────
 #
-# A backup is only a backup once it has been restored. This runs ON DEMAND:
+# A backup is only a backup once it has been restored. This runs weekly
+# (Sundays 20:00 UTC — the schedule and job shape the pg-rova and pg-opshub
+# tests already declare, which stay suspended) and on demand:
 #
 #   kubectl -n restore-test create job --from=cronjob/pg-kb-restore-test rt-$(date +%s)
-#   # the G1 run, once pg-kb holds data (REQUIRE_DATA=1):
-#   kubectl -n restore-test create job --from=cronjob/pg-kb-restore-test rt-g1 --dry-run=client -o json \
-#     | jq '.spec.template.spec.containers[0].env[0].value="1"' | kubectl create -f -
 #   kubectl -n restore-test logs -f job/<that job>          # ends RESTORE-TEST: PASS|FAIL
 #   kubectl -n restore-test get cm pg-kb-restore-test-result -o yaml   # last result + time
 #
-# The CronJob is permanently suspended: it exists only as the template for
-# `create job --from`. (Make it a weekly schedule by flipping `suspend`; §10.4 wants
-# that once the on-demand run has passed.)
+# The scheduled runs inherit REQUIRE_DATA=1 from the CronJob env. A manual run
+# that must tolerate an empty database overrides env[0]:
+#   kubectl -n restore-test create job --from=cronjob/pg-kb-restore-test rt-x --dry-run=client -o json \
+#     | jq '.spec.template.spec.containers[0].env[0].value="0"' | kubectl create -f -
+#
+# G1 evidence — 2026-11-06, job rt-g1-20261106090514, owner run: PASS with
+# REQUIRE_DATA=1, tables=75, alembic_head=20261104_93, kb_app_selectable=75,
+# 09:05:41Z -> 09:08:58Z (3 m 17 s); restored cluster deleted, no leftovers.
+# The content tables were still empty (no articles ingested yet), so this run
+# proves the schema, the roles and the RLS / `kb_app` grants restore — not
+# content-table rows. Re-check the row counts once articles exist; nothing new
+# is gated on that.
 #
 # What the Job does, in order:
 #   1. applies a throwaway CNPG Cluster `pg-kb-restore-test` that RECOVERS from the
@@ -28,13 +36,13 @@
 #     gitops#305);
 #   - pgvector + pgcrypto are present (the Database resource installs them as superuser);
 #   - application tables (kb keeps them in `public`) and the Alembic head are PRINTED;
-#     with REQUIRE_DATA=1 (set it for the real run, once connectors have ingested) zero
+#     with REQUIRE_DATA=1 (the CronJob default since the 2026-11-06 G1 run) zero
 #     tables or no Alembic revision fails;
 #   - kb_app can SELECT every application table (counted via has_table_privilege). This
 #     is the qnsc-kb-backend#364 grant proof: the migrator owns the tables, so a restore
 #     that loses the default privileges shows up here.
-# Before data exists (pg-kb empty) run it with REQUIRE_DATA=0 (the default): that
-# proves the backup/WAL/recovery chain only. G1 needs the second, REQUIRE_DATA=1 run.
+# Before data exists (pg-kb empty) run it with REQUIRE_DATA=0: that proves the
+# backup/WAL/recovery chain only. G1 needed the second, REQUIRE_DATA=1 run.
 #
 # Isolation: own namespace (restricted PSS), reachable from nothing, the runner's
 # RBAC is a Role in THIS namespace only. The credential is the same separate READ-ONLY
@@ -240,8 +248,8 @@ metadata:
   name: pg-kb-restore-test
   namespace: restore-test
 spec:
-  schedule: "0 20 * * 0"
-  suspend: true                  # on demand only; see the header
+  schedule: "0 20 * * 0"         # weekly, Sunday 20:00 UTC (same as pg-rova / pg-opshub)
+  suspend: false                 # live since the 2026-11-06 G1 REQUIRE_DATA=1 PASS
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -268,7 +276,7 @@ spec:
               image: alpine/k8s:1.36.5@sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
               command: ["bash", "/work/run.sh"]
               env:
-                - { name: REQUIRE_DATA, value: "0" }   # the G1 run sets it to 1, see the header
+                - { name: REQUIRE_DATA, value: "1" }   # the 2026-11-06 G1 run; 0 only for an empty-db check
                 - { name: HOME, value: /tmp }          # kubectl's cache dir; the root filesystem is read-only
               resources:
                 requests: { cpu: 20m, memory: 64Mi }

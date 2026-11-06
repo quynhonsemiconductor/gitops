@@ -12,7 +12,7 @@ cutover.
 | `pg-kb-backup.yaml` | barman-cloud ObjectStore -> `s3://qnsc-backups/pg-kb/`, WAL archiving (serverName `pg-kb-g1`), nightly base backup 19:30 UTC |
 | `pg-kb-dump.yaml` | own ExternalSecret `pg-kb-dump-r2` (kv-qnsc-prod `r2-dump-rw-*`, no dependency on the rova app) + nightly `pg_dump -Fc` as kb_readonly (never the owner) -> `dumps/daily|weekly|monthly/pg-kb-<date>.dump`, write-once, 21:00 UTC |
 | `valkey-kb.yaml` | dedicated prod Celery broker: `noeviction` + AOF on a 2 Gi PVC, ACL (user `kb`, derived from ONE kv secret) |
-| `restore-test-kb.yaml` | on-demand restore test (suspended CronJob in `restore-test`), including the kb_app grant proof from qnsc-kb-backend#364 and the kb_readonly BYPASSRLS check |
+| `restore-test-kb.yaml` | weekly restore test (CronJob in `restore-test`, Sundays 20:00 UTC, REQUIRE_DATA=1; passed the 2026-11-06 G1 run), including the kb_app grant proof from qnsc-kb-backend#364 and the kb_readonly BYPASSRLS check |
 | `apps/platform-data-kb-prod.yaml` | the ONE Application (`platform-data-kb-prod`, `directory.include: "*.yaml"`), enabled 2026-11-05 |
 
 Shared platform files already carry the prep (inert until pods exist): namespace `kb-prod`
