@@ -66,3 +66,15 @@ noreply-kb-dev@qnsc\.vn
 # CGNAT (100.64/10), the fourth non-public range, as a pg-dev-dump egress exclusion: a public
 # constant, not this site's addressing plan.
 100\.64\.0\.0
+# ── VLSI platform (platform/coder) ──────────────────────────────────────────
+# The Coder access host is the product edge hostname for the VLSI workspaces,
+# published by the design (§5.2) and configured in the public chart values.
+coder\.qnsc\.vn
+# The operator alert alias, as in infra's live/* and docs (public by design).
+devops@qnsc\.vn
+# k3s's DEFAULT kubernetes Service address (10.43.0.0/16 is already allowed
+# above): the Coder control plane's ONLY in-cluster egress besides pg-coder.
+10\.43\.0\.1
+# Link-local / cloud-metadata range excluded from the vlsi-ws egress policy: the
+# standard 169.254.0.0/16 constant (169.254.169.254 is already allowed above).
+169\.254\.0\.0

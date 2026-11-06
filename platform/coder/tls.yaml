@@ -1,0 +1,94 @@
+# ── TLS: Let's Encrypt wildcard for coder.qnsc.vn + *.coder.qnsc.vn ─────────
+#
+# Cloudflare Universal SSL does NOT cover a second-level wildcard
+# (*.coder.qnsc.vn — design §5.2, §11), so the certificate comes from
+# cert-manager with a DNS-01 challenge on the qnsc.vn zone. cert-manager is
+# already installed (platform/cert-manager, v1.21.2); this adds the issuer and
+# the certificate only.
+#
+# WHY A NAMESPACED Issuer, not a ClusterIssuer: a ClusterIssuer resolves
+# `apiTokenSecretRef` in the cert-manager cluster-resource namespace, which
+# would force the Cloudflare token (and with it kv-qnsc-prod access) into
+# the cert-manager namespace. A namespaced Issuer keeps the token where the
+# certificate is used. Same DNS-01 mechanism, narrower blast radius.
+#
+# PROD ISSUER by default: one certificate for two names is far below Let's
+# Encrypt's rate limits, and a staging certificate is untrusted everywhere. The
+# staging Issuer stays DEFINED for a manual end-to-end test (DNS-01 wiring, the
+# Cloudflare token) before the prod one is first used — the step is in
+# runbooks/vlsi.md. To test: temporarily point issuerRef.name at
+# letsencrypt-staging, sync, check, then point it back; the prod issuance is the
+# final state.
+#
+# OWNER: create `coder-cloudflare-dns-api-token` in kv-qnsc-prod — a
+# Cloudflare API token scoped to the qnsc.vn zone with DNS:Edit only. ESO copies
+# it into this namespace; only the ACME TXT records are created.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: coder-cloudflare-dns
+  namespace: coder
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: coder-cloudflare-dns
+  data:
+    - { secretKey: CF_API_TOKEN, remoteRef: { key: coder-cloudflare-dns-api-token } }
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-staging
+  namespace: coder
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: devops@qnsc.vn
+    privateKeySecretRef: { name: letsencrypt-staging-account-key }
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef: { name: coder-cloudflare-dns, key: CF_API_TOKEN }
+        selector:
+          dnsZones: ["qnsc.vn"]
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-prod
+  namespace: coder
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: devops@qnsc.vn
+    privateKeySecretRef: { name: letsencrypt-prod-account-key }
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef: { name: coder-cloudflare-dns, key: CF_API_TOKEN }
+        selector:
+          dnsZones: ["qnsc.vn"]
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coder-tls
+  namespace: coder
+spec:
+  secretName: coder-tls
+  dnsNames:
+    - coder.qnsc.vn
+    - "*.coder.qnsc.vn"
+  duration: 2160h        # 90 d
+  renewBefore: 720h      # 30 d
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    # Prod. letsencrypt-staging above is kept for the manual DNS-01 test only
+    # (runbooks/vlsi.md); a staging-issued Secret is never the steady state.
+    name: letsencrypt-prod
+    kind: Issuer

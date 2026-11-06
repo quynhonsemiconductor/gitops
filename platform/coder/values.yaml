@@ -1,0 +1,67 @@
+# Coder OSS control plane (VLSI platform design §3, §5; owner "go VLSI" 2026-11-06).
+#
+# Chart: oci://ghcr.io/coder/chart/coder, pinned in versions.yaml (2.38.1,
+# manifest digest recorded there). OSS features only: Entra OIDC with
+# CODER_OIDC_ALLOWED_GROUPS, template TTL + activity bump, Kubernetes limits.
+# Quotas/audit/group-sync are Premium and are replaced outside Coder (design §5).
+#
+# No Cloudflare Access in front: the `coder` CLI, `coder ssh` and the /api/v2
+# websockets do not follow an Access redirect (design §5.2). The server is
+# reachable over WARP only, through the private route in live/edge (follow-up).
+#
+# Secrets arrive from kv-qnsc-prod through ESO (database.yaml): the OIDC
+# pair, CODER_OIDC_ALLOWED_GROUPS (the grp-qnsc-vlsi object id) and the
+# Postgres URL. Nothing here is a value.
+coder:
+  image:
+    repo: ghcr.io/coder/coder
+    # tag@digest: Kubernetes accepts both; the digest is the pin and the tag is
+    # for readable `docker images`. Digest from ghcr.io/coder/coder:v2.38.1
+    # (manifest list) on 2026-11-06.
+    tag: "v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e9098554440acd6dc2526a95252cc"
+  service:
+    # ClusterIP: the tunnel (infra live/edge) is the only path in. No
+    # LoadBalancer, no NodePort.
+    type: ClusterIP
+  # Non-secret environment. The secret half comes from envFrom below.
+  env:
+    - { name: CODER_ACCESS_URL, value: "https://coder.qnsc.vn" }
+    # Workspace apps are served on *.coder.qnsc.vn (private, not proxied).
+    - { name: CODER_WILDCARD_ACCESS_URL, value: "https://*.coder.qnsc.vn" }
+    # Plain HTTP inside the pod would break coder ssh's TLS expectations; the
+    # wildcard secret below enables TLS on the server itself.
+    - { name: CODER_TLS_MIN_VERSION, value: "tls12" }
+    # Coder 2.38.1 coderd/idpsync/group.go: the allow list is only evaluated
+    # when GroupField names the claim. Without it CODER_OIDC_ALLOWED_GROUPS is
+    # IGNORED and any tenant user can sign up. `groups` is the Entra app-role /
+    # group claim name (the app must emit it).
+    # https://coder.com/docs/reference/cli/server#--oidc-group-field
+    - { name: CODER_OIDC_GROUP_FIELD, value: "groups" }
+    # One sign-in path only: no password accounts are usable.
+    # https://coder.com/docs/reference/cli/server#--disable-password-auth
+    - { name: CODER_DISABLE_PASSWORD_AUTH, value: "true" }
+    # No usage data leaves the platform.
+    # https://coder.com/docs/reference/cli/server#--telemetry-enable
+    - { name: CODER_TELEMETRY_ENABLE, value: "false" }
+  tls:
+    # cert-manager writes this Secret (tls.yaml). The chart mounts tls.crt /
+    # tls.key and sets CODER_TLS_CERT_FILE / CODER_TLS_KEY_FILE.
+    secretNames: ["coder-tls"]
+  envFrom:
+    # CODER_PG_CONNECTION_URL, CODER_OIDC_ISSUER_URL, CODER_OIDC_CLIENT_ID,
+    # CODER_OIDC_CLIENT_SECRET, CODER_OIDC_ALLOWED_GROUPS.
+    - secretRef: { name: coder-env }
+  resources:
+    # Design §7: about 0.5 GB for the control plane. memoryLimit = request
+    # (no CPU limit), the platform convention.
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  serviceAccount:
+    # Least privilege: Coder gets Role/RoleBinding in vlsi-ws, not a
+    # ClusterRole over every workspace namespace.
+    workspaceNamespaces:
+      - name: vlsi-ws
+  # One replica: HA is an Enterprise feature (design §5).
+  replicaCount: 1
+  # The provisioner runs embedded in the server for ten engineers; a separate
+  # provisioner Deployment is a scaling option, not needed now.

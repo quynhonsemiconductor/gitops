@@ -1,0 +1,48 @@
+# ── Coder's environment Secrets in namespace `coder` ───────────────────────
+#
+# The DATABASE ITSELF IS NOT HERE. pg-coder runs in data-prod with the other
+# prod databases (platform/data/coder-prod/pg-coder.yaml).
+#
+# Namespace `coder` is labelled qnsc.vn/env=prod (SA decision 2026-11-06):
+# Coder is a production service for the VLSI team, so all seven coder-* owner
+# secrets live in kv-qnsc-prod — the same vault as the database, rova, opshub
+# and kb. There is no platform-vault read and no copy of any secret in a second
+# vault.
+#
+# This file creates the one Secret the chart reads: `coder-env`, with
+# CODER_PG_CONNECTION_URL and the OIDC settings. The pg-coder role passwords
+# (coder-db-migrator / coder-db-readonly) are read from kv-qnsc-prod by the
+# cluster's own ExternalSecrets in data-prod, like pg-rova's.
+#
+# The CA in data-prod is the shared prod CA (`pg-coder-ca` / `pg-coder-ca-pub`,
+# created by `cluster.sh --env prod --pg-cluster pg-coder`); Coder connects with
+# sslmode=require over the pod network, which the coder egress policy bounds.
+---
+# ── Coder's environment: the DB URL, OIDC and the allowed group ─────────────
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: coder-env
+  namespace: coder
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: coder-env
+    template:
+      data:
+        # CNPG's read-write Service in data-prod; sslmode=require (the CA is
+        # cluster-local and Coder does not mount it).
+        CODER_PG_CONNECTION_URL: "postgresql://coder_migrator:{{ .dbpass }}@pg-coder-rw.data-prod.svc.cluster.local:5432/coder?sslmode=require"
+        CODER_OIDC_ISSUER_URL: "{{ .issuer }}"
+        CODER_OIDC_CLIENT_ID: "{{ .clientid }}"
+        CODER_OIDC_CLIENT_SECRET: "{{ .clientsecret }}"
+        CODER_OIDC_ALLOWED_GROUPS: "{{ .allowedgroups }}"
+  data:
+    - { secretKey: dbpass, remoteRef: { key: coder-db-migrator } }
+    - { secretKey: issuer, remoteRef: { key: coder-oidc-issuer-url } }
+    - { secretKey: clientid, remoteRef: { key: coder-oidc-client-id } }
+    - { secretKey: clientsecret, remoteRef: { key: coder-oidc-client-secret } }
+    - { secretKey: allowedgroups, remoteRef: { key: coder-oidc-allowed-groups } }

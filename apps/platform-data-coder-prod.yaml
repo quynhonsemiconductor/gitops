@@ -1,0 +1,46 @@
+# The ONE Application that deploys pg-coder's data scope (argocd-audit 2026-11-04 M2:
+# one directory + one app per data scope, `directory.include: "*.yaml"`). Root syncs
+# apps/*.yaml only.
+#
+# SA decision 2026-11-06 (R2 token audit): pg-coder lives in data-prod with
+# pg-rova/pg-opshub/pg-kb, not in namespace `coder`. Its barman backup, dump and
+# restore test therefore use the prod R2 credentials already in data-prod
+# (r2-backup-rw / r2-dump-rw / r2-backup-ro in kv-qnsc-prod) — no coder-r2-* copies in
+# kv-qnsc-prod, and rotating a token touches one vault.
+#
+# Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier
+# waves; it does not gate the Coder chart (platform-coder, also wave 3): the chart waits
+# for the database at runtime and retries.
+# prune: true — the PVC-owning objects (Cluster pg-coder, the ObjectStores) carry
+# Prune=false,Delete=false, so a prune cleans stale config but never data.
+#
+# The restore-test manifests carry their own `metadata.namespace: restore-test`, which
+# ArgoCD honours over this destination; the platform project admits both data-prod and
+# restore-test.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-data-coder-prod
+  labels:
+    qnsc.vn/env: platform
+  namespace: argocd
+  annotations:
+    # server-side diff through the CNPG webhook, like the other prod data apps
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-prod
+  source:
+    repoURL: https://github.com/quynhonsemiconductor/gitops
+    targetRevision: main
+    path: platform/data/coder-prod
+    directory: { include: "*.yaml" }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

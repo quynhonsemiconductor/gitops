@@ -83,6 +83,22 @@ platform:
     chart: plugin-barman-cloud
     repo: https://cloudnative-pg.github.io/charts
     version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
+  coder:
+    # VLSI workspaces (platform/coder). OCI chart; the tag equals the app
+    # version. Verified 2026-11-06 against ghcr.io/coder/chart: v2.39.0,
+    # v2.38.6 and v2.37.10 (all 2026-11-03) are younger than the two-week age
+    # floor this file applies, so the newest 2.38 patch that has aged in is
+    # 2.38.1 (2026-10-20). 2.38 is the stable line (2.39 is mainline).
+    # The digest is the OCI manifest digest, not the image digest:
+    #   docker-content-digest: sha256:4c2be43f39a5a2a4892b7e0479b336f4b7d819220800d529123ed99ff807a16f
+    # `helm show values oci://ghcr.io/coder/chart/coder --version 2.38.1`
+    # rendered platform/coder/values.yaml. OSS edition only (design §5).
+    chart: coder
+    repo: oci://ghcr.io/coder/chart
+    version: "2.38.1"
+    digest: "sha256:4c2be43f39a5a2a4892b7e0479b336f4b7d819220800d529123ed99ff807a16f"
+    # Server image, pinned in the chart values and by the push script:
+    image: "ghcr.io/coder/coder:v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e9098554440acd6dc2526a95252cc"
   prometheus-operator-crds:
     chart: prometheus-operator-crds
     repo: https://prometheus-community.github.io/helm-charts

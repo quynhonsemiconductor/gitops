@@ -1,0 +1,89 @@
+# ── pg-coder backups: barman-cloud plugin -> R2 `qnsc-backups`, prefix pg-coder/ ──
+#
+# Continuous WAL archiving plus a nightly base backup, restorable to any point in
+# the retention window (PITR). Same design as pg-kb-backup.yaml / pg-rova-backup.yaml.
+#
+# Credential: the SAME bucket-scoped R2 token the other prod clusters use
+# (r2-backup-rw-* in kv-qnsc-prod), already created by the owner. No new secret and
+# no coder-r2-* copy anywhere (the reason pg-coder lives in data-prod).
+# R2 needs the two checksum variables on the plugin sidecar, or uploads fail with a
+# checksum/trailer error (ONPREM-PLAN §6.3).
+#
+# Retention: barman stays at 14 days (the Bucket Lock window and the design
+# value). The R2 lifecycle (infra#459) expires base backups and WAL at 30 days —
+# the BACKSTOP, not the target: at 30 barman could still list the oldest base
+# backup or WAL that the lifecycle deletes first, breaking the oldest restore
+# point. scripts/check-barman-retention.sh enforces the bound in CI.
+# ⚠ INFRA: like pg-kb, the 14-day lock rule for `pg-coder/pg-coder-g1/wals/` in
+# infra live/onprem/backups.tf does not exist yet. Barman prunes at 30 days (the
+# lifecycle deliberately does not); without the lock the archive is deletable by
+# whoever holds the rw token. Tracked with the other bucket locks (lane F).
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-coder-r2-backup
+  namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-coder-r2-backup
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef: { key: r2-backup-rw-access-key-id }
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef: { key: r2-backup-rw-secret-access-key }
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  annotations:
+    # Irreversible backup configuration: removal is an explicit owner step, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  name: pg-coder-r2
+  namespace: data-prod
+spec:
+  retentionPolicy: "14d"
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-coder/
+    endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId: { name: pg-coder-r2-backup, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: pg-coder-r2-backup, key: ACCESS_SECRET_KEY }
+    wal:
+      compression: gzip
+      maxParallel: 2
+    data:
+      compression: gzip
+  instanceSidecarConfiguration:
+    env:
+      - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+      - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 256Mi }
+---
+# Nightly base backup, 02:45 ICT (19:45 UTC; the cron has a SECONDS field first).
+# Scheduled after pg-rova (19:00), pg-opshub (19:15) and pg-kb (19:30) so the base
+# backups do not overlap. `immediate` takes one at creation so the restore test has
+# a backup to restore without waiting for the first night.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: pg-coder-nightly
+  namespace: data-prod
+  annotations:
+    # Backup schedule: removing it must be an explicit edit + sync, never a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  schedule: "0 45 19 * * *"          # 19:45 UTC
+  immediate: true
+  backupOwnerReference: self
+  cluster: { name: pg-coder }
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
