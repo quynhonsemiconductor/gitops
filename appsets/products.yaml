@@ -41,13 +41,12 @@ spec:
   syncPolicy:
     preserveResourcesOnDeletion: true
 
-  # Two generators rather than one, split by environment. The alternative — a
-  # single list with `prune: {{ if eq .env "dev" }}…` — does not work: a Go
-  # template opening a value makes it a YAML flow mapping, and templating a
-  # BOOLEAN field is not something ApplicationSet does cleanly. A generator-level
-  # template override is the supported shape, and it reads better anyway.
+  # ONE list generator for every (product, env) row (argocd-audit 2026-11-04 M6).
+  # It replaces the earlier dev/prod split: two generators whose templates only
+  # differed in `prune` (now the same everywhere, H3) and in the dev-only
+  # ignoreDifferences (now a `templatePatch` below). The sync policy for all rows
+  # lives once in `spec.template`, so a new knob cannot drift between environments.
   generators:
-    # ── dev ──────────────────────────────────────────────────────────────────
     - list:
         elements:
           # rova dev and opshub dev. kb's row returns with its dev move; today it would
@@ -69,49 +68,10 @@ spec:
           # redirects on kb-dev.qnsc.vn — an absent kv secret fails the whole ExternalSecret, so the row
           # is the last switch. All three dev rows move together to 0.19.3.
           - { product: kb, env: dev, chartVersion: "0.20.0" }
-        template:
-          # The CRD requires every generator template to carry a FULL Application
-          # skeleton (metadata.name, spec.project, spec.destination) — it is
-          # validated structurally before ArgoCD merges it over the base template
-          # below, where the real definitions live. Values here are therefore the
-          # same placeholders, repeated to satisfy validation only.
-          metadata:
-            name: "{{.product}}-{{.env}}"
-          spec:
-            project: products
-            destination:
-              server: https://kubernetes.default.svc
-              namespace: "{{.product}}-{{.env}}"
-            syncPolicy:
-              automated:
-                prune: true
-              # RespectIgnoreDifferences makes a sync honour ignoreDifferences below: without it, ignoreDifferences only hides the
-              # OutOfSync status, and the next sync (selfHeal) still resets `.spec.replicas` to the chart's value, undoing kube-downscaler.
-              # This is the WHOLE list, not an addition: a list at generator level REPLACES the base template's (ServerSideApply,
-              # PruneLast), it does not merge with it, so the two base options are repeated here on purpose.
-              syncOptions:
-                - ServerSideApply=true
-                - PruneLast=true
-                - RespectIgnoreDifferences=true
-            # DEV ONLY. kube-downscaler (the dev night shutdown, added with the on-prem bootstrap) scales Deployments to zero outside
-            # working hours, so ArgoCD must not revert `.spec.replicas` there or the two fight on every reconcile. Prod has no
-            # downscaler and keeps full replica drift detection: a prod Deployment whose replicas were changed by hand is drift.
-            ignoreDifferences:
-              - group: apps
-                kind: Deployment
-                jqPathExpressions: [".spec.replicas"]
-
-    # ── prod ─────────────────────────────────────────────────────────────────
-    # ENABLED by the move-night PR (merged on the owner's go, after pg-rova is restored and
-    # verified): the rova prod row. `prune: true` (argocd-audit 2026-11-04 H3): a chart-removed
-    # Deployment/Service/ExternalSecret must go away in prod too; nothing in a product namespace
-    # owns a PVC or a CNPG Cluster (those are platform data apps, protected object by object).
-    # Not copy-pasted from dev: no kube-downscaler ignoreDifferences, because
-    # prod has no downscaler and replica drift is real drift.
-    - list:
-        elements:
+          # ── prod ────────────────────────────────────────────────────────────
+          # A prod-only product simply has no dev row — §5c: "Absence is the mechanism."
           - { product: rova, env: prod, chartVersion: "0.20.0" }
-          # opshub prod GO-LIVE (2026-11-04): the data layer is live (apps/platform-opshub-prod.yaml;
+          # opshub prod GO-LIVE (2026-11-04): the data layer is live (apps/platform-data-opshub-prod.yaml;
           # pg-opshub Healthy, first backup complete, ContinuousArchiving=True). This row deploys the
           # app itself. 0.19.3 carries `web`, the memoryLimit split and the version variables; a row
           # must never pin below the chart whose values it uses (the #163/#174 ComparisonError).
@@ -122,20 +82,6 @@ spec:
           # rows run (`web`, the memoryLimit split, the version variables); values/kb/prod.yaml uses
           # the split (Burstable), so this row must not pin lower.
           - { product: kb, env: prod, chartVersion: "0.20.0" }
-        template:
-          metadata:
-            name: "{{.product}}-{{.env}}"
-          spec:
-            project: products
-            destination:
-              server: https://kubernetes.default.svc
-              namespace: "{{.product}}-{{.env}}"
-            syncPolicy:
-              automated:
-                prune: true
-
-    # lms · solodesk · ai-dev-kit are added when they exist. A prod-only product
-    # simply has no dev row — §5c: "Absence is the mechanism."
 
   template:
     metadata:
@@ -178,14 +124,33 @@ spec:
 
       syncPolicy:
         automated:
+          prune: true       # audit H3: prod too; product namespaces own no PVC/Cluster
           selfHeal: true
-          # `prune` comes from the generator above — it is the one thing that
-          # genuinely differs between dev and prod.
         syncOptions:
           - ServerSideApply=true
           # Namespaces outlive any single sync and carry the labels §10's
           # NetworkPolicies select on. Never pruned, in either environment.
           - PruneLast=true
+          # Makes a sync honour ignoreDifferences: without it, ignoreDifferences only
+          # hides the OutOfSync status and the next selfHeal sync resets
+          # `.spec.replicas`, undoing kube-downscaler. Only the dev rows get the
+          # ignoreDifferences block (templatePatch); the option is harmless on prod.
+          - RespectIgnoreDifferences=true
         retry:
           limit: 3
           backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+  # DEV ONLY (argocd-audit M6). kube-downscaler (the on-prem night shutdown)
+  # scales Deployments to zero outside working hours, so ArgoCD must not revert
+  # `.spec.replicas` there or the two fight on every reconcile. Prod has no
+  # downscaler and keeps full replica drift detection: a hand-changed replica is
+  # drift. This is the only difference between rows now that prune is the same
+  # everywhere, so it is a patch instead of a second generator template.
+  templatePatch: |
+    {{- if eq .env "dev" }}
+    spec:
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jqPathExpressions: [".spec.replicas"]
+    {{- end }}
