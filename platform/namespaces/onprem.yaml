@@ -206,7 +206,9 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: vlsi-ws
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    # restricted, now that the workspace template is hardened (no privilege
+    # escalation, ALL capabilities dropped, RuntimeDefault seccomp, non-root).
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted

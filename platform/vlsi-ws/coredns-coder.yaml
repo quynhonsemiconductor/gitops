@@ -1,0 +1,26 @@
+# ── CoreDNS: make coder.qnsc.vn resolvable INSIDE the cluster ───────────────
+#
+# Workspace agents connect to the Coder server at https://coder.qnsc.vn. That
+# name is WARP-only private DNS (design §5.2) and does NOT resolve from a pod.
+# k3s CoreDNS imports every `*.override` key of coredns-custom into its main
+# server block, so this one line rewrites the exact name to the in-cluster
+# Service. The wildcard certificate's SAN covers coder.qnsc.vn, so TLS
+# verification still works — no insecure-skip-verify, no second hostname.
+#
+# Only the EXACT apex name is rewritten: workspace app subdomains
+# (*.coder.qnsc.vn) are resolved by browsers over WARP, never by a pod.
+# Cluster-wide DNS is a platform surface: the ConfigMap is Prune/Delete=false,
+# so removing this app cannot silently change resolution.
+#
+# Pilot proof (design §9 step 3): from a workspace pod,
+#   getent hosts coder.qnsc.vn     # -> coder.coder.svc.cluster.local
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+data:
+  coder.override: |
+    rewrite name exact coder.qnsc.vn coder.coder.svc.cluster.local

@@ -10,6 +10,10 @@ label, so no ESO store admits it). This directory adds the policy.
 | `networkpolicy.yaml` | no ingress; egress DNS + Coder + internet minus RFC 1918 |
 | `prometheusrule.yaml` | `VlsiWsQuotaNearFull` (limits.memory or pods over 85% for 15 min) |
 | `../../apps/platform-vlsi-ws.yaml` | the Application (wave 2) |
+| `coredns-coder.yaml` | CoreDNS override: `coder.qnsc.vn` -> `coder.coder.svc.cluster.local` inside the cluster |
+
+PSA for the namespace is **restricted** (the template drops ALL capabilities,
+forbids privilege escalation, uses RuntimeDefault seccomp and runs non-root).
 
 ## Sizing (vlsi-01 at 16 GiB, ~14 GiB usable)
 
