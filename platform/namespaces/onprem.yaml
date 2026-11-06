@@ -172,3 +172,37 @@ metadata:
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
+---
+# ── Coder (VLSI workspaces control plane) ───────────────────────────────────
+# env=platform so its ExternalSecrets may read kv-qnsc-platform (the OIDC pair,
+# the DB passwords and the R2 tokens). It is NOT a product namespace: no
+# qnsc.vn/tenant label, so the product VAPs do not bind here.
+# PSA baseline: the Coder server runs as non-root but writes its home/cache.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  name: coder
+  labels:
+    qnsc.vn/env: platform
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# ── vlsi-ws: one pod + PVC per VLSI engineer (design §3, §5.1) ──────────────
+# NO qnsc.vn/env label on purpose: no ESO store admits this namespace, so a
+# workspace can never read a vault. The ResourceQuota/LimitRange and the
+# NetworkPolicy land with the vlsi-ws PR.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  name: vlsi-ws
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

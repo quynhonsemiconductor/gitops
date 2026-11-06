@@ -21,6 +21,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # The Coder chart tag is what ArgoCD pulls; a re-push upstream changes the
+    # deployed artefact with no git change. Daily, off the hour.
+    - cron: "41 3 * * *"
 
 permissions:
   contents: read
@@ -65,7 +69,9 @@ jobs:
 
   checks:
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # The daily run is the DIGEST check only (`coder-pin`); the product-chart
+    # matrix stays a PR/push gate so the schedule is cheap.
+    if: needs.changes.outputs.relevant == 'true' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -79,6 +85,13 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
+      # The Coder chart is an OCI artefact outside the product-chart matrix.
+      # ArgoCD's Helm OCI source takes a TAG only (no digest targetRevision);
+      # scripts/check-coder-pin.sh enforces the recorded digest. The `coder-pin`
+      # job runs the SAME script daily and on main, so a tag re-pushed upstream
+      # fails a scheduled run even when no PR is open.
+      - name: Coder chart pin matches versions.yaml
+        run: ./scripts/check-coder-pin.sh
       - name: Install helm-unittest
         run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
 
@@ -227,6 +240,23 @@ jobs:
 
   # The required check. Always runs; fails if `checks` failed or was cancelled, passes
   # when it succeeded or was legitimately skipped (no relevant files).
+  # Daily, and on every push to main: the Coder chart tag is mutable upstream.
+  # A mismatch is loud here (red run + GitHub notification) even if nothing else
+  # changed, because ArgoCD would deploy the re-pushed chart on the next sync.
+  coder-pin:
+    name: Coder chart digest pin (daily)
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Coder chart digests still match versions.yaml
+        run: ./scripts/check-coder-pin.sh
+
   chart:
     needs: [changes, checks]
     if: always()

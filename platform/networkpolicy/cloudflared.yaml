@@ -52,6 +52,15 @@ spec:
         - { protocol: TCP, port: 3000 }   # api.<product>-<env> (rova, opshub)
         - { protocol: TCP, port: 8000 }   # api.kb-<env>
         - { protocol: TCP, port: 8080 }   # web.<product>-<env>
+    # Coder (VLSI workspaces): the private WARP route reaches the control plane
+    # here. Added with platform/coder; the tunnel rule itself is an infra PR.
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: coder }
+      ports:
+        # POD ports (Service 80/443 -> 8080/8443), as NetworkPolicy matches pods.
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8443 }
     - to:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: argocd }

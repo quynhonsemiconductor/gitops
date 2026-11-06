@@ -1,0 +1,51 @@
+# Coder OSS control plane for the VLSI platform (design §3, §5; owner "go VLSI").
+#
+# ONE Application for the namespace directory (the platform/data/<product>
+# pattern): the chart, pg-coder and its ExternalSecrets, backup/dump, the
+# wildcard certificate and the NetworkPolicies.
+#
+# Sync wave 3: AFTER products (1) and cloudflared (2), and after CNPG/ESO/
+# cert-manager (negative waves). The ExternalSecrets need the platform store
+# (Valid once the ESO workload identity is exchanged) and the Cluster needs the
+# CNPG operator and its image catalog.
+#
+# Reachability is NOT in this PR: the private WARP route for coder.qnsc.vn and
+# *.coder.qnsc.vn is an infra live/edge tunnel rule (design §10, still open).
+# The Service is ClusterIP and the NetworkPolicy admits only cloudflared, so
+# nothing is reachable until that route lands.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-coder
+  labels:
+    qnsc.vn/env: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: coder
+  sources:
+    - repoURL: ghcr.io/coder/chart
+      chart: coder
+      targetRevision: "2.38.1"   # keep in step with versions.yaml (and its digest)
+      helm:
+        releaseName: coder
+        valueFiles: [$values/platform/coder/values.yaml]
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/coder
+      directory:
+        recurse: false
+        exclude: values.yaml   # the chart values, not a manifest
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

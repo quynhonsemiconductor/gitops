@@ -1,0 +1,97 @@
+# ── coder: the control plane's own ingress/egress boundary (design §8) ──────
+#
+# Coder is reachable ONLY over WARP through the private tunnel route (design
+# §5.2). The ingress policy therefore admits exactly the cloudflared pods in
+# `platform` and nothing else: no other namespace, no LAN, no public listener.
+#
+# Egress is bounded because the server is the component that SPEAKS to Entra
+# (OIDC token exchange) and to the Kubernetes API (workspace provisioning):
+#   - DNS (kube-dns only);
+#   - the Kubernetes API Service (10.43.0.1:443, k3s's ClusterIP) — the
+#     provisioner's only cluster-internal destination;
+#   - pg-coder in this namespace on 5432 (in-cluster, selected by pod label
+#     cnpg.io/cluster=pg-coder);
+#   - the internet minus every RFC 1918 range. That covers Entra, Cloudflare and
+#     GHCR as the addresses move, and keeps the server off the LAN, the other
+#     products and the node IPs (the same shape as the product dump policy).
+# Workspace traffic does NOT come through here: workspace agents dial out to the
+# server, whose app proxy is multiplexed over that connection.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: coder-ingress
+  namespace: coder
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: coder }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: cloudflared }
+      ports:
+        # POD ports: the Service maps 80->8080 (http) and 443->8443 (https).
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8443 }
+    # Workspace agents dial the control plane. kube-router applies the policy to
+    # the POD port, so both the Service ports (80/443) and the container ports
+    # (8080/8443) are admitted.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: vlsi-ws }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: coder-workspace }
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: coder-egress
+  namespace: coder
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: coder }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # The API through its ClusterIP (pre-DNAT CNIs) and through the k3s server
+    # node (post-DNAT: kube-router rewrites the destination to the node IP:6443
+    # BEFORE the policy is evaluated). The node address is inside the site LAN;
+    # rather than a host literal in a public repo, the LAN CIDR is admitted on
+    # 6443 only. Pilot proof: `kubectl -n coder exec deploy/coder -- sh -c
+    # 'timeout 3 bash -c "</dev/tcp/10.43.0.1/443" && echo clusterip-ok'` and,
+    # from the same pod, `nc -vz <node-ip> 6443` (owner-supplied address).
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    - to:
+        - ipBlock: { cidr: 192.168.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+    - to:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: pg-coder }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10

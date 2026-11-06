@@ -33,6 +33,7 @@ spec:
     - https://nvidia.github.io/k8s-device-plugin            # GPU device plugin (platform-ai)
     - https://grafana.github.io/helm-charts      # k8s-monitoring (platform-observability)
     - https://argoproj.github.io/argo-helm       # argo-cd (platform-argocd, self-managed)
+    - ghcr.io/coder/chart                        # coder (VLSI workspaces; OCI, compared literally)
 
   # Exactly the namespaces the platform Applications target. `argocd` is here
   # because root and every child Application object live there.
@@ -61,6 +62,11 @@ spec:
     - { server: https://kubernetes.default.svc, namespace: obi }
     # the read-only cluster identity (platform/access): one ServiceAccount and its token Secret
     - { server: https://kubernetes.default.svc, namespace: platform-access }
+    # VLSI workspaces (platform/coder): the Coder control plane and its database
+    - { server: https://kubernetes.default.svc, namespace: coder }
+    # VLSI workspaces (platform/vlsi-ws): the chart creates the provisioner's
+    # Role/RoleBinding here; the quota and policy follow in the vlsi-ws PR.
+    - { server: https://kubernetes.default.svc, namespace: vlsi-ws }
 
   # See the header: sources and destinations bound this project, not the kinds.
   namespaceResourceWhitelist:
