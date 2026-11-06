@@ -41,7 +41,22 @@ coder:
     # group claim name (the app must emit it).
     # https://coder.com/docs/reference/cli/server#--oidc-group-field
     - { name: CODER_OIDC_GROUP_FIELD, value: "groups" }
-    # One sign-in path only: no password accounts are usable.
+    # ── sign-in: Entra OIDC is the only listed door (2026-11-06) ──────────
+    # Coder 2.38.1 injects a DEFAULT GitHub OAuth2 app (log:
+    # "injecting default github external auth provider") and a default GitHub
+    # external-auth provider when nothing is configured, so /setup showed a
+    # "GitHub" button. Both are opt-out bools in `coder server --help`
+    # (default: true). With them off the only provider on the page is OIDC.
+    - { name: CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLE, value: "false" }
+    - { name: CODER_EXTERNAL_AUTH_GITHUB_DEFAULT_PROVIDER_ENABLE, value: "false" }
+    # The single sign-in button's label (`--oidc-sign-in-text string`).
+    # CODER_OIDC_ICON_URL is deliberately unset: it needs a publicly reachable
+    # icon asset, and none is hosted for this deployment (no third-party hotlink).
+    - { name: CODER_OIDC_SIGN_IN_TEXT, value: "Sign in with Microsoft" }
+    # One sign-in path only: no password accounts are usable. The documented
+    # break-glass stays: an owner-role account may always sign in with its
+    # password (`coder server --help`: "Any user with the owner role will be
+    # able to sign in with their password regardless of this setting").
     # https://coder.com/docs/reference/cli/server#--disable-password-auth
     - { name: CODER_DISABLE_PASSWORD_AUTH, value: "true" }
     # No usage data leaves the platform.
