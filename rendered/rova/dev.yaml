@@ -279,7 +279,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"c26c066917a9","appEnv":"development","appVersion":"sha-c26c066917a9","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"757473381d5a","appEnv":"development","appVersion":"sha-757473381d5a","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -405,11 +405,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-c26c066917a9
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-757473381d5a
             - name: APP_VERSION
-              value: "sha-c26c066917a9"
+              value: "sha-757473381d5a"
             - name: APP_COMMIT
-              value: "c26c066917a9"
+              value: "757473381d5a"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -555,11 +555,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: rova-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=rova,deployment.environment=dev,service.version=sha-c26c066917a9
+              value: service.namespace=rova,deployment.environment=dev,service.version=sha-757473381d5a
             - name: APP_VERSION
-              value: "sha-c26c066917a9"
+              value: "sha-757473381d5a"
             - name: APP_COMMIT
-              value: "c26c066917a9"
+              value: "757473381d5a"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -677,7 +677,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 55019a093c67475d517ffdada699dbddb89eea8b53b06844b4e89e73e2bd3d6c
+        checksum/config: 00ec600f6f1fb87a9101d350c71fc5759ea5b176148ccef5d5d187cc8548742c
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
