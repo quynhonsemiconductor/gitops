@@ -20,17 +20,26 @@
 # `dcgm-exporter` block with the same five-name allowlist, so the budget is
 # enforced twice).
 #
-# PRIVILEGE: DCGM talks to the driver through NVML and must see the GPU — a
-# privileged container and the node's driver directory. It does NOT use hostPID:
-# the five fields are device-level, and host-process mapping (the only reason to
-# share the PID namespace) is not exposed. `ai` enforces PSA baseline, which REJECTS both privileged
-# containers and host namespaces, so the exporter does NOT run there
-# (2026-11-06 review). It gets its own namespace `gpu-monitoring`
-# (namespaces.yaml, the obi precedent: enforce=privileged, audit/warn
-# restricted, nothing else may run there), plus a default-deny NetworkPolicy
-# that admits exactly the Alloy scrape on 9400 from namespace `platform` and
-# denies all egress. The pod holds no Secret and mounts nothing writable from
-# the host.
+# PRIVILEGE AND THE DRIVER (2026-11-06, second review): the driver lives on the
+# HOST; the `nvidia` RuntimeClass injects libnvidia-ml and the device nodes, and
+# the image's NVIDIA_VISIBLE_DEVICES=all drives that injection. There is NO
+# /run/nvidia/driver hostPath — that path exists only when the GPU Operator runs
+# a containerised driver, and on ai-01 it made the pod fail ContainerCreating
+# (hostPath type check). NVIDIA's own chart ships the same shape: no driver
+# hostPath, no privileged, hostPID false, securityContext runAsUser 0 with ALL
+# capabilities dropped and allowPrivilegeEscalation false (SYS_ADMIN is only
+# for the DCGM_FI_PROF_* profiling fields, which this collector list does not
+# ask for — deployment/values.yaml in NVIDIA/dcgm-exporter).
+#
+# hostPID is likewise not used: the five fields are device-level, and the host
+# PID namespace only matters for host-process→GPU mapping.
+#
+# `ai` enforces PSA baseline, which rejects privileged pods, so the exporter runs
+# in its own namespace `gpu-monitoring` (namespaces.yaml, the obi precedent:
+# audit/warn restricted, nothing else may run there), with a default-deny
+# NetworkPolicy that admits exactly the Alloy scrape on 9400 from namespace
+# `platform` and denies all egress. The pod holds no Secret and mounts nothing
+# from the host.
 #
 # IMAGE: docker.io/nvidia/dcgm-exporter 4.6.1-4.8.4-distroless, published
 # 2026-09-18 — older than the repo's two-week age floor; the tag digest was read
@@ -88,35 +97,25 @@ spec:
           args: ["-f", "/etc/dcgm-exporter/custom-collectors.csv"]
           ports:
             - { name: metrics, containerPort: 9400, protocol: TCP }
-          # The exporter is privileged for NVML/driver access (see the header).
+          # Same shape as NVIDIA's chart (see the header): root, every
+          # capability dropped, no privilege escalation, no privileged mode.
           # readOnlyRootFilesystem is deliberately NOT set: the embedded
           # hostengine writes under /var/run, and a distroless image gives no
           # shell to diagnose a read-only root after the fact.
-          #
-          # The three Semgrep findings on this context are accepted by design;
-          # each carries its rule id and the reason. The namespace is the
-          # boundary: gpu-monitoring enforces PSA privileged, runs nothing but
-          # this pod, and its NetworkPolicies deny all ingress but the Alloy
-          # scrape on 9400 and deny all egress.
-          securityContext:   # nosemgrep: yaml.kubernetes.security.allow-privilege-escalation.allow-privilege-escalation -- privileged: true already implies allowPrivilegeEscalation; setting false would be a no-op and a misleading guarantee
-            privileged: true   # nosemgrep: yaml.kubernetes.security.privileged-container.privileged-container -- DCGM needs NVML and the node driver; gpu-monitoring is the dedicated privileged namespace, default-deny ingress+egress
-            runAsNonRoot: false   # nosemgrep: yaml.kubernetes.security.run-as-non-root-unsafe-value.run-as-non-root-unsafe-value -- the vendor image declares USER root:root and DCGM's supported mode is root with the GPU device nodes; a non-root UID is not supported by the distroless packaging
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false   # nosemgrep: yaml.kubernetes.security.run-as-non-root-unsafe-value.run-as-non-root-unsafe-value -- the vendor image declares USER root:root and NVIDIA's own chart runs the exporter as uid 0; a non-root UID is not supported by the distroless packaging
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { memory: 256Mi }
           volumeMounts:
             - { name: collectors, mountPath: /etc/dcgm-exporter, readOnly: true }
-            - { name: driver, mountPath: /run/nvidia/driver, readOnly: true }
       volumes:
         - name: collectors
           configMap:
             name: dcgm-exporter-collectors
-        # The NVIDIA container toolkit installs the driver libraries here on
-        # this node (runtime configuration is node state, see runtimeclass.yaml).
-        - name: driver
-          hostPath:
-            path: /run/nvidia/driver
-            type: Directory
 ---
 # ── the only traffic this namespace serves: the Alloy scrape ────────────────
 # Namespace-wide default deny first, then the one allow. Egress is denied too:
