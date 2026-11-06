@@ -4,7 +4,7 @@
 # Coder UI: the UI copy is overwritten on the next push, and a manual edit is
 # invisible in review.
 #
-# Shape: one pod in namespace vlsi-ws on the pool=vlsi node, a /home PVC on
+# Shape: one pod in namespace vlsi-ws on the qnsc.vn/pool=vlsi node, a /home PVC on
 # local-path-retain, the qnsc-eda image (digest from E — PLACEHOLDER until it
 # reports), TTL 2 h with activity bump. Modules: VS Code (code-server) and
 # Surfer web. KasmVNC is deliberately absent (design §3: no desktop).
@@ -189,7 +189,7 @@ resource "kubernetes_pod" "main" {
   spec {
     restart_policy = "Never"
     # The vlsi pool: the node carries qnsc.vn/pool=vlsi:NoSchedule.
-    node_selector = { pool = "vlsi" }
+    node_selector = { "qnsc.vn/pool" = "vlsi" }
     toleration {
       key      = "qnsc.vn/pool"
       operator = "Equal"
