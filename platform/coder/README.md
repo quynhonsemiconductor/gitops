@@ -157,7 +157,7 @@ PR does not add that tunnel rule. Until it lands the Service is ClusterIP and
 
 ## Workspace template
 
-`templates/vlsi-workspace/main.tf` is the template: one pod on `pool=vlsi`,
+`templates/vlsi-workspace/main.tf` is the template: one pod on `qnsc.vn/pool=vlsi`,
 the `qnsc-eda` digest, a 10 GiB `/home` PVC on `local-path-retain`, request
 0.5 CPU / 1.5 GiB and limit 4 CPU / 6 GiB (the `vlsi-ws` quota), TTL 2 h with
 the agent's activity bump. Apps: VS Code (`code-server`, browser) and Surfer

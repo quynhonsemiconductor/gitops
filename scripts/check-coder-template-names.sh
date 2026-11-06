@@ -65,5 +65,15 @@ if [ -f "$LOCK" ]; then
   fi
 fi
 
+# 5. the node selector uses the label the k3s nodes actually carry
+#    (qnsc.vn/pool=vlsi). A bare `pool` key matches no node: the first workspace
+#    build sat Pending for 5 minutes on 2026-11-07.
+if ! grep -qE 'node_selector[[:space:]]*=[[:space:]]*\{[[:space:]]*"qnsc\.vn/pool"[[:space:]]*=[[:space:]]*"vlsi"' "$FILE"; then
+  echo "::error file=$FILE::node_selector must be { \"qnsc.vn/pool\" = \"vlsi\" } (the label on vlsi-01)"
+  fail=1
+else
+  echo "ok: node_selector uses qnsc.vn/pool"
+fi
+
 [ "$fail" -eq 0 ] && echo "ok: $FILE"
 exit "$fail"
