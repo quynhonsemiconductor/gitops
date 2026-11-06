@@ -50,6 +50,22 @@ coder:
     # group claim name (the app must emit it).
     # https://coder.com/docs/reference/cli/server#--oidc-group-field
     - { name: CODER_OIDC_GROUP_FIELD, value: "groups" }
+    # ── email claims from Entra (2026-11-07: "Email not verified") ─────────
+    # Entra ID v2 access/ID tokens do not carry `email_verified` (the claim
+    # exists only for some account types, and Coder rejects the login when it is
+    # absent/untrue: "Verify the <user>@qnsc.vn email address on your OIDC
+    # provider"). Coder's documented Microsoft setting is to ignore it:
+    # https://coder.com/docs/admin/users/oidc-auth/microsoft
+    - { name: CODER_OIDC_IGNORE_EMAIL_VERIFIED, value: "true" }
+    # Which claim is the email. Coder's Microsoft guide sets `upn`: the `email`
+    # claim is absent for many Entra users and follows the `mail` attribute,
+    # while `upn` is the tenant-controlled sign-in name. A guest's UPN carries
+    # the `#EXT#` marker and the external domain, so the domain filter below
+    # rejects it outright.
+    - { name: CODER_OIDC_EMAIL_FIELD, value: "upn" }
+    # Only our tenant's verified domain: belt and braces on top of
+    # CODER_OIDC_ALLOWED_GROUPS. Guests and B2B identities fail this check.
+    - { name: CODER_OIDC_EMAIL_DOMAIN, value: "qnsc.vn" }
     # ── sign-in: Entra OIDC is the only listed door (2026-11-06) ──────────
     # Coder 2.38.1 injects a DEFAULT GitHub OAuth2 app (log:
     # "injecting default github external auth provider") and a default GitHub
