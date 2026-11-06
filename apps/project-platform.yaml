@@ -58,6 +58,14 @@ spec:
     - { server: https://kubernetes.default.svc, namespace: kube-system }
     # shared AI services on the GPU node (platform-ai: namespace, device plugin, TEI)
     - { server: https://kubernetes.default.svc, namespace: ai }
+    # GPU metrics exporter (platform-ai: platform/ai/dcgm-exporter.yaml). MISSING
+    # until 2026-11-06: the exporter moved out of `ai` (PSA baseline rejects a
+    # privileged pod) into its own namespace, and platform-ai then failed with
+    # "namespace gpu-monitoring is not permitted in project 'platform'" — a
+    # destination the AppProject never learned. The namespace object itself is
+    # cluster-scoped and already allowed; this line is what admits the namespaced
+    # DaemonSet, ConfigMap and NetworkPolicies in it.
+    - { server: https://kubernetes.default.svc, namespace: gpu-monitoring }
     # OBI (Beyla) eBPF instrumentation: the only namespace labelled PSA privileged for it (platform/namespaces/obi.yaml)
     - { server: https://kubernetes.default.svc, namespace: obi }
     # the read-only cluster identity (platform/access): one ServiceAccount and its token Secret
