@@ -172,7 +172,8 @@ Pushed from Git, never edited in the UI:
 
 ```sh
 export CODER_URL=https://coder.qnsc.vn          # over WARP
-export CODER_TOKEN=...                          # coder tokens create; vault/ESO, never Git
+export CODER_SESSION_TOKEN=...                  # coder tokens create; vault/ESO, never Git
+                                                # (CODER_TOKEN is accepted as an alias)
 export VLSI_NODE_SSH=qnsc@vlsi-01               # storage gate: local-path must be on sdb
 ./scripts/coder-push-template.sh
 ```
@@ -185,7 +186,8 @@ from the committed `.terraform.lock.hcl`. There is no max-TTL on OSS 2.38.1
 (`--max-ttl` is absent from `templates edit --help`), so the 2 h default plus the
 agent's activity bump is the policy. A CI job can
 call the same script with the token delivered by ESO; the token is read from
-the environment, never argv or output.
+the environment and passed to the container by NAME (`-e CODER_SESSION_TOKEN`,
+the variable the Coder CLI actually reads), never argv or output.
 
 ## Restore test
 

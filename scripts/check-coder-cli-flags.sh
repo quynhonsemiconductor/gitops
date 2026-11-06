@@ -48,6 +48,19 @@ else
   fail=1
 fi
 
+# Every `-e CODER_*` name the script hands the container must be a variable the
+# CLI actually reads (the 2026-11-07 "You are signed out" failure: the script
+# passed CODER_TOKEN, the CLI reads CODER_SESSION_TOKEN).
+global_help=$(docker run --rm --entrypoint /opt/coder "$IMAGE" --help 2>&1)
+while IFS= read -r name; do
+  if printf '%s\n' "$global_help" | grep -q "\$$name\b"; then
+    echo "ok: $name is read by the CLI"
+  else
+    echo "::error file=$SCRIPT::-e $name is not a variable the pinned CLI reads (see coder --help)"
+    fail=1
+  fi
+done < <(grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -oE '\-e CODER_[A-Z_]+' | sed 's/-e //' | sort -u)
+
 # `--max-ttl` is Premium-only/absent in OSS 2.38.1; the script must not pass it.
 if grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -q -- '--max-ttl'; then
   echo "::error file=$SCRIPT::passes --max-ttl, which templates edit --help does not list"
