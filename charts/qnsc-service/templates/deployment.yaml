@@ -24,6 +24,9 @@ metadata:
   labels:
     {{- include "qnsc.labels" (list $ $name) | nindent 4 }}
 spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
   {{- /* A fixed replica count, from the size preset or the service's own `replicas`. There is no autoscaler
          (KEDA was dropped 2026-10-13, decision D2): dev scales to zero by schedule with kube-downscaler,
          and a service that needs more replicas says so in its values. */}}

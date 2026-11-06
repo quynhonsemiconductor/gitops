@@ -27,6 +27,9 @@ metadata:
   labels:
     {{- include "qnsc.labels" (list $ "web") | nindent 4 }}
 spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
   # Direct read, like deployment.yaml:27 — NOT `| default 1`, which turns an
   # explicit replicas: 0 (kube-downscaler, or a deliberately parked env) back
   # into 1 because Sprig's default treats 0 as empty. web.replicas defaults to

@@ -1,0 +1,9 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-x-r2
+  namespace: data-prod
+spec:
+  retentionPolicy: "30d"
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-x/

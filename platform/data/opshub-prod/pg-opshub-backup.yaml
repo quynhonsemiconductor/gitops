@@ -4,8 +4,11 @@
 # the retention window (PITR). Same design as pg-rova-backup.yaml. ⚠ INFRA FIRST: infra
 # live/onprem/backups.tf locks only `pg-rova/pg-rova-g1/wals/`; the `pg-opshub/pg-opshub-g1/wals/` lock
 # rule does not exist yet (infra lane, the same one-line rule), and without it opshub's WAL archive is
-# deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately does not), so
-# retentionPolicy equals the lock window.
+# deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately
+# does not), so retentionPolicy stays at the 14-day lock window. The R2 lifecycle
+# (infra#459) expires base backups and WAL at 30 days — the BACKSTOP, not the
+# target: at 30 barman could still list the oldest base backup or WAL that the
+# lifecycle deletes first, breaking the oldest restore point.
 #
 # Credential: an R2 API token scoped to bucket qnsc-backups only, object read+write
 # (barman needs delete to prune; the Bucket Lock is the immutability control, not a

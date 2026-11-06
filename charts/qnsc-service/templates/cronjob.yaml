@@ -18,16 +18,17 @@ spec:
          data problem, not a scheduling one. If a job legitimately needs
          concurrency, it is a `worker` reading a queue, not a cron. */}}
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
   startingDeadlineSeconds: 300
   jobTemplate:
     spec:
       activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
       backoffLimit: 1
-      {{- /* 3 days: the CronJob's own history limits bound how many Jobs exist,
-             but each Job's pod is the terminated pod that piles up. */}}
-      ttlSecondsAfterFinished: 259200
+      {{- /* 1 day: the CronJob's own history limits bound how many Jobs exist,
+             but each Job's pod is the terminated pod that piles up. One is
+             enough for triage; the log is in Loki, and a failure alert fires. */}}
+      ttlSecondsAfterFinished: 86400
       template:
         metadata:
           labels:

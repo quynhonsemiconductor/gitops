@@ -1,0 +1,18 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-x-r2
+  namespace: restore-test
+spec:
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-x/
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-y-r2
+  namespace: data-prod
+spec:
+  retentionPolicy: "14d"
+  configuration:
+    destinationPath: s3://qnsc-backups/pg-y/

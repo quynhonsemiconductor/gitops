@@ -13,7 +13,7 @@ metadata:
          digest-only values file renders and a rollback to a digest names the same
          Job again. A changed image yields a new name; the Job is a hook, so the
          previous object is untracked and prune does not remove it — its
-         ttlSecondsAfterFinished deletes it 3 days after it finishes. */}}
+         ttlSecondsAfterFinished deletes it 1 day after it finishes. */}}
   {{- if $svc.image.digest }}
   name: {{ $name }}-{{ $svc.image.digest | trimPrefix "sha256:" | trunc 12 }}
   {{- else }}
@@ -34,7 +34,7 @@ metadata:
            It stayed a HOOK for two reasons a normal resource cannot satisfy:
            a Job's pod template is immutable (a template change without a new
            image would wedge the sync), and a tracked Job's TTL would delete it
-           after 3 days -> OutOfSync -> selfHeal re-runs migrations every 3 days.
+           after its TTL -> OutOfSync -> selfHeal would re-run migrations.
            As a hook it is untracked: BeforeHookCreation replaces the object
            (same name -> no immutability error), and the TTL just cleans it up.
 
@@ -52,11 +52,13 @@ spec:
          re-running the sync is safe. */}}
   activeDeadlineSeconds: {{ $svc.timeoutSeconds | default 600 }}
   backoffLimit: 0
-  {{- /* 3 days, then the Job and its pod are deleted. Before this, every migrator
-         run left a Succeeded pod forever: after node reboots the pile of
-         terminated pods is the cluster's largest object count. Long enough that
-         a migration's logs are still there while its rollout is being debugged. */}}
-  ttlSecondsAfterFinished: 259200
+  {{- /* 1 day, then the Job and its pod are deleted (the retention policy in
+         product-docs platform/RETENTION.md). Before this, every migrator run
+         left a Succeeded pod forever: after node reboots the pile of terminated
+         pods is the cluster's largest object count. A failed hook blocks the
+         sync and is visible at once, so a day is enough for its logs; a Job
+         spec has one TTL field, it cannot be 1 day on success and 3 on failure. */}}
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:

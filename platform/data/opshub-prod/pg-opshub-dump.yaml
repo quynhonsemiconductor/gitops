@@ -32,13 +32,13 @@ spec:
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       backoffLimit: 2
       activeDeadlineSeconds: 2400
-      ttlSecondsAfterFinished: 259200   # 3 days of logs, then the Job and its pod are deleted
+      ttlSecondsAfterFinished: 86400   # 1 day: one Job, one pod; the log is in Loki and the alerting covers a failed run
       template:
         metadata:
           labels:

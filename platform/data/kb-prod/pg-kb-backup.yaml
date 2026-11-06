@@ -6,7 +6,10 @@
 # `pg-opshub/pg-opshub-g1/wals/`; the `pg-kb/pg-kb-g1/wals/` lock rule does not exist
 # yet (infra lane, the same one-line rule), and without it kb's WAL archive is
 # deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately
-# does not), so retentionPolicy equals the lock window.
+# does not), so retentionPolicy stays at the 14-day lock window. The R2
+# lifecycle (infra#459) expires base backups and WAL at 30 days — the BACKSTOP,
+# not the target: at 30 barman could still list the oldest base backup or WAL
+# that the lifecycle deletes first, breaking the oldest restore point.
 #
 # Credential: the SAME bucket-scoped R2 token the other prod clusters use
 # (r2-backup-rw-* in kv-qnsc-prod), already created by the owner. No new secret.

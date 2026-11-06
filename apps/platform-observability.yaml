@@ -25,6 +25,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
+  # Three revisions, not the default ten (each is a full rendered manifest set).
+  revisionHistoryLimit: 3
   project: platform   # was `default` (audit G-04). Every rendered object lives in `platform` (checked: helm template of k8s-monitoring 4.5.3 with these values) plus cluster-scoped CRD/ClusterRole kinds, which the project allows.
   destination:
     server: https://kubernetes.default.svc
