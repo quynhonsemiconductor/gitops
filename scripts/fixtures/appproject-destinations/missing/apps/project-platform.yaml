@@ -1,0 +1,8 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+spec:
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: argocd }
+    - { server: https://kubernetes.default.svc, namespace: data-prod }
