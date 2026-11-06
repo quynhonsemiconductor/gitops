@@ -6,9 +6,10 @@
 # `pg-opshub/pg-opshub-g1/wals/`; the `pg-kb/pg-kb-g1/wals/` lock rule does not exist
 # yet (infra lane, the same one-line rule), and without it kb's WAL archive is
 # deletable by whoever holds the rw token. Barman prunes (the lifecycle deliberately
-# does not), so the 14-day lock is the immutability floor and barman's own
-# retentionPolicy (30 days, the prod policy in product-docs platform/RETENTION.md)
-# is the age cap.
+# does not), so retentionPolicy stays at the 14-day lock window. The R2
+# lifecycle (infra#459) expires base backups and WAL at 30 days — the BACKSTOP,
+# not the target: at 30 barman could still list the oldest base backup or WAL
+# that the lifecycle deletes first, breaking the oldest restore point.
 #
 # Credential: the SAME bucket-scoped R2 token the other prod clusters use
 # (r2-backup-rw-* in kv-qnsc-prod), already created by the owner. No new secret.
@@ -43,7 +44,7 @@ metadata:
   name: pg-kb-r2
   namespace: data-prod
 spec:
-  retentionPolicy: "30d"
+  retentionPolicy: "14d"
   configuration:
     destinationPath: s3://qnsc-backups/pg-kb/
     endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com

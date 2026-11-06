@@ -3,9 +3,11 @@
 # Continuous WAL archiving plus a nightly base backup, restorable to any point in
 # the retention window (PITR). Bucket, lock and lifecycle are infra live/onprem
 # (backups.tf): prefix pg-rova/ is under a 14-day Bucket Lock. Barman prunes (the
-# lifecycle deliberately does not): the 14-day lock is the immutability floor and
-# barman's own retentionPolicy (30 days, the prod policy in product-docs
-# platform/RETENTION.md) is the age cap.
+# lifecycle deliberately does not), so retentionPolicy stays at the lock window:
+# 14 days. The R2 lifecycle (infra#459) expires base backups and WAL at 30 days —
+# the BACKSTOP, not the target. Barman must stay well below it; at 30 the
+# lifecycle could delete the oldest base backup (or WAL barman still lists)
+# first, which breaks the oldest restore point.
 #
 # Credential: an R2 API token scoped to bucket qnsc-backups only, object read+write
 # (barman needs delete to prune; the Bucket Lock is the immutability control, not a
@@ -47,7 +49,7 @@ metadata:
   name: pg-rova-r2
   namespace: data-prod
 spec:
-  retentionPolicy: "30d"
+  retentionPolicy: "14d"
   configuration:
     destinationPath: s3://qnsc-backups/pg-rova/
     endpointURL: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com

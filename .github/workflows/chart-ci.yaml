@@ -75,6 +75,19 @@ jobs:
         # its own token. A persisted credential would have nothing to do.
         with: { persist-credentials: false }
 
+      # ── barman vs the R2 lifecycle ───────────────────────────────────────
+      # Two independent retention controls: CNPG's ObjectStore.retentionPolicy
+      # (this repo) and the R2 lifecycle (infra live/onprem/backups.tf, 30 days,
+      # infra#459). If barman reaches the lifecycle age, the lifecycle deletes
+      # the oldest base backup while barman still lists it and the oldest
+      # restore point breaks. Neither file is visible from the other repo, so
+      # the bound is checked statically here; the self-test proves the checker
+      # fails when it should.
+      - name: barman retention below the R2 lifecycle
+        run: |
+          ./scripts/test-barman-retention.sh
+          ./scripts/check-barman-retention.sh
+
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
