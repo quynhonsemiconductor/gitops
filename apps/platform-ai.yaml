@@ -44,14 +44,14 @@ spec:
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       ref: values
-    # Namespaces, priority classes, and the RuntimeClass. The
-    # include list is explicit because device-plugin.values.yaml lives in the
-    # same directory and is NOT a manifest.
+    # Namespaces, priority classes, the RuntimeClass and the GPU metrics
+    # exporter. The include list is explicit because device-plugin.values.yaml
+    # lives in the same directory and is NOT a manifest.
     - repoURL: https://github.com/quynhonsemiconductor/gitops
       targetRevision: main
       path: platform/ai
       directory:
-        include: "{namespaces.yaml,priorityclasses.yaml,runtimeclass.yaml}"
+        include: "{namespaces.yaml,priorityclasses.yaml,runtimeclass.yaml,dcgm-exporter.yaml}"
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [ServerSideApply=true]

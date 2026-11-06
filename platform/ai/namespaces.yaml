@@ -34,3 +34,27 @@ metadata:
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
+
+---
+# ── gpu-monitoring: the DCGM exporter ONLY (observability audit 2026-11-06) ──
+# `ai` enforces PSA baseline, which REJECTS privileged containers, and DCGM
+# needs one (NVML/driver access). 2026-11-06 review: the exporter is never run
+# in `ai`, and `ai` is not relaxed.
+#
+# The obi precedent (../namespaces/obi.yaml), not a relaxation of `ai`: the
+# exception is a namespace of its own, audit and warn stay at `restricted`, and
+# nothing but dcgm-exporter may run here (its NetworkPolicy admits exactly the
+# Alloy scrape on 9400 and denies everything else, egress included).
+# No qnsc.vn/env and no qnsc.vn/tenant on purpose: no ESO store selects it and
+# no admission policy binds it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  name: gpu-monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
