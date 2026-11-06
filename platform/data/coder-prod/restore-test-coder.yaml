@@ -15,7 +15,7 @@
 # restored cluster has NO `plugins:` block, so it never archives WAL of its own.
 #
 # Credential: the same prod R2 read token the rova/opshub/kb restore tests use.
-# pg-coder adds no coder-r2-* copy in kv-qnsc-platform — the reason it lives in
+# pg-coder adds no coder-r2-* copy anywhere — the reason it lives in
 # data-prod. The ExternalSecret here is per-database only so a restore run never
 # depends on another product's Application.
 #

@@ -6,7 +6,7 @@
 # pg-rova/pg-opshub/pg-kb, not in namespace `coder`. Its barman backup, dump and
 # restore test therefore use the prod R2 credentials already in data-prod
 # (r2-backup-rw / r2-dump-rw / r2-backup-ro in kv-qnsc-prod) — no coder-r2-* copies in
-# kv-qnsc-platform, and rotating a token touches one vault.
+# kv-qnsc-prod, and rotating a token touches one vault.
 #
 # Wave 3 with the other prod data apps, so an unready kv-qnsc-prod cannot hold earlier
 # waves; it does not gate the Coder chart (platform-coder, also wave 3): the chart waits

@@ -8,7 +8,7 @@
 #
 # WHY A NAMESPACED Issuer, not a ClusterIssuer: a ClusterIssuer resolves
 # `apiTokenSecretRef` in the cert-manager cluster-resource namespace, which
-# would force the Cloudflare token (and with it kv-qnsc-platform access) into
+# would force the Cloudflare token (and with it kv-qnsc-prod access) into
 # the cert-manager namespace. A namespaced Issuer keeps the token where the
 # certificate is used. Same DNS-01 mechanism, narrower blast radius.
 #
@@ -20,7 +20,7 @@
 # letsencrypt-staging, sync, check, then point it back; the prod issuance is the
 # final state.
 #
-# OWNER: create `coder-cloudflare-dns-api-token` in kv-qnsc-platform — a
+# OWNER: create `coder-cloudflare-dns-api-token` in kv-qnsc-prod — a
 # Cloudflare API token scoped to the qnsc.vn zone with DNS:Edit only. ESO copies
 # it into this namespace; only the ACME TXT records are created.
 apiVersion: external-secrets.io/v1
@@ -32,7 +32,7 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
   target:
     name: coder-cloudflare-dns
   data:

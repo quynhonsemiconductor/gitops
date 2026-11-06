@@ -2,12 +2,12 @@
 #
 # ONE Application for the namespace directory: the chart, the wildcard
 # certificate, the NetworkPolicies and Coder's own secrets (the DB role
-# passwords and CODER_PG_CONNECTION_URL/OIDC env, all from kv-qnsc-platform).
+# and CODER_PG_CONNECTION_URL/OIDC env, all from kv-qnsc-prod).
 #
 # The DATABASE is not here: pg-coder lives in data-prod with the other prod
 # databases and is deployed by apps/platform-data-coder-prod.yaml (SA decision
 # 2026-11-06, R2 token audit — its backup/dump/restore then reuse the prod R2
-# credentials instead of a coder-r2-* copy in the platform vault).
+# credentials instead of a coder-r2-* copy in a second vault).
 #
 # Sync wave 3: AFTER products (1) and cloudflared (2), and after CNPG/ESO/
 # cert-manager (negative waves). The ExternalSecrets need the platform store

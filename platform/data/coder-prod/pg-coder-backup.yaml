@@ -5,7 +5,7 @@
 #
 # Credential: the SAME bucket-scoped R2 token the other prod clusters use
 # (r2-backup-rw-* in kv-qnsc-prod), already created by the owner. No new secret and
-# no coder-r2-* copy in kv-qnsc-platform (the reason pg-coder lives in data-prod).
+# no coder-r2-* copy anywhere (the reason pg-coder lives in data-prod).
 # R2 needs the two checksum variables on the plugin sidecar, or uploads fail with a
 # checksum/trailer error (ONPREM-PLAN §6.3).
 #

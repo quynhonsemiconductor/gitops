@@ -178,6 +178,10 @@ metadata:
 # the DB passwords and the R2 tokens). It is NOT a product namespace: no
 # qnsc.vn/tenant label, so the product VAPs do not bind here.
 # PSA baseline: the Coder server runs as non-root but writes its home/cache.
+# qnsc.vn/env=prod, NOT platform (SA decision 2026-11-06): Coder is a production
+# service for the VLSI team, so it reads kv-qnsc-prod like rova/opshub/kb, the
+# same vault as its database. All seven coder-* secrets live there; the
+# kv-qnsc-platform copies were deleted.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -185,7 +189,7 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: coder
   labels:
-    qnsc.vn/env: platform
+    qnsc.vn/env: prod
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted

@@ -9,7 +9,7 @@
 # websockets do not follow an Access redirect (design §5.2). The server is
 # reachable over WARP only, through the private route in live/edge (follow-up).
 #
-# Secrets arrive from kv-qnsc-platform through ESO (database.yaml): the OIDC
+# Secrets arrive from kv-qnsc-prod through ESO (database.yaml): the OIDC
 # pair, CODER_OIDC_ALLOWED_GROUPS (the grp-qnsc-vlsi object id) and the
 # Postgres URL. Nothing here is a value.
 coder:

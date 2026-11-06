@@ -7,16 +7,13 @@
 # 2026-11-06, from the R2 token audit): every data cluster in one namespace, so
 # barman, the dump and the restore test reuse the prod R2 credentials that
 # already exist there (r2-backup-rw / r2-dump-rw / r2-backup-ro in
-# kv-qnsc-prod) instead of a second copy of the same tokens in
-# kv-qnsc-platform. Rotation then touches one vault.
+# kv-qnsc-prod). Rotation touches one vault.
 #
-# WHAT DOES **NOT** MOVE: the coder_migrator / coder_readonly passwords stay in
-# kv-qnsc-platform (the owner's seven coder secrets), because the Coder server's
-# CODER_PG_CONNECTION_URL is assembled in namespace `coder` from the platform
-# vault (platform/coder/database.yaml). To give THIS cluster those two
-# passwords without a second copy, role-secrets.yaml mirrors the two Secrets
-# from namespace `coder` into data-prod through a kubernetes-provider
-# ClusterSecretStore whose RBAC is limited to those two Secret names.
+# Namespace `coder` carries qnsc.vn/env=prod for the same reason (SA decision,
+# 2026-11-06): Coder is a production service for the VLSI team, so ALL seven
+# coder-* owner secrets live in kv-qnsc-prod — the role passwords below, the OIDC
+# pair, the allowed group and the Cloudflare DNS token. There is no platform
+# vault read and no copy of any secret in a second vault.
 #
 # The CA is the shared prod CA like every other prod cluster: `pg-coder-ca` /
 # `pg-coder-ca-pub` are created in data-prod from kv-qnsc-prod by
@@ -92,3 +89,58 @@ spec:
         login: true
         inRoles: [pg_read_all_data]
         passwordSecret: { name: pg-coder-coder-readonly }
+---
+# ── role password Secrets (CNPG re-reads on change) ─────────────────────────
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-coder-coder-migrator
+  namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-coder-coder-migrator
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"     # CNPG re-reads the role password when this changes
+      data:
+        username: coder_migrator
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: coder-db-migrator
+---
+# The dump role: SELECT everywhere, no DDL and no ownership. The nightly
+# pg-coder-dump connects as this, never as the migrator owner.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-coder-coder-readonly
+  namespace: data-prod
+  annotations:
+    # Credential path used by a running workload: removal must be explicit, not a prune.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
+  target:
+    name: pg-coder-coder-readonly
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: coder_readonly
+        password: "{{ .password }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: coder-db-readonly

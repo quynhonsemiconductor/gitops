@@ -1,70 +1,22 @@
-# ── Coder's database credentials in namespace `coder` ──────────────────────
+# ── Coder's environment Secrets in namespace `coder` ───────────────────────
 #
 # The DATABASE ITSELF IS NOT HERE. pg-coder runs in data-prod with the other
-# prod databases (platform/data/coder-prod/pg-coder.yaml), so its barman
-# backup, dump and restore test use the prod R2 credentials that already exist
-# there (r2-backup-rw / r2-dump-rw / r2-backup-ro in kv-qnsc-prod) instead of a
-# coder-r2-* copy in kv-qnsc-platform — SA decision 2026-11-06 from the R2 token
-# audit; rotating a token then touches one vault.
+# prod databases (platform/data/coder-prod/pg-coder.yaml).
 #
-# What this file keeps is the half that belongs to the namespace:
-#   - the two role password Secrets, from kv-qnsc-platform (the owner's seven
-#     coder secrets) — the Coder server builds its connection URL from them;
-#   - `coder-env`, the one Secret the chart reads: CODER_PG_CONNECTION_URL plus
-#     the OIDC settings.
-# data-prod gets copies of the same two passwords through
-# platform/data/coder-prod/role-secrets.yaml (a kubernetes-provider store whose
-# RBAC is limited to these Secret names), so there is one source of truth and no
-# second vault copy.
+# Namespace `coder` is labelled qnsc.vn/env=prod (SA decision 2026-11-06):
+# Coder is a production service for the VLSI team, so all seven coder-* owner
+# secrets live in kv-qnsc-prod — the same vault as the database, rova, opshub
+# and kb. There is no platform-vault read and no copy of any secret in a second
+# vault.
+#
+# This file creates the one Secret the chart reads: `coder-env`, with
+# CODER_PG_CONNECTION_URL and the OIDC settings. The pg-coder role passwords
+# (coder-db-migrator / coder-db-readonly) are read from kv-qnsc-prod by the
+# cluster's own ExternalSecrets in data-prod, like pg-rova's.
 #
 # The CA in data-prod is the shared prod CA (`pg-coder-ca` / `pg-coder-ca-pub`,
 # created by `cluster.sh --env prod --pg-cluster pg-coder`); Coder connects with
 # sslmode=require over the pod network, which the coder egress policy bounds.
----
-# ── role password Secrets (CNPG re-reads on change) ─────────────────────────
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: pg-coder-coder-migrator
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
-  target:
-    name: pg-coder-coder-migrator
-    template:
-      type: kubernetes.io/basic-auth
-      metadata:
-        labels: { cnpg.io/reload: "true" }
-      data:
-        username: coder_migrator
-        password: "{{ .password }}"
-  data:
-    - { secretKey: password, remoteRef: { key: coder-db-migrator } }
----
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: pg-coder-coder-readonly
-  namespace: coder
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
-spec:
-  refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
-  target:
-    name: pg-coder-coder-readonly
-    template:
-      type: kubernetes.io/basic-auth
-      metadata:
-        labels: { cnpg.io/reload: "true" }
-      data:
-        username: coder_readonly
-        password: "{{ .password }}"
-  data:
-    - { secretKey: password, remoteRef: { key: coder-db-readonly } }
 ---
 # ── Coder's environment: the DB URL, OIDC and the allowed group ─────────────
 apiVersion: external-secrets.io/v1
@@ -76,7 +28,7 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   refreshInterval: 1h
-  secretStoreRef: { name: kv-qnsc-platform, kind: ClusterSecretStore }
+  secretStoreRef: { name: kv-qnsc-prod, kind: ClusterSecretStore }
   target:
     name: coder-env
     template:

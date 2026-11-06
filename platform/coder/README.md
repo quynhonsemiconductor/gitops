@@ -8,7 +8,7 @@ Owner decision 2026-11-02: option A, cloud-native; **go** (2026-11-06).
 | File | Object |
 |---|---|
 | `values.yaml` | the Coder chart values (OCI `ghcr.io/coder/chart/coder`, 2.38.1) |
-| `database.yaml` | the two role password Secrets (from kv-qnsc-platform, mirrored into data-prod) and Coder's env Secret (`CODER_PG_CONNECTION_URL`, OIDC) |
+| `database.yaml` | Coder's env Secret (`CODER_PG_CONNECTION_URL`, OIDC) |
 | `tls.yaml` | namespaced ACME Issuers (staging + prod) and the wildcard Certificate |
 | `networkpolicy.yaml` | control-plane ingress (cloudflared only) and bounded egress (incl. pg-coder in data-prod) |
 | `../../apps/platform-coder.yaml` | the Application itself, sync wave 3 |
@@ -23,11 +23,14 @@ pg-rova/pg-opshub/pg-kb (SA decision 2026-11-06, R2 token audit), deployed by
 | `pg-coder-backup.yaml` | barman-cloud ObjectStore -> `s3://qnsc-backups/pg-coder/` and the nightly base backup (19:45 UTC) |
 | `pg-coder-dump.yaml` | nightly `pg_dump -Fc` to `dumps/…/coder-YYYY-MM-DD.dump`, uploading with the SHARED data-prod dump Secret `pg-dump-r2` |
 | `restore-test-coder.yaml` | the on-demand restore test in namespace `restore-test` (recover, sanity-check, delete) |
-| `role-secrets.yaml` | copies of the two role Secrets from namespace `coder` through the `coder-db-secrets` kubernetes store (narrow RBAC) |
+
+`pg-coder.yaml` also carries the two role password ExternalSecrets, read from
+kv-qnsc-prod like every other prod database's.
 
 The namespace `coder` is declared in `../namespaces/onprem.yaml` with
-`qnsc.vn/env: platform` (so its ExternalSecrets reach `kv-qnsc-platform`) and PSA
-`baseline`.
+`qnsc.vn/env: prod` (SA decision 2026-11-06: Coder is a production service for
+the VLSI team, so its ExternalSecrets read `kv-qnsc-prod`, the same vault as its
+database) and PSA `baseline`.
 
 ## Version pin
 
@@ -39,7 +42,7 @@ the digest line is the cross-check.
 
 ## Owner prerequisites (values never in Git)
 
-Create these plain-string secrets in **kv-qnsc-platform**:
+Create these plain-string secrets in **kv-qnsc-prod**:
 
 | Key | Value |
 |---|---|
@@ -51,16 +54,16 @@ Create these plain-string secrets in **kv-qnsc-platform**:
 | `coder-db-readonly` | hex password for `coder_readonly` |
 | `coder-cloudflare-dns-api-token` | Cloudflare token, zone `qnsc.vn`, **DNS:Edit only** (ACME DNS-01) |
 
-**Seven secrets, not fourteen.** There are no `coder-r2-*` keys: pg-coder lives
-in data-prod, so barman, the dump and the restore test read the prod R2
-credentials that already exist there (`r2-backup-rw` / `r2-dump-rw` /
-`r2-backup-ro` in kv-qnsc-prod). One token per role, rotated in one vault.
+**Seven secrets, not fourteen, all in one vault.** There are no `coder-r2-*`
+keys: pg-coder lives in data-prod, so barman, the dump and the restore test read
+the prod R2 credentials that already exist there (`r2-backup-rw` / `r2-dump-rw`
+/ `r2-backup-ro`). The two DB passwords are here too, read by the cluster's own
+ExternalSecrets in data-prod. Nothing is copied between vaults and rotating any
+of them touches one place.
 
-The two DB passwords stay here (the platform vault) because namespace `coder`
-assembles `CODER_PG_CONNECTION_URL` from them; `platform/data/coder-prod/role-secrets.yaml`
-mirrors the same Secrets into data-prod for CNPG through a kubernetes-provider
-store whose RBAC is limited to those two Secret names — one source of truth, no
-second vault copy.
+The owner script (`secrets.sh --product coder --env prod --vault-app
+kv-qnsc-prod`) creates the seven; the earlier `kv-qnsc-platform` copies are
+deleted after they sync.
 
 ### Owner step: the database CA
 
@@ -88,8 +91,8 @@ the steady state; re-point `issuerRef` to `letsencrypt-prod` and sync.
 
 A namespaced `Issuer` is used instead of a `ClusterIssuer`: the latter resolves
 its API-token Secret in the cert-manager namespace, which would put the
-Cloudflare token (and thereby the platform vault) in front of cert-manager. Same
-DNS-01 mechanism, smaller blast radius.
+Cloudflare token (and thereby the prod vault's read path) in front of
+cert-manager. Same DNS-01 mechanism, smaller blast radius.
 
 ## Reachability — still open (infra PR)
 
