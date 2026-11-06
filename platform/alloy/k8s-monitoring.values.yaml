@@ -1092,6 +1092,76 @@ collectors:
         }
       }
 
+      // Coder (coderd) control plane — namespace `coder`, metrics on
+      // CODER_PROMETHEUS_ADDRESS 0.0.0.0:2112 (platform/coder/values.yaml).
+      // The chart declares only 8080/8443 as container ports, so the address
+      // is built from the pod IP plus the LITERAL 2112 rather than from
+      // `__meta_kubernetes_pod_container_port_number` (which would never match).
+      // Allowlist purpose: the coderd exporter has hundreds of families
+      // (api/db/rtc go_* process_*); keep only what the one alert and the
+      // Platform health row read — agents_up (one per workspace), workspace
+      // count, provisioner queue, licence seat use — plus up. Budget: well
+      // under 100 series at this estate's workspace count.
+      discovery.kubernetes "coder_pods" {
+        role = "pod"
+        namespaces {
+          names = ["coder"]
+        }
+      }
+
+      discovery.relabel "coder_pods" {
+        targets = discovery.kubernetes.coder_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "coder"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip"]
+          regex         = "(.+)"
+          target_label  = "__address__"
+          replacement   = "$1:2112"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "instance"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "coder"
+        }
+      }
+
+      prometheus.scrape "coder" {
+        targets         = discovery.relabel.coder_pods.output
+        forward_to      = [prometheus.relabel.coder.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "coder" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "coderd_agents_up|coderd_agent_aggregator_workspace_count_total|coderd_provisionerd_jobs_current|coderd_license_user_count|up|scrape_samples_scraped"
+          action        = "keep"
+        }
+      }
+
       // Beyla (OBI phase 1) in the dedicated `obi` namespace. The chart feature scrapes
       // only its own namespace, so this block does it, with the series budget: duration
       // histograms (server, client, rpc, db) and the service-graph totals, nothing else.
