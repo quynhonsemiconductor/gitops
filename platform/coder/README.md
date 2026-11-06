@@ -80,6 +80,41 @@ The Coder app's redirect URI must be `https://coder.qnsc.vn/api/v2/oauth2/callba
 (OIDC), and its group claim must carry `grp-qnsc-vlsi`; the allowed-groups value
 above is the group object id.
 
+### First sign-in (the Owner)
+
+Entra OIDC is the ONLY listed provider: `CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLE=false`
+and `CODER_EXTERNAL_AUTH_GITHUB_DEFAULT_PROVIDER_ENABLE=false` remove the GitHub OAuth2 app and
+the default GitHub external-auth provider that 2.38.1 otherwise injects, and
+`CODER_DISABLE_PASSWORD_AUTH=true` closes password accounts. Steps:
+
+1. Open `https://coder.qnsc.vn` over WARP and click **Sign in with Microsoft**
+   (the OIDC button; `CODER_OIDC_SIGN_IN_TEXT`).
+2. Sign in with an Entra account whose groups claim carries `grp-qnsc-vlsi`
+   (`CODER_OIDC_ALLOWED_GROUPS` + `CODER_OIDC_GROUP_FIELD=groups`).
+3. **The first successful sign-in becomes the Owner.** No extra env or command:
+   v2.38.1 `coderd/userauth.go` assigns `rbac.RoleOwner()` when `userCount == 0`
+   (the same branch that creates the OIDC user). After that, `/setup` is gone and
+   every further OIDC sign-in is a normal member unless promoted.
+4. Promote the second owner: as the first owner, `coder` CLI or the UI adds the
+   `owner` role to the next account (the group claim already gates who may sign in).
+
+**Break-glass** if no owner can sign in (and how to add one before the first
+login, if preferred): the owner role may always password-login even with password
+auth disabled (`coder server --help`). Create the account directly in the database
+with the pinned image's own subcommand, inside the running pod, so the password is
+prompted on stdin and never lands in argv or shell history:
+
+```sh
+kubectl -n coder exec -i deploy/coder -- \
+  coder server create-admin-user \
+    --postgres-url "$CODER_PG_CONNECTION_URL" \
+    --email <owner>@qnsc.vn --username <owner>
+```
+
+Then sign in with that password once (the setup page or the login form both accept
+owner passwords), link the Entra identity afterwards, and treat the password as a
+recovery credential.
+
 ## TLS
 
 `tls.yaml` issues `coder.qnsc.vn` and `*.coder.qnsc.vn` through DNS-01 with the
