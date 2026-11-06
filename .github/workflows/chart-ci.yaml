@@ -94,6 +94,17 @@ jobs:
           ./scripts/test-barman-retention.sh
           ./scripts/check-barman-retention.sh
 
+      # ── AppProject destinations ──────────────────────────────────────────
+      # ArgoCD refuses a namespaced object whose namespace the owning project
+      # does not list ("namespace X is not permitted in project 'platform'").
+      # The DCGM exporter moved into gpu-monitoring without the destination and
+      # left platform-ai OutOfSync after #385; the self-test proves the checker
+      # fails on exactly that shape.
+      - name: platform/ namespaces are platform-project destinations
+        run: |
+          ./scripts/test-appproject-destinations.sh
+          ./scripts/check-appproject-destinations.sh
+
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
