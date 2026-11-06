@@ -36,6 +36,21 @@ provider "kubernetes" {
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
 
+locals {
+  # Kubernetes object NAMES use the workspace's immutable id (a UUID): lower
+  # case by construction. Entra usernames are mixed case (NghiaVT, SinhHPT), and
+  # a name built from them fails with "a lowercase RFC 1123 subdomain must
+  # consist of lower case alphanumeric characters" — the first workspace build
+  # failed exactly there (2026-11-07). The id also survives a user/workspace
+  # rename, so the /home PVC is never orphaned.
+  workspace_id = data.coder_workspace.me.id
+
+  # Human-readable names belong in labels/annotations, not object names. Label
+  # values are lower case, restricted to [a-z0-9_.-] and <=63 chars.
+  owner_label     = trim(substr(lower(replace(data.coder_workspace_owner.me.name, "/[^A-Za-z0-9_.-]/", "-")), 0, 63), "-.")
+  workspace_label = trim(substr(lower(replace(data.coder_workspace.me.name, "/[^A-Za-z0-9_.-]/", "-")), 0, 63), "-.")
+}
+
 variable "image" {
   type        = string
   description = "qnsc-eda digest from E (ghcr.io/quynhonsemiconductor/qnsc-eda@sha256:...). The image is PUBLIC (OSS tools only; anonymous pull verified 2026-11-06), so NO pull secret is needed. A new digest is a reviewed change to this file."
@@ -130,11 +145,17 @@ resource "coder_metadata" "workspace" {
 
 resource "kubernetes_persistent_volume_claim" "home" {
   metadata {
-    name      = "coder-${data.coder_workspace_owner.me.name}-${data.coder_workspace.me.name}-home"
+    name      = "coder-${local.workspace_id}-home"
     namespace = "vlsi-ws"
     labels = {
-      "app.kubernetes.io/name" = "coder-workspace"
-      "coder"                  = "workspace"
+      "app.kubernetes.io/name"   = "coder-workspace"
+      "coder"                    = "workspace"
+      "com.coder.user.username"  = local.owner_label
+      "com.coder.workspace.name" = local.workspace_label
+    }
+    annotations = {
+      "com.coder.user.username"  = data.coder_workspace_owner.me.name
+      "com.coder.workspace.name" = data.coder_workspace.me.name
     }
   }
   spec {
@@ -151,11 +172,17 @@ resource "kubernetes_pod" "main" {
   count = data.coder_workspace.me.start_count
 
   metadata {
-    name      = "coder-${data.coder_workspace_owner.me.name}-${data.coder_workspace.me.name}"
+    name      = "coder-${local.workspace_id}"
     namespace = "vlsi-ws"
     labels = {
-      "app.kubernetes.io/name" = "coder-workspace"
-      "coder"                  = "workspace"
+      "app.kubernetes.io/name"   = "coder-workspace"
+      "coder"                    = "workspace"
+      "com.coder.user.username"  = local.owner_label
+      "com.coder.workspace.name" = local.workspace_label
+    }
+    annotations = {
+      "com.coder.user.username"  = data.coder_workspace_owner.me.name
+      "com.coder.workspace.name" = data.coder_workspace.me.name
     }
   }
 
