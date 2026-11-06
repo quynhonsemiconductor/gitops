@@ -35,7 +35,8 @@ with `lsblk` on vlsi-01 before assuming a storage bug.
 
 ## Template push
 
-`scripts/coder-push-template.sh` (CODER_URL/CODER_TOKEN from the environment).
+`scripts/coder-push-template.sh` (CODER_URL/CODER_SESSION_TOKEN from the
+environment; CODER_TOKEN is accepted as an alias).
 The UI copy is never the source; a hand edit is overwritten on the next push.
 
 ## TLS: staging test, then prod
