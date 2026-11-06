@@ -114,9 +114,9 @@ until the flag is flipped, so the procedure is:
 1. Entra/OIDC unusable or no Owner can sign in →
    **merge a one-line PR setting `CODER_DISABLE_PASSWORD_AUTH=false`**
    (the flag's value in `values.yaml`; nothing else changes).
-2. Sign in as `coder-breakglass@qnsc.vn` with the password in the 1Password item
-   **`Coder - break-glass owner`**. Only this account has a password; OIDC users
-   are `login_type=oidc` and cannot use one.
+2. Sign in as the break-glass account (`coder-breakglass`) with the mailbox and
+   password from the 1Password item **`Coder - break-glass owner`**. Only this
+   account has a password; OIDC users are `login_type=oidc` and cannot use one.
 3. Fix the problem, promote/link the real owner, then **merge the revert PR**
    (`true` again) immediately. Two PRs are opened together for exactly this.
 
@@ -128,7 +128,7 @@ landed in argv or shell history:
 kubectl -n coder exec -i deploy/coder -- \
   coder server create-admin-user \
     --postgres-url "$CODER_PG_CONNECTION_URL" \
-    --email coder-breakglass@qnsc.vn --username coder-breakglass
+    --email <break-glass mailbox> --username coder-breakglass
 ```
 
 Do not re-enable password auth as a steady state.
