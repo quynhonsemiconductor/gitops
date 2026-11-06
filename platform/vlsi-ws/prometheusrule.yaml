@@ -1,0 +1,50 @@
+# ── One alert: the vlsi-ws quota near full (design §3, §5; task item 6) ─────
+#
+# Kubernetes State Metrics exposes the ResourceQuota as kube_resourcequota,
+# already scraped by the one k8s-monitoring collector. Two ratios matter:
+#
+#   limits.memory   the concurrency ceiling: 14 GiB / 6 GiB = two heavy builds.
+#                   At 85% a third engineer's workspace cannot schedule.
+#   pods            the count ceiling: 8. At 85% the next workspace fails.
+#
+# The alert says "near full", not "over": over is already visible as a failed
+# schedule and in the Coder log. Severity warning, routed by the existing
+# platform alert rules (Grafana Cloud, platform/observability).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vlsi-ws-quota
+  namespace: vlsi-ws
+  labels:
+    app.kubernetes.io/name: vlsi-ws
+    app.kubernetes.io/part-of: platform
+    qnsc.vn/env: platform
+spec:
+  groups:
+    - name: vlsi-ws.quota
+      rules:
+        - alert: VlsiWsQuotaNearFull
+          expr: |
+            max by (resource) (
+              kube_resourcequota{namespace="vlsi-ws", type="used"}
+              / ignoring(type)
+              kube_resourcequota{namespace="vlsi-ws", type="hard"}
+            ) > 0.85
+            and on (resource)
+            kube_resourcequota{namespace="vlsi-ws", type="hard", resource=~"limits.memory|pods"} > 0
+          for: 15m
+          labels:
+            severity: P2
+            product: vlsi
+            # The internal production service, not a dev/prod product env: this
+            # is the label the Teams routing uses for platform production.
+            env: production
+            component: coder
+          annotations:
+            summary: "vlsi-ws {{ $labels.resource }} is above 85% of its ResourceQuota"
+            description: >-
+              The VLSI workspace quota for {{ $labels.resource }} is nearly full
+              for 15 minutes. New workspaces will fail to schedule on vlsi-01.
+              Check `kubectl -n vlsi-ws describe resourcequota vlsi-ws` and stop
+              idle workspaces (or resize per design §7).
+            runbook_url: "https://github.com/quynhonsemiconductor/gitops/blob/main/runbooks/vlsi.md"

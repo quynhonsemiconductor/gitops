@@ -1,0 +1,56 @@
+# ── vlsi-ws: ResourceQuota + LimitRange (design §5.1, §8) ───────────────────
+#
+# Kubernetes replaces the Premium Coder quota: the pool is capped here, not by
+# Coder. Sizing for vlsi-01 at 16 GiB (~14 GiB usable after the node):
+#
+#   per workspace (template defaults, design §5.1)
+#     requests 0.5 CPU / 1.5 GiB      limits 4 CPU / 6 GiB
+#
+#   request-bound capacity   12 GiB requests / 1.5 GiB = 8 CONCURRENT workspaces
+#   limit-bound headroom     14 GiB limits / 6 GiB     = 2 concurrent heavy builds
+#   PVC                      10 engineers x 10 GiB = 100 GiB
+#
+# The PVC count is TEN, not eight: a home survives the workspace, so every
+# engineer gets one and they all persist. Ten concurrent workspaces do not fit
+# the node's memory; eight do, and the ninth waits for an idle one to stop (TTL
+# ~2 h). A failed schedule is the intended, visible failure.
+#
+# STORAGE: local-path writes to the container root by default. vlsi-01's 300 GB
+# data disk (sdb) is NOT mounted yet — F will mount it. Until then only the
+# 40 GB root is available and the 100 GiB quota cannot be met; the quota is
+# sized against the data disk (300 GB, 100 GiB for homes, the rest for images
+# and scratch). Re-measure after two weeks (design §7).
+#
+# The namespace carries PSA `baseline` in namespaces/onprem.yaml.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vlsi-ws
+  namespace: vlsi-ws
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "4"          # 8 x 0.5
+    requests.memory: 12Gi      # 8 x 1.5Gi
+    limits.cpu: "24"           # 6 x 4 at the heaviest sensible concurrency
+    limits.memory: 14Gi        # two 6Gi builds + 2Gi of tooling
+    persistentvolumeclaims: "10"
+    requests.storage: 100Gi    # 10 x 10Gi on the (pending) 300 GB data disk
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: vlsi-ws
+  namespace: vlsi-ws
+spec:
+  limits:
+    - type: Container
+      default: { cpu: "4", memory: 6Gi }        # a template without limits still gets them
+      defaultRequest: { cpu: 500m, memory: 1536Mi }
+      max: { cpu: "4", memory: 6Gi }
+      min: { cpu: 100m, memory: 128Mi }
+    # A PVC LimitRange supports min/max only: default/defaultRequest are
+    # Container/Pod fields and are not applied to storage claims.
+    - type: PersistentVolumeClaim
+      max: { storage: 20Gi }
+      min: { storage: 1Gi }
