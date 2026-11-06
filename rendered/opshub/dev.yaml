@@ -237,7 +237,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appCommit":"a6f9942a1c88","appEnv":"development","appVersion":"sha-a6f9942a1c88","devLoginEnabled":false}
+    {"apiBaseUrl":"","appCommit":"646640834e88","appEnv":"development","appVersion":"sha-646640834e88","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -333,7 +333,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:d5fc494085a818be8f690d1f29cfecf88b4fe6aaa8fbcd14c7f71e02d018755b
+          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:43584694ef12e44b1037458b36e26575bb86f72af40efe0df07207ab8428b11d
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -363,11 +363,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a6f9942a1c88
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-646640834e88
             - name: APP_VERSION
-              value: "sha-a6f9942a1c88"
+              value: "sha-646640834e88"
             - name: APP_COMMIT
-              value: "a6f9942a1c88"
+              value: "646640834e88"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -478,7 +478,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:e4ee4a455daf78af84778e90c62def0d1b83b3716d7d083d7bfc642e9253c69f
+          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:19cb9b8a9e8da380ef4f517be4bf20389969ac102a36fdf632073e58bc6e4f8b
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -497,11 +497,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-a6f9942a1c88
+              value: service.namespace=opshub,deployment.environment=dev,service.version=sha-646640834e88
             - name: APP_VERSION
-              value: "sha-a6f9942a1c88"
+              value: "sha-646640834e88"
             - name: APP_COMMIT
-              value: "a6f9942a1c88"
+              value: "646640834e88"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -607,7 +607,7 @@ spec:
         qnsc.vn/env: dev
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: 4eba484e6ca68378f480efd123f99a42cfe446885a225cae87a4de492ffa96b7
+        checksum/config: a2db16fafa0ffc862f38387689390b1ca340a6f95359991bce2da2d31b327e0b
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -667,7 +667,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-c2d0a4337946
+  name: migrator-5fb44145caf2
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -708,7 +708,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:c2d0a4337946194a35848c456b3141e0155b2abb2675f3ecf0d408f20b384358
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:5fb44145caf24c443aad59f76fd737f4314c738271c3d8a9fb7cf59a6bed510b
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
