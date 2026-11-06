@@ -90,7 +90,12 @@ the default GitHub external-auth provider that 2.38.1 otherwise injects, and
 1. Open `https://coder.qnsc.vn` over WARP and click **Sign in with Microsoft**
    (the OIDC button; `CODER_OIDC_SIGN_IN_TEXT`).
 2. Sign in with an Entra account whose groups claim carries `grp-qnsc-vlsi`
-   (`CODER_OIDC_ALLOWED_GROUPS` + `CODER_OIDC_GROUP_FIELD=groups`).
+   (`CODER_OIDC_ALLOWED_GROUPS` + `CODER_OIDC_GROUP_FIELD=groups`). The email is
+   read from the `upn` claim and must end in `@qnsc.vn` (`CODER_OIDC_EMAIL_FIELD`,
+   `CODER_OIDC_EMAIL_DOMAIN`), and `email_verified` is ignored because Entra v2
+   tokens do not carry it (`CODER_OIDC_IGNORE_EMAIL_VERIFIED`, Coder's documented
+   Microsoft setting). A guest/B2B identity fails both the domain and the group
+   checks.
 3. **The first successful sign-in becomes the Owner.** No extra env or command:
    v2.38.1 `coderd/userauth.go` assigns `rbac.RoleOwner()` when `userCount == 0`
    (the same branch that creates the OIDC user). After that, `/setup` is gone and
