@@ -102,6 +102,32 @@ PR does not add that tunnel rule. Until it lands the Service is ClusterIP and
 `networkpolicy.yaml` admits only the
 `platform/cloudflared` pods, so there is no path in and no public listener.
 
+## Workspace template
+
+`templates/vlsi-workspace/main.tf` is the template: one pod on `pool=vlsi`,
+the `qnsc-eda` digest, a 10 GiB `/home` PVC on `local-path-retain`, request
+0.5 CPU / 1.5 GiB and limit 4 CPU / 6 GiB (the `vlsi-ws` quota), TTL 2 h with
+the agent's activity bump. Apps: VS Code (`code-server`, browser) and Surfer
+web (`surver` on 8080); KasmVNC is deliberately absent.
+
+The image is `ghcr.io/quynhonsemiconductor/qnsc-eda` pinned by digest
+(`sha256:e3ad00a1…`, E's build on main, 2026-11-06; amd64/linux, `USER 1001`).
+The package is PUBLIC — anonymous `docker manifest inspect` was verified — so
+no pull secret is needed; a new digest is a reviewed edit of `main.tf`.
+
+Pushed from Git, never edited in the UI:
+
+```sh
+export CODER_URL=https://coder.qnsc.vn          # over WARP
+export CODER_TOKEN=...                          # coder tokens create; vault/ESO, never Git
+./scripts/coder-push-template.sh
+```
+
+The script runs the pinned `ghcr.io/coder/coder:2.38.1` CLI in Docker, pushes
+the directory, activates the version and sets the TTL metadata. A CI job can
+call the same script with the token delivered by ESO; the token is read from
+the environment, never argv or output.
+
 ## Restore test
 
 ```sh
