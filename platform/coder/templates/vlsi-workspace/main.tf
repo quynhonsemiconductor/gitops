@@ -41,7 +41,7 @@ variable "image" {
   description = "qnsc-eda digest from E (ghcr.io/quynhonsemiconductor/qnsc-eda@sha256:...). The image is PUBLIC (OSS tools only; anonymous pull verified 2026-11-06), so NO pull secret is needed. A new digest is a reviewed change to this file."
   # E's build on main, 2026-11-06 (image created 14:08Z): amd64/linux,
   # ubuntu:26.04 base, USER 1001. Digest pin, never a tag.
-  default = "ghcr.io/quynhonsemiconductor/qnsc-eda@sha256:e3ad00a1f912379fd89a5ff62edbfa57c868ee5871650881128dec33e8650626"
+  default = "ghcr.io/quynhonsemiconductor/qnsc-eda:main@sha256:e3ad00a1f912379fd89a5ff62edbfa57c868ee5871650881128dec33e8650626"
 }
 
 variable "home_size" {
