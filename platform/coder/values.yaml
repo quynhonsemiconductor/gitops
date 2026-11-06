@@ -13,6 +13,10 @@
 # pair, CODER_OIDC_ALLOWED_GROUPS (the grp-qnsc-vlsi object id) and the
 # Postgres URL. Nothing here is a value.
 coder:
+  # Appended to the server command (the chart's commandArgs). Flags here — not
+  # env — for anything Coder's env parser reserves for its own list formats.
+  commandArgs:
+    - --external-auth-github-default-provider-enable=false
   image:
     repo: ghcr.io/coder/coder
     # tag@digest: Kubernetes accepts both; the digest is the pin and the tag is
@@ -48,7 +52,12 @@ coder:
     # "GitHub" button. Both are opt-out bools in `coder server --help`
     # (default: true). With them off the only provider on the page is OIDC.
     - { name: CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLE, value: "false" }
-    - { name: CODER_EXTERNAL_AUTH_GITHUB_DEFAULT_PROVIDER_ENABLE, value: "false" }
+    # The EXTERNAL-AUTH one CANNOT be an env var: Coder parses every
+    # CODER_EXTERNAL_AUTH_<N>_* as numbered provider N, so the name above made
+    # the server exit once the database connected with
+    # `error: read external auth providers from env: parse number:
+    # GITHUB_DEFAULT_PROVIDER_ENABLE` (reproduced with the pinned image against
+    # a throwaway Postgres). It is set as the FLAG at the top of this file.
     # The single sign-in button's label (`--oidc-sign-in-text string`).
     # CODER_OIDC_ICON_URL is deliberately unset: it needs a publicly reachable
     # icon asset, and none is hosted for this deployment (no third-party hotlink).
