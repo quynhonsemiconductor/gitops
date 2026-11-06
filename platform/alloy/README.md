@@ -29,6 +29,7 @@ mention the old allowlist in `agent.alloy`; that comment is now historical.
 | Metrics — ESO | its `prometheus.io/*` annotations, read by `annotationAutodiscovery` (remapped to the `prometheus.io` annotation names) | Mimir |
 | Metrics — cert-manager | controller pod port `http-metrics` (9402), pod discovery; `certmanager_*` allowlist | Mimir |
 | Metrics — cloudflared | the two tunnel connectors on port 2000 (no Service, no annotation); `cloudflared_*` allowlist | Mimir |
+| Metrics — GPU | NVIDIA DCGM exporter DaemonSet on ai-01 (port 9400, pod discovery); five `DCGM_FI_DEV_*` fields allowlisted — utilisation, memory, temperature, XID | Mimir |
 | Logs | pod logs from the product/ai/platform namespaces via `/var/log/pods` (containerd) | Grafana Cloud Loki |
 
 The receiver Service is `alloy-receiver` in `platform` — release name `alloy` +
@@ -107,8 +108,18 @@ labels `service_version` and `service_instance_id` (per-deploy and per-restart
 cardinality). `instance` is deliberately kept: the existing node/`up`/CNPG
 alert rules read it. The Adaptive Metrics keep-label rules (infra#213) still
 aggregate the app metrics downstream; scrapers use the chart's strict
-allowlists (node-exporter and KSM defaults), and the two extra scrapes above
-are likewise allowlisted (`redis_*`, `argocd_*`, `up`).
+allowlists (node-exporter and KSM defaults), and the extra scrapes above are
+likewise allowlisted (`redis_*`, `certmanager_*`, `cloudflared_*`, `argocd_*`,
+`DCGM_FI_DEV_*`, `up`).
+
+**Trimmed 2026-11-06 (observability audit).** KSM no longer scrapes
+`kube_pod_info` or `kube_pod_status_phase` (no rule or dashboard in infra@main
+or here reads either), and the kubelet's unprefixed `storage_operation_*` and
+`rest_client_requests_total` families are dropped at the write boundary —
+about 585 series, the audit's 600–700 minus the ESO conditions it listed as
+unused, which the `externalsecret_status_condition;Ready;False` keep rule
+already excludes. `kube_pod_status_ready` stays: the CNPG readiness rules read
+it.
 
 **Two labels are ADDED, not dropped: `deployment_environment_name` and `env`.**
 OTel resource attributes never become Prometheus labels, so app series carried no

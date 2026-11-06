@@ -66,21 +66,11 @@ destinations:
       // cuts). Drop the families below at the write boundary: none is read by a
       // rule or dashboard in this repo.
       //
-      // kube_pod_status_phase: 5 phases x ~173 pods (865). Only the abnormal
-      // phases are useful for triage; Running/Succeeded are the bulk.
-      write_relabel_config {
-        source_labels = ["__name__", "phase"]
-        regex         = "kube_pod_status_phase;(Running|Succeeded)"
-        action        = "drop"
-      }
-      // Unknown is the phase KSM reports when the kubelet is unreachable; it
-      // is a zero row on every healthy pod. Pending and Failed stay: they are
-      // the two a triage query actually asks for.
-      write_relabel_config {
-        source_labels = ["__name__", "phase"]
-        regex         = "kube_pod_status_phase;Unknown"
-        action        = "drop"
-      }
+      // kube_pod_status_phase is no longer SCRAPED (2026-11-06 observability
+      // audit): no rule and no dashboard in infra@main or in this repo reads
+      // it, and it was the largest pod family. It is removed from the KSM
+      // allowlist below, which is the durable fix — write-side drops would only
+      // hide it after it had already been counted.
       // kube_pod_status_ready: keep condition="true" — the two PostgreSQL
       // readiness alerts read it (onprem-workloads.tf). false/unknown are the
       // not-ready samples those rules do not query.
@@ -103,13 +93,20 @@ destinations:
         action        = "drop"
       }
       // kubelet internals beyond the three duration histograms above (~196
-      // series: pleg relist histograms, runtime operations, rest_client,
-      // storage_operation, volume_manager). The only kubelet family any rule
-      // reads is kubelet_volume_stats_* (volume free-space alerts), which this
-      // regex deliberately does not match.
+      // series: pleg relist histograms, runtime operations, volume_manager).
+      // The only kubelet family any rule reads is kubelet_volume_stats_*
+      // (volume free-space alerts), which this regex deliberately does not match.
       write_relabel_config {
         source_labels = ["__name__"]
-        regex         = "kubelet_(pleg_.*|runtime_operations.*|rest_client_.*|storage_operation.*|volume_manager_.*)"
+        regex         = "kubelet_(pleg_.*|runtime_operations.*|volume_manager_.*)"
+        action        = "drop"
+      }
+      // The kubelet's own client/storage families do NOT carry the kubelet_
+      // prefix, so the rule above never matched them (2026-11-06 observability
+      // audit: 36 + 33 series live). No rule or dashboard reads either.
+      write_relabel_config {
+        source_labels = ["__name__"]
+        regex         = "storage_operation_duration_seconds(_bucket|_sum|_count)?|rest_client_requests_total"
         action        = "drop"
       }
       // node-exporter per-device filesystems on pseudo mounts. Every
@@ -204,9 +201,11 @@ clusterMetrics:
   kube-state-metrics:
     metricsTuning:
       useDefaultAllowList: false
+      # kube_pod_info and kube_pod_status_phase were dropped 2026-11-06
+      # (observability audit): no rule or dashboard in infra@main or here reads
+      # either, and together they were the two largest pod families. The
+      # dashboard the audit proposes uses phase only for triage, not queries.
       includeMetrics:
-        - kube_pod_info
-        - kube_pod_status_phase
         - kube_pod_status_ready
         - kube_pod_container_status_waiting_reason
         - kube_pod_container_status_restarts_total
@@ -246,9 +245,12 @@ podLogsViaLoki:
     - rova-dev
     - opshub-prod
     - opshub-dev
+    - kb-prod          # MISSING until 2026-11-06: kb prod logs never reached Loki, so the
+                       # security-control-failed-open rule was blind for kb (observability audit)
     - kb-dev
+    - coder            # lands with gitops#376 (Coder control plane)
+    - vlsi-ws          # lands with gitops#377/#378 (workspace pods)
     - ai
-    - ai-lab
     - platform
     - argocd
     - data-prod
@@ -1009,6 +1011,76 @@ collectors:
         rule {
           source_labels = ["__name__", "condition", "status"]
           regex         = "(externalsecret_status_condition;Ready;False|up;;|scrape_samples_scraped;;)"
+          action        = "keep"
+        }
+      }
+
+      // NVIDIA DCGM exporter on the GPU node (platform/ai/dcgm-exporter.yaml,
+      // deployed by platform-ai). Five fields on ONE physical GPU: utilisation,
+      // memory utilisation, framebuffer used, temperature, XID errors — plus
+      // `up`/`scrape_samples_scraped`, so this whole job is 7 series. The
+      // allowlist repeats the ConfigMap's collector list on purpose: a widened
+      // custom CSV must be widened here too, or the budget silently breaks.
+      discovery.kubernetes "dcgm_pods" {
+        role = "pod"
+        namespaces {
+          names = ["ai"]
+        }
+      }
+
+      discovery.relabel "dcgm_pods" {
+        targets = discovery.kubernetes.dcgm_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "dcgm-exporter"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex         = "9400"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Running"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip", "__meta_kubernetes_pod_container_port_number"]
+          separator     = ":"
+          target_label  = "__address__"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "instance"
+        }
+        rule {
+          target_label = "job"
+          replacement  = "integrations/dcgm-exporter"
+        }
+      }
+
+      prometheus.scrape "dcgm" {
+        targets         = discovery.relabel.dcgm_pods.output
+        forward_to      = [prometheus.relabel.dcgm.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.relabel "dcgm" {
+        forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+        rule {
+          source_labels = ["__name__"]
+          regex         = "DCGM_FI_DEV_(GPU_UTIL|MEM_COPY_UTIL|FB_USED|GPU_TEMP|XID_ERRORS)|up|scrape_samples_scraped"
           action        = "keep"
         }
       }

@@ -1,0 +1,107 @@
+# ── NVIDIA DCGM exporter on the GPU node (observability audit 2026-11-06) ────
+#
+# The audit found NO GPU metrics anywhere: ai-01 had only TEI's HTTP metrics,
+# so utilisation, memory and temperature were invisible and an Xid fault would
+# have shown up as an unexplained TEI outage. The device plugin exposes no
+# Prometheus endpoint, so this is the cheapest producer that gives all three:
+# DCGM's own exporter, one DaemonSet confined to the GPU node.
+#
+# SERIES BUDGET (Grafana Cloud Free, 10k cap; ~1.9k headroom at the audit):
+# the custom collector list below is FIVE fields on ONE physical GPU (ai-01 is
+# a passthrough card, time-sliced by the device plugin):
+#   DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_MEM_COPY_UTIL, DCGM_FI_DEV_FB_USED,
+#   DCGM_FI_DEV_GPU_TEMP, DCGM_FI_DEV_XID_ERRORS   = 5 series
+# plus `up` + `scrape_samples_scraped` = 7 from the scrape itself, and the pod's
+# own cAdvisor/KSM families (~20) — under 30 in total, well inside the 50 limit
+# this PR was allowed. Do NOT switch to the image's default collector list:
+# it is ~150 fields per GPU.
+#
+# The scrape lives in platform/alloy/k8s-monitoring.values.yaml (extraConfig,
+# `dcgm-exporter` block with the same five-name allowlist, so the budget is
+# enforced twice).
+#
+# PRIVILEGE: DCGM talks to the driver through NVML and must see the GPU and the
+# pod resource tree. That requires a privileged container on this ONE node
+# (`ai`, PSA baseline, the same trade the TEI pods make), hostPID and the
+# node's own driver directory. It holds no Secret, mounts nothing writable from
+# the host, and serves 9400 to the in-cluster collector only; the `ai`
+# NetworkPolicies admit the workloads they name, and the Alloy collector runs
+# as a pod in `platform` with unrestricted egress.
+#
+# IMAGE: docker.io/nvidia/dcgm-exporter 4.6.1-4.8.4-distroless, published
+# 2026-09-18 — older than the repo's two-week age floor; the tag digest was read
+# from the Docker Hub registry API on 2026-11-06. Distroless: no shell, so the
+# entrypoint is the exporter binary with a config path argument only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcgm-exporter-collectors
+  namespace: ai
+data:
+  custom-collectors.csv: |
+    # DCGM FIELD, Prometheus metric type, help
+    DCGM_FI_DEV_GPU_UTIL, gauge, GPU utilization (percent).
+    DCGM_FI_DEV_MEM_COPY_UTIL, gauge, Memory utilization (percent).
+    DCGM_FI_DEV_FB_USED, gauge, Framebuffer memory used (MiB).
+    DCGM_FI_DEV_GPU_TEMP, gauge, GPU temperature (C).
+    DCGM_FI_DEV_XID_ERRORS, gauge, Value of the last XID error encountered (0 = none).
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: dcgm-exporter
+    app.kubernetes.io/component: gpu-monitoring
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcgm-exporter
+        app.kubernetes.io/component: gpu-monitoring
+    spec:
+      # The pool label selects ai-01; the taint keeps it off every other node.
+      nodeSelector: { qnsc.vn/pool: ai }
+      tolerations:
+        - key: qnsc.vn/pool
+          operator: Equal
+          value: ai
+          effect: NoSchedule
+      runtimeClassName: nvidia
+      priorityClassName: ai
+      hostPID: true
+      containers:
+        - name: exporter
+          image: nvidia/dcgm-exporter:4.6.1-4.8.4-distroless@sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
+          args: ["-f", "/etc/dcgm-exporter/custom-collectors.csv"]
+          ports:
+            - { name: metrics, containerPort: 9400, protocol: TCP }
+          # The exporter is privileged for NVML/driver access (see the header).
+          # readOnlyRootFilesystem is deliberately NOT set: the embedded
+          # hostengine writes under /var/run, and a distroless image gives no
+          # shell to diagnose a read-only root after the fact.
+          securityContext:
+            privileged: true
+            runAsNonRoot: false
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: collectors, mountPath: /etc/dcgm-exporter, readOnly: true }
+            - { name: driver, mountPath: /run/nvidia/driver, readOnly: true }
+      volumes:
+        - name: collectors
+          configMap:
+            name: dcgm-exporter-collectors
+        # The NVIDIA container toolkit installs the driver libraries here on
+        # this node (runtime configuration is node state, see runtimeclass.yaml).
+        - name: driver
+          hostPath:
+            path: /run/nvidia/driver
+            type: Directory

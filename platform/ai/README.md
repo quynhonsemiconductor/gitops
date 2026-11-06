@@ -6,10 +6,21 @@ their own Service names, not product releases (§11c does not apply).
 
 ```
 apps/platform-ai.yaml          GPU plumbing — wave −3 (namespaces, PriorityClasses,
-                               RuntimeClass nvidia, device plugin with time-slicing)
+                               RuntimeClass nvidia, device plugin with time-slicing,
+                               and the DCGM exporter for GPU metrics)
 apps/platform-ai-tei.yaml      tei-e5 — wave 1
 apps/platform-ai-rerank.yaml   tei-rerank — wave 1, replicas 0
 ```
+
+## GPU metrics
+
+`dcgm-exporter.yaml` runs NVIDIA's DCGM exporter as a single DaemonSet on the
+GPU node (port 9400) with a five-field collector list — utilisation, memory
+utilisation, framebuffer used, temperature, XID errors — because that is 5
+series on the one card and the audit's whole budget for GPU visibility was
+under 50. The Alloy collector scrapes it (`integrations/dcgm-exporter` in
+`platform/alloy/k8s-monitoring.values.yaml`) with the same allowlist. Rules and
+dashboards on top of it are the G lane's follow-up.
 
 ## Contract for products
 
