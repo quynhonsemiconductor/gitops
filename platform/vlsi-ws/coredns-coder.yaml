@@ -7,8 +7,12 @@
 # Service. The wildcard certificate's SAN covers coder.qnsc.vn, so TLS
 # verification still works — no insecure-skip-verify, no second hostname.
 #
-# Only the EXACT apex name is rewritten: workspace app subdomains
-# (*.coder.qnsc.vn) are resolved by browsers over WARP, never by a pod.
+# Workspace app subdomains (code--<ws>--<user>.coder.qnsc.vn) are opened by
+# browsers over WARP, but the request still ENTERS the cluster through the
+# in-cluster cloudflared, which resolves the name with CoreDNS before it
+# connects (live/edge/coder.tf, prerequisites). So the one-label wildcard is
+# rewritten to the same Service; `answer auto` puts the asked name back on the
+# reply. Found by the first workspace (2026-11-07): the apps returned NXDOMAIN.
 # Cluster-wide DNS is a platform surface: the ConfigMap is Prune/Delete=false,
 # so removing this app cannot silently change resolution.
 #
@@ -24,3 +28,4 @@ metadata:
 data:
   coder.override: |
     rewrite name exact coder.qnsc.vn coder.coder.svc.cluster.local
+    rewrite name regex ^[a-z0-9-]+\.coder\.qnsc\.vn\.$ coder.coder.svc.cluster.local. answer auto
