@@ -28,5 +28,10 @@ cp "$src" "$tmp/max-ttl.sh"
 printf '\ndocker run --rm --entrypoint /opt/coder "$IMAGE" templates edit vlsi-workspace --max-ttl 12h\n' >> "$tmp/max-ttl.sh"
 expect "$tmp/max-ttl.sh" 1 "--max-ttl is caught"
 
-# 3. The real script must pass.
+# 3. The wrong token env name (the CLI reads CODER_SESSION_TOKEN).
+cp "$src" "$tmp/token-env.sh"
+printf '\ndocker run --rm --entrypoint /opt/coder -e CODER_URL -e CODER_TOKEN "$IMAGE" templates list\n' >> "$tmp/token-env.sh"
+expect "$tmp/token-env.sh" 1 "an env name the CLI does not read is caught"
+
+# 4. The real script must pass.
 expect "$src" 0 "the repository script passes"

@@ -5,13 +5,20 @@
 # is lost at the next push (design §5.1).
 #
 #   export CODER_URL=https://coder.qnsc.vn          # over WARP
-#   export CODER_TOKEN=...                          # `coder tokens create`, never committed
+#   export CODER_SESSION_TOKEN=...                  # `coder tokens create`, never committed
+#                                                   # (CODER_TOKEN is accepted as an alias)
 #   export VLSI_NODE_SSH=qnsc@vlsi-01               # the storage-gate node
 #   ./scripts/coder-push-template.sh
 #
 # The token is read from the environment and passed to the pinned coder image by
-# name (`-e CODER_TOKEN`), so it never enters argv, a shell history line or the
-# output. A CI job can use the same script with the token delivered by ESO.
+# NAME only (`-e CODER_SESSION_TOKEN`), so the value never enters argv, a shell
+# history line or the output. A CI job can use the same script with the token
+# delivered by ESO.
+#
+# The CLI reads CODER_SESSION_TOKEN, not CODER_TOKEN (`coder --help`:
+# "--token string, $CODER_SESSION_TOKEN"). The owner-facing CODER_TOKEN is kept
+# as an alias and translated here, so a wrong env name cannot silently run the
+# CLI unauthenticated (the 2026-11-07 "You are signed out" failure).
 #
 # STORAGE GATE: local-path enforces no size, and vlsi-01's homes must land on the
 # 300 GB data disk (sdb), not the 40 GB root. The push REFUSES until
@@ -31,7 +38,9 @@ IMAGE="ghcr.io/coder/coder:v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e90
 NAME="vlsi-workspace"
 
 : "${CODER_URL:?set CODER_URL (https://coder.qnsc.vn, over WARP)}"
-: "${CODER_TOKEN:?set CODER_TOKEN (coder tokens create), never commit it}"
+CODER_SESSION_TOKEN="${CODER_SESSION_TOKEN:-${CODER_TOKEN:-}}"
+export CODER_SESSION_TOKEN
+: "${CODER_SESSION_TOKEN:?set CODER_SESSION_TOKEN (coder tokens create; CODER_TOKEN accepted as an alias), never commit it}"
 [[ -f "$TEMPLATE_DIR/main.tf" ]] || { echo "STOP: $TEMPLATE_DIR/main.tf not found" >&2; exit 1; }
 
 # ── storage gate (see the header) ────────────────────────────────────────────
@@ -53,7 +62,7 @@ echo "storage gate: local-path on sdb ($mount)"
 tar -C "$TEMPLATE_DIR" -cf - . \
   | docker run --rm -i \
       --entrypoint /opt/coder \
-      -e CODER_URL -e CODER_TOKEN \
+      -e CODER_URL -e CODER_SESSION_TOKEN \
       "$IMAGE" \
       templates push "$NAME" \
         --directory - \
@@ -67,7 +76,7 @@ tar -C "$TEMPLATE_DIR" -cf - . \
 # idempotent.
 docker run --rm \
   --entrypoint /opt/coder \
-  -e CODER_URL -e CODER_TOKEN \
+  -e CODER_URL -e CODER_SESSION_TOKEN \
   "$IMAGE" \
   templates edit "$NAME" --default-ttl 2h
 
