@@ -18,11 +18,12 @@ apps/platform-ai-rerank.yaml   tei-rerank — wave 1, replicas 0
 GPU node (port 9400) with a five-field collector list — utilisation, memory
 utilisation, framebuffer used, temperature, XID errors — because that is 5
 series on the one card and the audit's whole budget for GPU visibility was
-under 50. It runs in namespace **`gpu-monitoring`**, not `ai`: `ai` enforces
-PSA `baseline`, which rejects the privileged container DCGM needs.
-`gpu-monitoring` is the obi-style exception (enforce=privileged, audit/warn
-restricted) with a default-deny NetworkPolicy that admits only the Alloy
-scrape on 9400. The Alloy collector scrapes it (`integrations/dcgm-exporter` in
+under 50. It runs in namespace **`gpu-monitoring`** (its own default-deny NetworkPolicy; only the Alloy
+scrape on 9400 is admitted). The driver is the HOST's — the `nvidia` RuntimeClass injects the
+libraries and devices — so there is no `/run/nvidia/driver` hostPath, no privileged mode and no
+hostPID: root with ALL capabilities dropped, matching NVIDIA's own chart. `ai` is not relaxed and
+`gpu-monitoring` enforces PSA `baseline`; only a future `DCGM_FI_PROF_*` collector list (SYS_ADMIN)
+would need that namespace raised to `privileged`. The Alloy collector scrapes it (`integrations/dcgm-exporter` in
 `platform/alloy/k8s-monitoring.values.yaml`) with the same allowlist. Rules and
 dashboards on top of it are the G lane's follow-up.
 
