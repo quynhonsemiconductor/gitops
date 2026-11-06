@@ -161,7 +161,21 @@ PR does not add that tunnel rule. Until it lands the Service is ClusterIP and
 the `qnsc-eda` digest, a 10 GiB `/home` PVC on `local-path-retain`, request
 0.5 CPU / 1.5 GiB and limit 4 CPU / 6 GiB (the `vlsi-ws` quota), TTL 2 h with
 the agent's activity bump. Apps: VS Code (`code-server`, browser) and Surfer
-web (`surver` on 8080); KasmVNC is deliberately absent.
+**web** — the project's static WASM bundle from the image (`/opt/surfer-web`),
+served on 127.0.0.1:8080 by `python3 -m http.server`; the image's `surver` is a
+waveform *server* needing file arguments, not a web UI, so it is not started
+(KasmVNC absent by design).
+
+Opening waveforms: the served copy carries a `waves -> $HOME` symlink, so from
+the Surfer app a user opens `?load_url=waves/sim/foo.fst` and the browser loads
+`~/sim/foo.fst`. Only that copy is proxied; the rest of `$HOME` is reachable
+only through the `waves` link. `surver` stays available for large files a user
+chooses to serve by hand.
+
+VS Code Desktop and "Connect via SSH" appear on the agent because Coder
+advertises them: both tunnel through the workspace agent (Coder's own SSH, not
+node SSH), so they are left enabled; access still needs a Coder session and the
+workspace ACL.
 
 The image is `ghcr.io/quynhonsemiconductor/qnsc-eda` pinned by digest
 (`sha256:e3ad00a1…`, E's build on main, 2026-11-06; amd64/linux, `USER 1001`).

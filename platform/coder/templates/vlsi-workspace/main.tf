@@ -73,13 +73,27 @@ resource "coder_agent" "main" {
   # works. No Premium autostop requirement is used.
   startup_script = <<-EOT
     set -eu
-    # VS Code in the browser: code-server ships in qnsc-eda (E).
+    # VS Code in the browser: code-server ships in qnsc-eda (E) on PATH.
     nohup code-server --bind-addr 127.0.0.1:13337 --disable-telemetry --auth none \
       >/tmp/code-server.log 2>&1 &
-    # Surfer web: `surver` serves the waveform viewer for large files. The
-    # qnsc-eda image (E) must ship it; the app below points at 8080.
-    if command -v surver >/dev/null 2>&1; then
-      nohup surver --port 8080 >/tmp/surver.log 2>&1 &
+
+    # Surfer is the project's STATIC WEB BUILD (WASM) served as files, not
+    # `surver`: that binary is a waveform server that REQUIRES file arguments
+    # and is not a web UI (2026-11-07, E's image note). Serve a private copy of
+    # the bundle plus a `waves` symlink to $HOME, so a user opens
+    #   ?load_url=waves/sim/foo.fst
+    # from the Surfer app and the browser loads ~/sim/foo.fst. Only this copy is
+    # served — the rest of $HOME stays off the proxy except through `waves`.
+    if [ -d /opt/surfer-web ]; then
+      www="$HOME/.surfer-www"
+      rm -rf "$www"
+      mkdir -p "$www"
+      cp -a /opt/surfer-web/. "$www/"
+      ln -sfn "$HOME" "$www/waves"
+      nohup python3 -m http.server --bind 127.0.0.1 --directory "$www" 8080 \
+        >/tmp/surfer-web.log 2>&1 &
+    else
+      echo "surfer-web missing from the image (/opt/surfer-web)" >/tmp/surfer-web.log
     fi
   EOT
 
