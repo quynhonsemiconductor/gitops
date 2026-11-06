@@ -351,7 +351,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:10fd6fe02237b88baaa0b9358c4022861357f1e1a04573d9ed185dad70596b97
+          image: ghcr.io/quynhonsemiconductor/kb-api@sha256:e88ab9da265f33010b9e5f9895faf09300e444c9840edad64e28a8d0ff763c6a
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -385,11 +385,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-430ae30e468d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-d9d032896632
             - name: APP_VERSION
-              value: "sha-430ae30e468d"
+              value: "sha-d9d032896632"
             - name: APP_COMMIT
-              value: "430ae30e468d"
+              value: "d9d032896632"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -531,7 +531,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:1b0c852d69bb405e028793ba9271c5d0b011cda5ff316d6739cea8e6a292c556
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:714d31e731885d7ee3cf74909a5e56e868ee6de7d1d62129aac305419d723d69
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -550,11 +550,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: kb-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=kb,deployment.environment=dev,service.version=sha-430ae30e468d
+              value: service.namespace=kb,deployment.environment=dev,service.version=sha-d9d032896632
             - name: APP_VERSION
-              value: "sha-430ae30e468d"
+              value: "sha-d9d032896632"
             - name: APP_COMMIT
-              value: "430ae30e468d"
+              value: "d9d032896632"
             - name: DATABASE_HOST
               value: pg-dev-rw.data-dev.svc
             - name: DATABASE_PORT
@@ -752,7 +752,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-f32420262410
+  name: migrator-e370fc3acc3e
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: kb
@@ -793,7 +793,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:f32420262410e9a1bb93f2ff7f886adabedc9787e2fffd7aee464a6fe413d8fa
+          image: ghcr.io/quynhonsemiconductor/kb-migrator@sha256:e370fc3acc3e94195ce5440eb3b3a9ab401ec1312087f5ca045a8a5f4d55f119
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
