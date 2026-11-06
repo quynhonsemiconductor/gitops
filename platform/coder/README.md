@@ -103,22 +103,35 @@ the default GitHub external-auth provider that 2.38.1 otherwise injects, and
 4. Promote the second owner: as the first owner, `coder` CLI or the UI adds the
    `owner` role to the next account (the group claim already gates who may sign in).
 
-**Break-glass** if no owner can sign in (and how to add one before the first
-login, if preferred): the owner role may always password-login even with password
-auth disabled (`coder server --help`). Create the account directly in the database
-with the pinned image's own subcommand, inside the running pod, so the password is
-prompted on stdin and never lands in argv or shell history:
+### Break-glass
+
+`CODER_DISABLE_PASSWORD_AUTH=true` refuses **every** password login in 2.38.1, Owner
+included — verified 2026-11-07 (`POST /api/v2/users/login` for the break-glass Owner
+returns "Password authentication is disabled."; the `--help` sentence that implies
+Owners are exempt does not hold). The account and the password are therefore useless
+until the flag is flipped, so the procedure is:
+
+1. Entra/OIDC unusable or no Owner can sign in →
+   **merge a one-line PR setting `CODER_DISABLE_PASSWORD_AUTH=false`**
+   (the flag's value in `values.yaml`; nothing else changes).
+2. Sign in as `coder-breakglass@qnsc.vn` with the password in the 1Password item
+   **`Coder - break-glass owner`**. Only this account has a password; OIDC users
+   are `login_type=oidc` and cannot use one.
+3. Fix the problem, promote/link the real owner, then **merge the revert PR**
+   (`true` again) immediately. Two PRs are opened together for exactly this.
+
+The account was created directly in the database with the pinned image's own
+subcommand, inside the running pod, so the password was prompted on stdin and never
+landed in argv or shell history:
 
 ```sh
 kubectl -n coder exec -i deploy/coder -- \
   coder server create-admin-user \
     --postgres-url "$CODER_PG_CONNECTION_URL" \
-    --email <owner>@qnsc.vn --username <owner>
+    --email coder-breakglass@qnsc.vn --username coder-breakglass
 ```
 
-Then sign in with that password once (the setup page or the login form both accept
-owner passwords), link the Entra identity afterwards, and treat the password as a
-recovery credential.
+Do not re-enable password auth as a steady state.
 
 ## TLS
 
