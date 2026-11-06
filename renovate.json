@@ -1,4 +1,65 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>quynhonsemiconductor/.github:renovate-config"]
+  "extends": ["local>quynhonsemiconductor/.github:renovate-config"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Coder chart tag + OCI manifest digest in versions.yaml. The chart is an OCI artefact; the docker datasource supplies both the tag and its manifest digest.",
+      "fileMatch": ["^versions\\.yaml$"],
+      "matchStrings": [
+        "  coder:\\n[\\s\\S]*?    version: \"(?<currentValue>[^\"]+)\"\\n    digest: \"(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/coder/chart/coder",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "The ArgoCD chart targetRevision must move with versions.yaml. No digest here: ArgoCD takes the tag, and the digest is checked by scripts/check-coder-pin.sh.",
+      "fileMatch": ["^apps/platform-coder\\.yaml$"],
+      "matchStrings": [
+        "targetRevision: \"(?<currentValue>2\\.[0-9.]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/coder/chart/coder",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Coder server image tag@digest in versions.yaml.",
+      "fileMatch": ["^versions\\.yaml$"],
+      "matchStrings": [
+        "image: \"ghcr\\.io/coder/coder:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/coder/coder",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "The same server image tag@digest in the chart values.",
+      "fileMatch": ["^platform/coder/values\\.yaml$"],
+      "matchStrings": [
+        "tag: \"(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/coder/coder",
+      "versioningTemplate": "loose"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Custom regex managers already carry (or deliberately omit) digests; do not let pinDigests rewrite a tag-only ArgoCD targetRevision.",
+      "matchManagers": ["custom.regex"],
+      "pinDigests": false
+    },
+    {
+      "description": "The Coder chart and server image are one release: one PR moves the chart tag, the chart digest, the server image tag and its digest, and the ArgoCD targetRevision together. 14-day release-age floor (stable 2.38 line).",
+      "matchPackageNames": ["ghcr.io/coder/chart/coder", "ghcr.io/coder/coder"],
+      "groupName": "Coder chart + server image",
+      "minimumReleaseAge": "14 days",
+      "automerge": false,
+      "platformAutomerge": false
+    }
+  ]
 }
