@@ -1,0 +1,57 @@
+# ── vlsi-ws: no ingress, egress to the control plane and the internet only ──
+#
+# Design §8: a workspace reaches the internet and GitHub; it cannot reach the
+# data-* namespaces, the products, the node addresses or anything on the LAN.
+# The same shape as the product dump policy:
+#
+#   ingress   NOTHING. Workspace agents dial OUT to the Coder server; the app
+#             proxy, `coder ssh` and port-forward all multiplex over that agent
+#             connection, so no pod in the cluster needs to open a port here.
+#   egress    DNS (kube-dns only);
+#             the Coder control plane on 80/443 (the in-cluster URL the
+#             template points the agent at);
+#             the public internet minus every RFC 1918 / CGNAT range. GitHub,
+#             package mirrors and the EDA tooling endpoints are public
+#             addresses; the member node's own address and the LAN are not.
+#
+# The default-route rule does NOT admit link-local metadata (169.254.0.0/16);
+# add it to the except list if a cloud metadata endpoint ever exists here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vlsi-ws-isolation
+  namespace: vlsi-ws
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: coder }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: coder }
+      ports:
+        # The Coder Service maps 80->8080 and 443->8443; NetworkPolicy matches
+        # the POD port, so both forms are admitted.
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8443 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16

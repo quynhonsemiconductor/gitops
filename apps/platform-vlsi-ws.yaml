@@ -1,0 +1,33 @@
+# VLSI workspace namespace policy (design §3, §5.1, §8): quota, limits,
+# isolation and the quota alert. The namespace itself is declared in
+# platform/namespaces/onprem.yaml (platform-base) because the Coder chart's
+# provisioner Role/RoleBinding must land there at the same time as the chart.
+#
+# Sync wave 2: after cloudflared, before the data plane. The workspaces it
+# bounds are created later by Coder, so the quota must exist first.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-vlsi-ws
+  labels:
+    qnsc.vn/env: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vlsi-ws
+  sources:
+    - repoURL: https://github.com/quynhonsemiconductor/gitops
+      targetRevision: main
+      path: platform/vlsi-ws
+      directory:
+        recurse: false
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

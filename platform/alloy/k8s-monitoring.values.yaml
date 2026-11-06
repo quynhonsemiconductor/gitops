@@ -224,6 +224,11 @@ clusterMetrics:
         - kube_statefulset_status_replicas_ready
         - kube_node_status_condition
         - kube_persistentvolumeclaim_status_phase
+        # vlsi-ws quota alert (platform/vlsi-ws/prometheusrule.yaml): one series
+        # per (namespace, resource, type). Without this family the alert cannot
+        # fire — it was absent from the allowlist. Mind the ~6.3k series target:
+        # confirm the count on the first scrape after merge.
+        - kube_resourcequota
 
 hostMetrics:
   enabled: true
