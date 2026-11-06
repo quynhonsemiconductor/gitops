@@ -27,7 +27,11 @@ coder:
   env:
     - { name: CODER_ACCESS_URL, value: "https://coder.qnsc.vn" }
     # Workspace apps are served on *.coder.qnsc.vn (private, not proxied).
-    - { name: CODER_WILDCARD_ACCESS_URL, value: "https://*.coder.qnsc.vn" }
+    # NO SCHEME: 2.38.1 `coder server --help` types this as a string in the form
+    # "*.example.com" (only --access-url is a `url`). With an https:// prefix the
+    # server dies at boot: `parsing env: parse "Wildcard Access URL": hostname
+    # pattern must not contain a scheme`.
+    - { name: CODER_WILDCARD_ACCESS_URL, value: "*.coder.qnsc.vn" }
     # Plain HTTP inside the pod would break coder ssh's TLS expectations; the
     # wildcard secret below enables TLS on the server itself.
     - { name: CODER_TLS_MIN_VERSION, value: "tls12" }
