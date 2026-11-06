@@ -21,12 +21,15 @@
 # enforced twice).
 #
 # PRIVILEGE: DCGM talks to the driver through NVML and must see the GPU and the
-# pod resource tree. That requires a privileged container on this ONE node
-# (`ai`, PSA baseline, the same trade the TEI pods make), hostPID and the
-# node's own driver directory. It holds no Secret, mounts nothing writable from
-# the host, and serves 9400 to the in-cluster collector only; the `ai`
-# NetworkPolicies admit the workloads they name, and the Alloy collector runs
-# as a pod in `platform` with unrestricted egress.
+# pod resource tree — a privileged container, hostPID and the node's driver
+# directory. `ai` enforces PSA baseline, which REJECTS both privileged
+# containers and host namespaces, so the exporter does NOT run there
+# (2026-11-06 review). It gets its own namespace `gpu-monitoring`
+# (namespaces.yaml, the obi precedent: enforce=privileged, audit/warn
+# restricted, nothing else may run there), plus a default-deny NetworkPolicy
+# that admits exactly the Alloy scrape on 9400 from namespace `platform` and
+# denies all egress. The pod holds no Secret and mounts nothing writable from
+# the host.
 #
 # IMAGE: docker.io/nvidia/dcgm-exporter 4.6.1-4.8.4-distroless, published
 # 2026-09-18 — older than the repo's two-week age floor; the tag digest was read
@@ -36,7 +39,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: dcgm-exporter-collectors
-  namespace: ai
+  namespace: gpu-monitoring
 data:
   custom-collectors.csv: |
     # DCGM FIELD, Prometheus metric type, help
@@ -50,7 +53,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: dcgm-exporter
-  namespace: ai
+  namespace: gpu-monitoring
   labels:
     app.kubernetes.io/name: dcgm-exporter
     app.kubernetes.io/component: gpu-monitoring
@@ -105,3 +108,34 @@ spec:
           hostPath:
             path: /run/nvidia/driver
             type: Directory
+---
+# ── the only traffic this namespace serves: the Alloy scrape ────────────────
+# Namespace-wide default deny first, then the one allow. Egress is denied too:
+# the exporter answers on 9400 and never dials out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gpu-monitoring-default-deny
+  namespace: gpu-monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dcgm-exporter-scrape
+  namespace: gpu-monitoring
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: alloy }
+      ports:
+        - { protocol: TCP, port: 9400 }
+  egress: []

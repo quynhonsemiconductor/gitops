@@ -29,7 +29,7 @@ mention the old allowlist in `agent.alloy`; that comment is now historical.
 | Metrics — ESO | its `prometheus.io/*` annotations, read by `annotationAutodiscovery` (remapped to the `prometheus.io` annotation names) | Mimir |
 | Metrics — cert-manager | controller pod port `http-metrics` (9402), pod discovery; `certmanager_*` allowlist | Mimir |
 | Metrics — cloudflared | the two tunnel connectors on port 2000 (no Service, no annotation); `cloudflared_*` allowlist | Mimir |
-| Metrics — GPU | NVIDIA DCGM exporter DaemonSet on ai-01 (port 9400, pod discovery); five `DCGM_FI_DEV_*` fields allowlisted — utilisation, memory, temperature, XID | Mimir |
+| Metrics — GPU | NVIDIA DCGM exporter DaemonSet on ai-01, namespace `gpu-monitoring` (port 9400, pod discovery); five `DCGM_FI_DEV_*` fields allowlisted — utilisation, memory, temperature, XID | Mimir |
 | Logs | pod logs from the product/ai/platform namespaces via `/var/log/pods` (containerd) | Grafana Cloud Loki |
 
 The receiver Service is `alloy-receiver` in `platform` — release name `alloy` +
