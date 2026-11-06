@@ -115,6 +115,16 @@ jobs:
           ./scripts/test-coder-cli-flags.sh
           ./scripts/check-coder-cli-flags.sh
 
+      # ── Coder workspace template names ───────────────────────────────────
+      # Kubernetes names built from a mixed-case Entra username failed the first
+      # workspace build (2026-11-07). Names come from the workspace id; human
+      # names live in lower()-cased labels/annotations. Also checks that the
+      # committed provider lock file carries hashes for more than one platform.
+      - name: coder template k8s names are id-based
+        run: |
+          ./scripts/test-coder-template-names.sh
+          ./scripts/check-coder-template-names.sh
+
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}

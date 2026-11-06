@@ -6,6 +6,8 @@ provider "registry.terraform.io/coder/coder" {
   constraints = "~> 2.9"
   hashes = [
     "h1:79uDAQQpdhDLCtEIPSd2CQdxknAG3W/H9FOf0nVsfu8=",
+    "h1:PyfzMnFE/l7HUQuhW+JgLaMtXpNbxeM/b+ghGM8QaB0=",
+    "h1:Q2gnn8Excht03Cfbz7VnSGaEICnvqwB+zOtWeO9P2MI=",
     "zh:02db38ab13845d0843a3870adcc98faf82ef74795166c22bd3215ab1f13b3427",
     "zh:33ea0cc6a57f27d22ad310cbea8a2873fa11703f5857c565bbb71d97b63fdd41",
     "zh:4eb189a0a381b44b163a62a64f7fdd2db7f09656969faf4f6bf5a6fc6c904de3",
@@ -27,6 +29,8 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
   version     = "2.38.0"
   constraints = "~> 2.35"
   hashes = [
+    "h1:5CkveFo5ynsLdzKk+Kv+r7+U9rMrNjfZPT3a0N/fhgE=",
+    "h1:XCkL/mxjWTawg6gg+jlpCQhF/+SNRoCEZxbbkDTj42s=",
     "h1:soK8Lt0SZ6dB+HsypFRDzuX/npqlMU6M0fvyaR1yW0k=",
     "zh:0af928d776eb269b192dc0ea0f8a3f0f5ec117224cd644bdacdc682300f84ba0",
     "zh:1be998e67206f7cfc4ffe77c01a09ac91ce725de0abaec9030b22c0a832af44f",
