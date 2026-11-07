@@ -26,7 +26,7 @@
 # #428 window; until then no template and no pilot.
 #
 # The Coder CLI runs in the digest-pinned server image (no local install):
-#   ghcr.io/coder/coder:v2.38.1@sha256:...  (versions.yaml, `coder.image`)
+#   ghcr.io/coder/coder:v2.38.6@sha256:...  (versions.yaml, `coder.image`)
 # The template directory carries .terraform.lock.hcl (generated with
 # `terraform init -backend=false`), so the push does not warn about unpinned
 # providers; re-run that command and commit the lock file when a provider moves.
@@ -34,7 +34,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$ROOT/platform/coder/templates/vlsi-workspace"
-IMAGE="ghcr.io/coder/coder:v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e9098554440acd6dc2526a95252cc"   # versions.yaml (image)
+IMAGE="ghcr.io/coder/coder:v2.38.6@sha256:c9245405c482ede17699d65deb8c21488a17feff5497fc84d6a350c395da2bdd"   # versions.yaml (image)
 NAME="vlsi-workspace"
 
 : "${CODER_URL:?set CODER_URL (https://coder.qnsc.vn, over WARP)}"
@@ -70,7 +70,7 @@ tar -C "$TEMPLATE_DIR" -cf - . \
         --activate
 
 # TTL is template metadata, not HCL: 2 h default, reset by the agent's activity
-# bump. There is NO hard ceiling on OSS 2.38.1: `--max-ttl` is not in
+# bump. There is NO hard ceiling on OSS 2.38.6: `--max-ttl` is not in
 # `templates edit --help` (checked on the pinned image), so a max TTL is a
 # Premium/UI feature and the 2 h default + bump is the policy. Re-running is
 # idempotent.

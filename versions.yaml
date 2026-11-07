@@ -85,20 +85,25 @@ platform:
     version: "0.8.1"           # plugin v0.15.1; requires cert-manager (its mTLS)
   coder:
     # VLSI workspaces (platform/coder). OCI chart; the tag equals the app
-    # version. Verified 2026-11-06 against ghcr.io/coder/chart: v2.39.0,
-    # v2.38.6 and v2.37.10 (all 2026-11-03) are younger than the two-week age
-    # floor this file applies, so the newest 2.38 patch that has aged in is
-    # 2.38.1 (2026-10-20). 2.38 is the stable line (2.39 is mainline).
+    # version. Verified 2026-11-07 against ghcr.io/coder/chart: 2.38.6
+    # (2026-11-03) is the newest patch of the stable 2.38 line. It is four days
+    # old, below the 14-day age floor Renovate applies, but this pin is
+    # deliberate: it carries the upstream security fixes GHSA-cv23-7vc5-jfh7
+    # (gomarkdown), the CSRF exemption-pattern anchoring (#31125), org-scoped
+    # group sync (#30706) and a go-jose bump. 2.39.0 is mainline, not stable.
+    # Between 2.38.1 and 2.38.6 the `coder server --help` golden is identical,
+    # the chart's default values are identical and there are no new database
+    # migrations (checked 2026-11-07), so no values or schema change rides along.
     # The digest is the OCI manifest digest, not the image digest:
-    #   docker-content-digest: sha256:4c2be43f39a5a2a4892b7e0479b336f4b7d819220800d529123ed99ff807a16f
-    # `helm show values oci://ghcr.io/coder/chart/coder --version 2.38.1`
+    #   docker-content-digest: sha256:b38e8746733a5cfb78fb7f982460ea944f5f4fe004f2fc22f6c90b9d451502d0
+    # `helm show values oci://ghcr.io/coder/chart/coder --version 2.38.6`
     # rendered platform/coder/values.yaml. OSS edition only (design §5).
     chart: coder
     repo: oci://ghcr.io/coder/chart
-    version: "2.38.1"
-    digest: "sha256:4c2be43f39a5a2a4892b7e0479b336f4b7d819220800d529123ed99ff807a16f"
+    version: "2.38.6"
+    digest: "sha256:b38e8746733a5cfb78fb7f982460ea944f5f4fe004f2fc22f6c90b9d451502d0"
     # Server image, pinned in the chart values and by the push script:
-    image: "ghcr.io/coder/coder:v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e9098554440acd6dc2526a95252cc"
+    image: "ghcr.io/coder/coder:v2.38.6@sha256:c9245405c482ede17699d65deb8c21488a17feff5497fc84d6a350c395da2bdd"
   prometheus-operator-crds:
     chart: prometheus-operator-crds
     repo: https://prometheus-community.github.io/helm-charts

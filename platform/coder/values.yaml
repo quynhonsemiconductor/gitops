@@ -1,9 +1,11 @@
 # Coder OSS control plane (VLSI platform design §3, §5; owner "go VLSI" 2026-11-06).
 #
-# Chart: oci://ghcr.io/coder/chart/coder, pinned in versions.yaml (2.38.1,
+# Chart: oci://ghcr.io/coder/chart/coder, pinned in versions.yaml (2.38.6,
 # manifest digest recorded there). OSS features only: Entra OIDC with
 # CODER_OIDC_ALLOWED_GROUPS, template TTL + activity bump, Kubernetes limits.
 # Quotas/audit/group-sync are Premium and are replaced outside Coder (design §5).
+# The behavioural notes below were verified on 2.38.1 and re-checked on 2.38.6:
+# its `coder server --help` golden is byte-identical between the two tags.
 #
 # No Cloudflare Access in front: the `coder` CLI, `coder ssh` and the /api/v2
 # websockets do not follow an Access redirect (design §5.2). The server is
@@ -25,9 +27,9 @@ coder:
   image:
     repo: ghcr.io/coder/coder
     # tag@digest: Kubernetes accepts both; the digest is the pin and the tag is
-    # for readable `docker images`. Digest from ghcr.io/coder/coder:v2.38.1
-    # (manifest list) on 2026-11-06.
-    tag: "v2.38.1@sha256:fcddd64d5f08d6aa8806508d1459d36f3e9e9098554440acd6dc2526a95252cc"
+    # for readable `docker images`. Digest from ghcr.io/coder/coder:v2.38.6
+    # (manifest list) on 2026-11-07.
+    tag: "v2.38.6@sha256:c9245405c482ede17699d65deb8c21488a17feff5497fc84d6a350c395da2bdd"
   service:
     # ClusterIP: the tunnel (infra live/edge) is the only path in. No
     # LoadBalancer, no NodePort.
@@ -36,7 +38,7 @@ coder:
   env:
     - { name: CODER_ACCESS_URL, value: "https://coder.qnsc.vn" }
     # Workspace apps are served on *.coder.qnsc.vn (private, not proxied).
-    # NO SCHEME: 2.38.1 `coder server --help` types this as a string in the form
+    # NO SCHEME: the 2.38 `coder server --help` types this as a string in the form
     # "*.example.com" (only --access-url is a `url`). With an https:// prefix the
     # server dies at boot: `parsing env: parse "Wildcard Access URL": hostname
     # pattern must not contain a scheme`.
@@ -44,7 +46,7 @@ coder:
     # Plain HTTP inside the pod would break coder ssh's TLS expectations; the
     # wildcard secret below enables TLS on the server itself.
     - { name: CODER_TLS_MIN_VERSION, value: "tls12" }
-    # Coder 2.38.1 coderd/idpsync/group.go: the allow list is only evaluated
+    # Coder 2.38 coderd/idpsync/group.go: the allow list is only evaluated
     # when GroupField names the claim. Without it CODER_OIDC_ALLOWED_GROUPS is
     # IGNORED and any tenant user can sign up. `groups` is the Entra app-role /
     # group claim name (the app must emit it).
@@ -67,7 +69,7 @@ coder:
     # CODER_OIDC_ALLOWED_GROUPS. Guests and B2B identities fail this check.
     - { name: CODER_OIDC_EMAIL_DOMAIN, value: "qnsc.vn" }
     # ── sign-in: Entra OIDC is the only listed door (2026-11-06) ──────────
-    # Coder 2.38.1 injects a DEFAULT GitHub OAuth2 app (log:
+    # The 2.38 line injects a DEFAULT GitHub OAuth2 app (log:
     # "injecting default github external auth provider") and a default GitHub
     # external-auth provider when nothing is configured, so /setup showed a
     # "GitHub" button. Both are opt-out bools in `coder server --help`
@@ -83,7 +85,7 @@ coder:
     # CODER_OIDC_ICON_URL is deliberately unset: it needs a publicly reachable
     # icon asset, and none is hosted for this deployment (no third-party hotlink).
     - { name: CODER_OIDC_SIGN_IN_TEXT, value: "Sign in with Microsoft" }
-    # Password login is DISABLED for everyone. 2.38.1 does NOT exempt Owners
+    # Password login is DISABLED for everyone. The 2.38 line does NOT exempt Owners
     # (tested 2026-11-07: POST /api/v2/users/login -> "Password authentication
     # is disabled."), so a break-glass sign-in needs a one-line PR flipping this
     # to false, then a revert. Procedure: README, "Break-glass".

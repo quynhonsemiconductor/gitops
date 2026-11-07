@@ -34,7 +34,7 @@ spec:
   sources:
     - repoURL: ghcr.io/coder/chart
       chart: coder
-      targetRevision: "2.38.1"   # keep in step with versions.yaml (and its digest)
+      targetRevision: "2.38.6"   # keep in step with versions.yaml (and its digest)
       helm:
         releaseName: coder
         valueFiles: [$values/platform/coder/values.yaml]

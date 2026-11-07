@@ -5,7 +5,7 @@
 # digest-pinned image. A flag that the image does not have fails on the owner's
 # laptop at 01:00, not in review — #399 (`--directory` parsed as a `coder
 # server` flag because the image ENTRYPOINT is ["/opt/coder","server"]) and the
-# `--max-ttl` that no longer exists in 2.38.1 are both that class.
+# `--max-ttl` that no longer exists in 2.38.6 are both that class.
 #
 # The image comes from the script itself (single source). Run this in CI.
 set -euo pipefail
@@ -61,7 +61,7 @@ while IFS= read -r name; do
   fi
 done < <(grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -oE '\-e CODER_[A-Z_]+' | sed 's/-e //' | sort -u)
 
-# `--max-ttl` is Premium-only/absent in OSS 2.38.1; the script must not pass it.
+# `--max-ttl` is Premium-only/absent in OSS 2.38.6; the script must not pass it.
 if grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -q -- '--max-ttl'; then
   echo "::error file=$SCRIPT::passes --max-ttl, which templates edit --help does not list"
   fail=1
