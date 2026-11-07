@@ -92,6 +92,19 @@ coder:
     # No usage data leaves the platform.
     # https://coder.com/docs/reference/cli/server#--telemetry-enable
     - { name: CODER_TELEMETRY_ENABLE, value: "false" }
+    # ── Prometheus metrics (2026-11-07: only `up` ever reached Mimir) ──────
+    # `--prometheus-enable` has NO default in 2.38.1 (cli/server.go), so the
+    # exporter was OFF and :2112 was not listening: the scrape failed and the
+    # estator saw only `up`=0. The chart injects
+    # CODER_PROMETHEUS_ADDRESS=0.0.0.0:2112 and adds the `prometheus-http`
+    # containerPort only when this env value is exactly "true".
+    # https://coder.com/docs/reference/cli/server#--prometheus-enable
+    - { name: CODER_PROMETHEUS_ENABLE, value: "true" }
+    # `coderd_agents_up` (one series per workspace, the workspaces panel) is
+    # registered only inside the collect-agent-stats branch. Bounded by the
+    # workspace count, which is what the Alloy allowlist keeps it for.
+    # https://coder.com/docs/reference/cli/server#--prometheus-collect-agent-stats
+    - { name: CODER_PROMETHEUS_COLLECT_AGENT_STATS, value: "true" }
   tls:
     # cert-manager writes this Secret (tls.yaml). The chart mounts tls.crt /
     # tls.key and sets CODER_TLS_CERT_FILE / CODER_TLS_KEY_FILE.
