@@ -1,0 +1,36 @@
+suite: kb Celery beat is isolated and uses the worker image
+# Beat publishes task names to Redis; it must not carry the app's secrets, DB CA or
+# Graph certificate. `inheritSecrets: false` is the switch; Sprig's `default` treats
+# false as empty, so the chart uses an explicit string comparison and this test pins it.
+templates:
+  - templates/deployment.yaml
+values:
+  - ../../../values/kb/base.yaml
+  - ../../../values/kb/prod.yaml
+  - ../../../values/kb/tags.prod.yaml
+
+tests:
+  - it: beat has no envFrom, only /tmp, and the worker image
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: beat }
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts
+          value:
+            - { name: tmp, mountPath: /tmp }
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
+
+  - it: prod beat gets REDIS_URL from the one kb-env key
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: beat }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_URL
+            valueFrom:
+              secretKeyRef: { name: kb-env, key: REDIS_URL }
