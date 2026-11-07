@@ -178,9 +178,12 @@ node SSH), so they are left enabled; access still needs a Coder session and the
 workspace ACL.
 
 The image is `ghcr.io/quynhonsemiconductor/qnsc-eda` pinned by digest
-(`sha256:e3ad00a1…`, E's build on main, 2026-11-06; amd64/linux, `USER 1001`).
-The package is PUBLIC — anonymous `docker manifest inspect` was verified — so
-no pull secret is needed; a new digest is a reviewed edit of `main.tf`.
+(`sha256:97480692…`, E's main build after qnsc-eda#4, 2026-11-07;
+amd64/linux, code-server 4.145.0, `/opt/surfer-web`, `USER 1001:1001`,
+`HOME=/home/coder`). The PVC, the explicit `HOME` env and code-server's
+`?folder=` all use `/home/coder`. The package is PUBLIC — anonymous
+`docker manifest inspect` was verified — so no pull secret is needed; a new
+digest is a reviewed edit of `main.tf`.
 
 Pushed from Git, never edited in the UI:
 
