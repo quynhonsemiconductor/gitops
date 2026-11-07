@@ -209,6 +209,23 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: beat
+  labels:
+    app.kubernetes.io/name: beat
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+  annotations:
+automountServiceAccountToken: false
+
+---
+# Source: qnsc-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
   name: migrator
   labels:
     app.kubernetes.io/name: migrator
@@ -322,6 +339,9 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
   replicas: 1
   selector:
     matchLabels:
@@ -489,6 +509,139 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: beat
+  labels:
+    app.kubernetes.io/name: beat
+    app.kubernetes.io/instance: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: Helm
+    qnsc.vn/product: kb
+    qnsc.vn/env: dev
+    qnsc.vn/tenant: product
+spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: beat
+      app.kubernetes.io/instance: kb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: beat
+        app.kubernetes.io/instance: kb
+        app.kubernetes.io/part-of: kb
+        app.kubernetes.io/managed-by: Helm
+        qnsc.vn/product: kb
+        qnsc.vn/env: dev
+        qnsc.vn/tenant: product
+    spec:
+      serviceAccountName: beat
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: beat
+          image: ghcr.io/quynhonsemiconductor/kb-worker@sha256:1b0c852d69bb405e028793ba9271c5d0b011cda5ff316d6739cea8e6a292c556
+          imagePullPolicy: IfNotPresent
+          command: ["celery"]
+          args: ["-A","src.workers.celery_app","beat","--loglevel=info","--schedule=/tmp/celerybeat-schedule"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy-receiver.platform.svc:4318
+            - name: OTEL_SERVICE_NAME
+              value: kb-beat
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=kb,deployment.environment=dev,service.version=
+            - name: ENVIRONMENT
+              value: production
+            - name: DEPLOYMENT_ENV
+              value: dev
+            - name: JOB_MODE
+              value: celery
+            - name: AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: ENABLE_RLS
+              value: "true"
+            - name: BOOTSTRAP_ADMIN_ENABLED
+              value: "false"
+            - name: REDIS_URL
+              value: redis://valkey-kb-dev.data-dev.svc:6379/1
+            - name: FRONTEND_URL
+              value: https://kb-dev.qnsc.vn
+            - name: CORS_ORIGINS
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_LOGIN_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/auth/entra/callback
+            - name: MICROSOFT_REDIRECT_URI
+              value: https://kb-dev.qnsc.vn/api/v1/connectors/oauth/callback
+            - name: CONNECTOR_WEBHOOK_BASE_URL
+              value: https://kb-dev.qnsc.vn
+            - name: MICROSOFT_TENANT_ID
+              value: dc0f2078-ac28-4ff2-b21a-d4b28df32361
+            - name: MICROSOFT_CLIENT_ID
+              value: dbd99dbb-d20e-4076-8f8b-75c15e733414
+            - name: EMAIL_PROVIDER
+              value: graph
+            - name: MICROSOFT_GRAPH_SENDER
+              value: noreply-kb-dev@qnsc.vn
+            - name: MAIL_GRAPH_CLIENT_ID
+              value: 7b9ae622-4df7-4cc5-bcbb-b8be1256ecaf
+            - name: ALLOWED_EMAIL_DOMAINS
+              value: qnsc.vn
+            - name: SOURCE_STORAGE_BACKEND
+              value: r2
+            - name: SOURCE_STORAGE_BUCKET
+              value: kb-dev-sources
+            - name: SOURCE_STORAGE_PREFIX
+              value: qnsc-sources
+            - name: S3_ENDPOINT_URL
+              value: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com
+            - name: EMBEDDING_MODEL
+              value: intfloat/multilingual-e5-large-instruct
+            - name: EMBEDDING_VERSION
+              value: e5-large-instruct-v1
+            - name: EMBEDDING_RUNTIME
+              value: tei
+            - name: TEI_EMBEDDINGS_URL
+              value: http://tei-e5.ai.svc
+            - name: MALWARE_SCAN_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+---
+# Source: qnsc-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: worker
   labels:
     app.kubernetes.io/name: worker
@@ -499,6 +652,9 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
   replicas: 1
   strategy:
     type: Recreate
@@ -672,6 +828,9 @@ metadata:
     qnsc.vn/env: dev
     qnsc.vn/tenant: product
 spec:
+  # Keep three ReplicaSets: a rollback target, one, and headroom for triage.
+  # The default (10) is ~7 extra ReplicaSet objects per Deployment for nothing.
+  revisionHistoryLimit: 3
   # Direct read, like deployment.yaml:27 — NOT `| default 1`, which turns an
   # explicit replicas: 0 (kube-downscaler, or a deliberately parked env) back
   # into 1 because Sprig's default treats 0 as empty. web.replicas defaults to
@@ -768,7 +927,7 @@ metadata:
 spec:
   activeDeadlineSeconds: 600
   backoffLimit: 0
-  ttlSecondsAfterFinished: 259200
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:

@@ -147,6 +147,11 @@
         "required": [
           "kind"
         ],
+        "allOf": [
+          {
+            "not": { "required": ["image", "imageFrom"] }
+          }
+        ],
         "properties": {
           "kind": {
             "enum": [
@@ -243,6 +248,14 @@
             "items": {
               "type": "string"
             }
+          },
+          "imageFrom": {
+            "type": "string",
+            "description": "Reuse another service's image (repo/tag/digest), e.g. a beat Deployment on the worker image. Mutually exclusive with image."
+          },
+          "inheritSecrets": {
+            "type": "boolean",
+            "description": "Default true. False skips secrets.env, the DB password and the DB CA/graph-cert mounts. For a scheduler that only publishes task names (Celery beat) and must not hold the app's credentials."
           },
           "image": {
             "type": "object",

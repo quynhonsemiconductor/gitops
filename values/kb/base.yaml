@@ -74,18 +74,38 @@ services:
     # lost is rollout gating — the pod reports Ready before it is consuming — which
     # for a Celery queue is a delay, not a loss. See the comment in the chart's
     # deployment.yaml.
-    # ── NOT SCALED, and this is a correctness constraint rather than a choice ──
-    # Celery beat still rides inside this container:
-    #   "max_count stays 1 while Celery beat rides in this task — two replicas
-    #    would double every scheduled job. Splitting beat into its own service is
-    #    the prerequisite for scaling the worker horizontally."
-    # So the worker stays at one replica, exactly as today. When beat is split out
-    # it becomes its own service with `singleton: true`, and only then does
-    # a higher `replicas` belongs here.
-    # Until then the WORKER is the singleton: without it the chart renders the default
-    # RollingUpdate, and every rollout overlaps old and new beat for a few seconds — the same
-    # double-run the replica cap prevents (review of the kb prod enable PR, 2026-11-05).
-    # `singleton: true` forces replicas 1 and `strategy: Recreate`.
+    # Worker replicas stay at one while the OCR/model footprint is sized for one;
+    # this is no longer a scheduler constraint. Beat is its own Deployment (below),
+    # `singleton: true`, so it is unique independently of the worker count.
+    singleton: true
+    replicas: 1
+
+  # Celery beat — the scheduler the image never ran. It must be ONE process:
+  # two beats double every queued job, so `singleton: true` forces replicas 1
+  # and `strategy: Recreate` (a rolling update would briefly run two).
+  #
+  # Same image, env, secrets and service account as the worker (`imageFrom`
+  # reuses the worker tag so a dev bump cannot leave beat on an old image).
+  # The schedule file lives on the chart's /tmp emptyDir; the root filesystem is
+  # read-only and beat would otherwise try to write `celerybeat-schedule` into
+  # the working directory.
+  beat:
+    kind: worker
+    expose: none
+    imageFrom: worker
+    # Beat only publishes task names to Redis; it must not hold DB, R2, JWT keys,
+    # the MS client secret or the Graph certificate. Dev supplies REDIS_URL as a
+    # literal in dev.yaml; prod reads the one REDIS_URL key from kb-env (prod.yaml),
+    # because valkey-kb-prod needs its ACL password.
+    inheritSecrets: false
+    command: ["celery"]
+    args:
+      - "-A"
+      - "src.workers.celery_app"
+      - "beat"
+      - "--loglevel=info"
+      - "--schedule=/tmp/celerybeat-schedule"
+    resources: { cpu: 100m, memory: 128Mi, memoryLimit: 256Mi }
     singleton: true
     replicas: 1
 

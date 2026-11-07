@@ -74,9 +74,19 @@ services:
       - { name: ENABLE_API_DOCS, value: "false" }
       - { name: ALLOW_SELF_REGISTRATION, value: "false" }
 
+  beat:
+    # REDIS_URL lives only in kb-env in prod (the valkey ACL password); the base has
+    # no literal. One key, not the whole secret.
+    env:
+      - name: REDIS_URL
+        valueFrom:
+          secretKeyRef:
+            name: kb-env
+            key: REDIS_URL
+
   worker:
-    # Celery beat rides inside this container: max_count stays 1 or every scheduled job runs twice
-    # (base.yaml). Right-sized 2026-11-05 like dev: idle p95 140 MiB, but that does not cover an
+    # Beat is its own Singleton Deployment (base.yaml); the worker replicas are no longer
+    # constrained by it. Right-sized 2026-11-05 like dev: idle p95 140 MiB, but that does not cover an
     # OCR burst, so the REQUEST drops to 1 Gi while the LIMIT stays dev's 2.5 Gi — scheduling no
     # longer reserves the burst, the cgroup still admits it (PaddleOCR + work_mem). The same split
     # is in values/kb/dev.yaml, so dev is no longer a smaller shape than prod.

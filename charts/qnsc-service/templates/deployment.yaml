@@ -99,7 +99,14 @@ spec:
       terminationGracePeriodSeconds: {{ $svc.drain.terminationGracePeriodSeconds | default $d.terminationGracePeriodSeconds }}
       containers:
         - name: {{ $name }}
+          {{- if $svc.imageFrom }}
+          {{- if not (hasKey $.Values.services $svc.imageFrom) }}
+          {{- fail (printf "service %q: imageFrom %q is not a service" $name $svc.imageFrom) }}
+          {{- end }}
+          image: {{ include "qnsc.image" (list $ (index $.Values.services $svc.imageFrom) $name) }}
+          {{- else }}
           image: {{ include "qnsc.image" (list $ $svc $name) }}
+          {{- end }}
           imagePullPolicy: IfNotPresent
           {{- with $svc.command }}
           command: {{ toJson . }}
@@ -263,7 +270,7 @@ spec:
                    opshub worker needs a session-level LISTEN connection anyway).
                    Otherwise an explicit `host` wins; the old pgbouncer branch is
                    gone — the Bitnami image no longer exists upstream. */}}
-            {{- if and $.Values.data $.Values.data.postgres }}
+            {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres }}
             {{- $pg := $.Values.data.postgres }}
             {{- if eq $pg.mode "cnpg" }}
             - name: DATABASE_HOST
@@ -323,7 +330,7 @@ spec:
                    accidental log line. The secret is synced by ESO from Key
                    Vault (gitops/platform stores); the chart only mounts what
                    the values name. */}}
-            {{- if $.Values.secrets.workerOnly.graphCert }}
+            {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.secrets.workerOnly.graphCert }}
             {{- if eq $svc.kind "worker" }}
             - name: AZURE_CLIENT_CERTIFICATE_PATH
               value: {{ required "secrets.workerOnly.path is required when secrets.workerOnly.graphCert is set" $.Values.secrets.workerOnly.path | quote }}
@@ -356,11 +363,11 @@ spec:
                  and failed on the first line that read one.
                  The ExternalSecret that creates this is rendered beside them
                  (§8); attaching it here is what makes it reach a process. */}}
+          {{- if or (ne (toString $svc.inheritSecrets) "false") $svc.envFrom }}
           envFrom:
+            {{- if ne (toString $svc.inheritSecrets) "false" }}
             {{- if $.Values.data }}
             {{- if include "qnsc.perValueEnv" $ }}
-            {{- /* Per-value secrets (secrets.env): one Secret for every service; the
-                   api-only one only for http services. See externalsecret.yaml. */}}
             {{- if $.Values.secrets.env }}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-env
@@ -373,38 +380,33 @@ spec:
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-app
             {{- end }}
-            {{- /* Per-service bundle (secrets.serviceBundles, on-prem only): AFTER
-                   the shared one, so its keys win any collision. See
-                   externalsecret.yaml for why a product needs this. */}}
             {{- $sb := ($.Values.secrets).serviceBundles | default dict }}
             {{- if (index $sb $name) }}
             - secretRef:
                 name: {{ printf "%s-%s-bundle" (include "qnsc.product" $) $name }}
             {{- end }}
             {{- end }}
-            {{- /* The runtime DB password, AFTER the bundles (ONPREM-PLAN §6.3): the
-                   worker reads <product>-db-worker when the product has a worker
-                   role (secrets.dbWorker), every other service <product>-db-app.
-                   The migrator Job gets its own (job.yaml). */}}
             {{- if and $.Values.data.postgres (ne $.Values.data.postgres.mode "none") }}
             - secretRef:
                 name: {{ include "qnsc.product" $ }}-db-{{ if and (eq $svc.kind "worker") ($.Values.secrets).dbWorker }}worker{{ else }}app{{ end }}
             {{- end }}
+            {{- end }}
             {{- with $svc.envFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
             {{- /* CNPG server CA — every DB-using service of the product. */}}
-            {{- if and $.Values.data $.Values.data.postgres.caFile }}
+            {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres.caFile }}
             - name: db-ca
               mountPath: {{ $.Values.data.postgres.caFile }}
               subPath: ca.crt
               readOnly: true
             {{- end }}
             {{- /* The Graph PEM, worker only (see the env block above). */}}
-            {{- if and $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
+            {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
             - name: graph-cert
               mountPath: {{ $.Values.secrets.workerOnly.path }}
               subPath: cert.pem
@@ -465,7 +467,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and $.Values.data $.Values.data.postgres.caFile }}
+        {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres.caFile }}
         - name: db-ca
           secret:
             secretName: {{ include "qnsc.product" $ }}-db-ca
@@ -473,7 +475,7 @@ spec:
         {{- end }}
         {{- /* Worker-only like the mount below: the api must not even carry the
                volume, or a future api-side code path reads the PEM silently. */}}
-        {{- if and $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
+        {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.secrets.workerOnly.graphCert (eq $svc.kind "worker") }}
         - name: graph-cert
           secret:
             secretName: {{ $.Values.secrets.workerOnly.graphCert }}
