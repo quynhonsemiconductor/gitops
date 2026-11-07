@@ -5,8 +5,8 @@
 # invisible in review.
 #
 # Shape: one pod in namespace vlsi-ws on the qnsc.vn/pool=vlsi node, a /home PVC on
-# local-path-retain, the qnsc-eda image (digest from E — PLACEHOLDER until it
-# reports), TTL 2 h with activity bump. Modules: VS Code (code-server) and
+# local-path-retain, the qnsc-eda image (digest pinned below), TTL 2 h with
+# activity bump. Modules: VS Code (code-server) and
 # Surfer web. KasmVNC is deliberately absent (design §3: no desktop).
 #
 # Sizing matches the ResourceQuota in platform/vlsi-ws: request 0.5 CPU /
@@ -54,9 +54,10 @@ locals {
 variable "image" {
   type        = string
   description = "qnsc-eda digest from E (ghcr.io/quynhonsemiconductor/qnsc-eda@sha256:...). The image is PUBLIC (OSS tools only; anonymous pull verified 2026-11-06), so NO pull secret is needed. A new digest is a reviewed change to this file."
-  # E's build on main, 2026-11-06 (image created 14:08Z): amd64/linux,
-  # ubuntu:26.04 base, USER 1001. Digest pin, never a tag.
-  default = "ghcr.io/quynhonsemiconductor/qnsc-eda:main@sha256:e3ad00a1f912379fd89a5ff62edbfa57c868ee5871650881128dec33e8650626"
+  # E's main build of 2026-11-07 (after qnsc-eda#4): amd64/linux, ubuntu:26.04
+  # base, code-server 4.145.0 and the static Surfer bundle at /opt/surfer-web.
+  # USER 1001:1001 (`coder`), HOME=/home/coder. Digest pin, never a tag.
+  default = "ghcr.io/quynhonsemiconductor/qnsc-eda:main@sha256:97480692c237c5558e862596a8f94e561bab9efd58c09029cd0e3a36254c80da"
 }
 
 variable "home_size" {
@@ -73,13 +74,27 @@ resource "coder_agent" "main" {
   # works. No Premium autostop requirement is used.
   startup_script = <<-EOT
     set -eu
-    # VS Code in the browser: code-server ships in qnsc-eda (E).
+    # VS Code in the browser: code-server ships in qnsc-eda (E) on PATH.
     nohup code-server --bind-addr 127.0.0.1:13337 --disable-telemetry --auth none \
       >/tmp/code-server.log 2>&1 &
-    # Surfer web: `surver` serves the waveform viewer for large files. The
-    # qnsc-eda image (E) must ship it; the app below points at 8080.
-    if command -v surver >/dev/null 2>&1; then
-      nohup surver --port 8080 >/tmp/surver.log 2>&1 &
+
+    # Surfer is the project's STATIC WEB BUILD (WASM) served as files, not
+    # `surver`: that binary is a waveform server that REQUIRES file arguments
+    # and is not a web UI (2026-11-07, E's image note). Serve a private copy of
+    # the bundle plus a `waves` symlink to $HOME, so a user opens
+    #   ?load_url=waves/sim/foo.fst
+    # from the Surfer app and the browser loads ~/sim/foo.fst. Only this copy is
+    # served — the rest of $HOME stays off the proxy except through `waves`.
+    if [ -d /opt/surfer-web ]; then
+      www="$HOME/.surfer-www"
+      rm -rf "$www"
+      mkdir -p "$www"
+      cp -a /opt/surfer-web/. "$www/"
+      ln -sfn "$HOME" "$www/waves"
+      nohup python3 -m http.server --bind 127.0.0.1 --directory "$www" 8080 \
+        >/tmp/surfer-web.log 2>&1 &
+    else
+      echo "surfer-web missing from the image (/opt/surfer-web)" >/tmp/surfer-web.log
     fi
   EOT
 
@@ -198,9 +213,9 @@ resource "kubernetes_pod" "main" {
     }
     security_context {
       # 1001 = the qnsc-eda image's declared USER (checked in the pinned image
-      # config). Running the pod as a different uid than the image's owner
-      # leaves /home/eda-owned files unreadable in the worst case and writes
-      # $HOME outside the PVC in the best.
+      # config: uid=gid=1001, `coder`). Running the pod as a different uid than
+      # the image's owner leaves /home/coder-owned files unreadable in the worst
+      # case and writes $HOME outside the PVC in the best.
       run_as_user     = 1001
       run_as_group    = 1001
       run_as_non_root = true
@@ -224,8 +239,9 @@ resource "kubernetes_pod" "main" {
         name  = "CODER_AGENT_TOKEN"
         value = coder_agent.main.token
       }
-      # The image's own HOME is /home/eda, which the PVC does not back; point it
-      # at the mounted home so tool caches (code-server, EDA rc files) persist.
+      # The image's own HOME is /home/coder, the same path the PVC mounts and the
+      # code-server `?folder=` uses. Set it explicitly so a future image that
+      # moves HOME cannot silently write tool caches outside the PVC.
       env {
         name  = "HOME"
         value = "/home/coder"
