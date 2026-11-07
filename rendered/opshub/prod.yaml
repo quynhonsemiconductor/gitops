@@ -237,7 +237,7 @@ metadata:
     qnsc.vn/tenant: product
 data:
   config.json: |-
-    {"apiBaseUrl":"","appEnv":"production","appVersion":"v0.4.10","devLoginEnabled":false}
+    {"apiBaseUrl":"","appEnv":"production","appVersion":"v0.4.11","devLoginEnabled":false}
 
 ---
 # Source: qnsc-service/templates/service.yaml
@@ -333,7 +333,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:ac56075e2055b15c0eda131fb66b785d50cd6304802486bd4ca8886ae2b90d6a
+          image: ghcr.io/quynhonsemiconductor/opshub-api@sha256:00429448742439e8fd1d4e84d92f9347a38bbbf60e41e5bd83c0ae0a09624fbf
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -363,9 +363,9 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-api
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.10
+              value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.11
             - name: APP_VERSION
-              value: "v0.4.10"
+              value: "v0.4.11"
             - name: DATABASE_HOST
               value: pg-opshub-rw.data-prod.svc
             - name: DATABASE_PORT
@@ -474,7 +474,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: worker
-          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:34aa8a250d43365cc1fc4387b43b9745206c64ce58d43c701c47a6528f940b92
+          image: ghcr.io/quynhonsemiconductor/opshub-worker@sha256:74a56e2ee32a2097d57c294fab8250ec909427f418c3ea3074ec02f0c44a1c85
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -493,9 +493,9 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: opshub-worker
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.10
+              value: service.namespace=opshub,deployment.environment=prod,service.version=v0.4.11
             - name: APP_VERSION
-              value: "v0.4.10"
+              value: "v0.4.11"
             - name: DATABASE_HOST
               value: pg-opshub-rw.data-prod.svc
             - name: DATABASE_PORT
@@ -599,7 +599,7 @@ spec:
         qnsc.vn/env: prod
         qnsc.vn/tenant: product
       annotations:
-        checksum/config: a7eeb1f5c73bda4fbe5faf62cf6e4910f660f99968e3807ca49ac23f2a538df0
+        checksum/config: 687582c3a2a8b497c83f22e3da4cac5039454eb8585e154c0e5cd0fa65fa019a
     spec:
       # A static file server never calls the Kubernetes API.
       automountServiceAccountToken: false
@@ -659,7 +659,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrator-724ef889cf41
+  name: migrator-1fed108d00aa
   labels:
     app.kubernetes.io/name: migrator
     app.kubernetes.io/instance: opshub
@@ -700,7 +700,7 @@ spec:
         kubernetes.io/arch: amd64
       containers:
         - name: migrator
-          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:724ef889cf414b46a77f4c4fdde030ec26638dcc507708e03093947392ca73d3
+          image: ghcr.io/quynhonsemiconductor/opshub-migrator@sha256:1fed108d00aa6e1542dd484d716e77f2aabada91b768a9638c87b404f6b29858
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
