@@ -160,6 +160,10 @@ jobs:
             echo "::error::appsets/products.yaml has no enabled chart row"
             exit 1
           fi
+          # A row pinning the version in HEAD's Chart.yaml lints the LOCAL chart: the
+          # chart PR and its pin land together, and chart-release publishes that exact
+          # version from the chart-v* tag. Older pins still lint the published OCI chart.
+          head_version=$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' charts/qnsc-service/Chart.yaml | head -1)
           while read -r product env version; do
             echo "::group::lint ${product}/${env} (chart ${version})"
             # THE SAME THREE FILES render.sh passes, in the same order. Linting a
@@ -169,11 +173,15 @@ jobs:
             # Job's NAME from it (a Job's pod template is immutable, so the name
             # must change per revision). No tag, no valid name, ERROR at
             # job.yaml:12.
-            chartdir="$tmp/$version/qnsc-service"
-            if [ ! -d "$chartdir" ]; then
-              mkdir -p "$tmp/$version"
-              helm pull "oci://ghcr.io/quynhonsemiconductor/charts/qnsc-service" \
-                --version "$version" --untar --untardir "$tmp/$version"
+            if [ "$version" = "$head_version" ]; then
+              chartdir="charts/qnsc-service"
+            else
+              chartdir="$tmp/$version/qnsc-service"
+              if [ ! -d "$chartdir" ]; then
+                mkdir -p "$tmp/$version"
+                helm pull "oci://ghcr.io/quynhonsemiconductor/charts/qnsc-service" \
+                  --version "$version" --untar --untardir "$tmp/$version"
+              fi
             fi
             helm lint "$chartdir" \
               -f "values/${product}/base.yaml" \

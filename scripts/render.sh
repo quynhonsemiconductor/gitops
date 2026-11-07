@@ -30,6 +30,10 @@ APPSSET=appsets/products.yaml
 CHART_REPO=oci://ghcr.io/quynhonsemiconductor/charts
 CHART_NAME=qnsc-service
 HEAD_CHART=charts/qnsc-service
+#: The version in HEAD's Chart.yaml. A row pinning THIS version renders the local
+#: chart: the chart PR and its pin land together, and chart-release publishes that
+#: exact version on the chart-v* tag. Older pins still render the published OCI chart.
+HEAD_VERSION=$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' "$HEAD_CHART/Chart.yaml" | head -1)
 
 die() { echo "::error::$*" >&2; exit 1; }
 
@@ -104,7 +108,11 @@ case "${1:-}" in
   "")
     pinned() {
       local product=$1 env=$2 version=$3 out=$4
-      render_one "$product" "$env" "$out" "${CHART_REPO}/${CHART_NAME}" --version "$version"
+      if [ "$version" = "$HEAD_VERSION" ]; then
+        render_one "$product" "$env" "$out" "$HEAD_CHART"
+      else
+        render_one "$product" "$env" "$out" "${CHART_REPO}/${CHART_NAME}" --version "$version"
+      fi
     }
     render_all rendered pinned
     echo "rendered $row_count Application(s) at their pinned chart versions"
