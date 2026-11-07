@@ -2,7 +2,9 @@
 #
 # Coder is reachable ONLY over WARP through the private tunnel route (design
 # §5.2). The ingress policy therefore admits exactly the cloudflared pods in
-# `platform` and nothing else: no other namespace, no LAN, no public listener.
+# `platform`, the workspace agents that dial the control plane, and the Alloy
+# collector on the metrics port — no other namespace, no LAN, no public
+# listener.
 #
 # Egress is bounded because the server is the component that SPEAKS to Entra
 # (OIDC token exchange) and to the Kubernetes API (workspace provisioning):
@@ -48,6 +50,18 @@ spec:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 8080 }
         - { protocol: TCP, port: 8443 }
+    # The Alloy collector scrapes the coderd Prometheus endpoint at POD port
+    # 2112. Without this rule the scrape cannot even connect while metrics are
+    # enabled, and the ONLY series that reach Mimir are the synthesized
+    # `up`=0 and `scrape_samples_scraped` — exactly the 2026-11-07 symptom.
+    # In-cluster scrape only; nothing else is admitted on 2112.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: platform }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: alloy }
+      ports:
+        - { protocol: TCP, port: 2112 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

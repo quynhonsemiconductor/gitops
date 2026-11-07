@@ -1093,15 +1093,34 @@ collectors:
       }
 
       // Coder (coderd) control plane — namespace `coder`, metrics on
-      // CODER_PROMETHEUS_ADDRESS 0.0.0.0:2112 (platform/coder/values.yaml).
-      // The chart declares only 8080/8443 as container ports, so the address
-      // is built from the pod IP plus the LITERAL 2112 rather than from
-      // `__meta_kubernetes_pod_container_port_number` (which would never match).
+      // CODER_PROMETHEUS_ADDRESS 0.0.0.0:2112 (the chart injects that address;
+      // `coder server --help` types the default as 127.0.0.1:2112, which no
+      // other pod could reach). The chart declares only 8080/8443 as container
+      // ports, so the address is built from the pod IP plus the LITERAL 2112
+      // rather than from `__meta_kubernetes_pod_container_port_number` (which
+      // would never match).
+      //
+      // WHY NOTHING BUT `up` ARRIVED UNTIL 2026-11-07 (verified against
+      // coder/coder v2.38.1 `cli/server.go`):
+      //   - `--prometheus-enable` has NO default, so metrics are OFF unless
+      //     CODER_PROMETHEUS_ENABLE=true. The port was not listening at all;
+      //     `up` was 0, which is why only `up`/`scrape_samples_scraped` existed.
+      //     platform/coder/values.yaml now sets it (and COLLECT_AGENT_STATS for
+      //     coderd_agents_up), and networkpolicy.yaml admits Alloy on 2112.
+      //   - Two names in the old allowlist do not exist in v2.38.1:
+      //     `coderd_agent_aggregator_workspace_count_total` (there is no such
+      //     family; workspaces are counted from `coderd_agents_up`) and
+      //     `coderd_license_user_count` (the real gauge is
+      //     `coderd_license_active_users`).
+      //
       // Allowlist purpose: the coderd exporter has hundreds of families
-      // (api/db/rtc go_* process_*); keep only what the one alert and the
-      // Platform health row read — agents_up (one per workspace), workspace
-      // count, provisioner queue, licence seat use — plus up. Budget: well
-      // under 100 series at this estate's workspace count.
+      // (api/db/rtc go_* process_*); keep only what the alerts and the two
+      // dashboards read — agents_up (one per workspace), provisioner queue,
+      // licence seat use/limit and licence counters — plus up. Budget: well
+      // under 100 series at this estate's workspace count. Types verified in
+      // scripts/metricsdocgen/generated_metrics: every coderd_* below is a
+      // GAUGE except the two licence counters; none carries `_total` in its
+      // name (Coder does not suffix counters).
       discovery.kubernetes "coder_pods" {
         role = "pod"
         namespaces {
@@ -1157,7 +1176,7 @@ collectors:
         forward_to = [prometheus.remote_write.grafana_metrics.receiver]
         rule {
           source_labels = ["__name__"]
-          regex         = "coderd_agents_up|coderd_agent_aggregator_workspace_count_total|coderd_provisionerd_jobs_current|coderd_license_user_count|up|scrape_samples_scraped"
+          regex         = "coderd_agents_up|coderd_provisionerd_jobs_current|coderd_license_active_users|coderd_license_limit_users|coderd_license_warnings|coderd_license_errors|up|scrape_samples_scraped"
           action        = "keep"
         }
       }
