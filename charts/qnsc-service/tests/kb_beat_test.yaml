@@ -1,6 +1,7 @@
 suite: kb Celery beat is isolated and uses the worker image
-# Beat publishes task names to Redis; it must not carry the app's secrets, DB CA or
-# Graph certificate. `inheritSecrets: false` is the switch; Sprig's `default` treats
+# Beat publishes task names to Redis; it must not carry the app's secrets, DB
+# credentials or Graph certificate. It DOES get the public CNPG CA (+ DATABASE_SSL_CA):
+# kb builds its DB engine at import time and refuses to start without it (2026-11-07). `inheritSecrets: false` is the switch; Sprig's `default` treats
 # false as empty, so the chart uses an explicit string comparison and this test pins it.
 templates:
   - templates/deployment.yaml
@@ -10,7 +11,7 @@ values:
   - ../../../values/kb/tags.prod.yaml
 
 tests:
-  - it: beat has no envFrom, only /tmp, and the worker image
+  - it: beat has no envFrom, only /tmp + the public DB CA, and the worker image
     template: templates/deployment.yaml
     documentSelector: { path: metadata.name, value: beat }
     asserts:
@@ -20,6 +21,7 @@ tests:
           path: spec.template.spec.containers[0].volumeMounts
           value:
             - { name: tmp, mountPath: /tmp }
+            - { name: db-ca, mountPath: /etc/qnsc/db-ca/ca.crt, subPath: ca.crt, readOnly: true }
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/quynhonsemiconductor/kb-worker@sha256:c04073bcd406e0d3cc1a5c6eefb1cca49458ed0411ed6d4b6768e8201ec7a495
@@ -34,3 +36,15 @@ tests:
             name: REDIS_URL
             valueFrom:
               secretKeyRef: { name: kb-env, key: REDIS_URL }
+
+  - it: beat gets the CA path but no database host, user or auth
+    template: templates/deployment.yaml
+    documentSelector: { path: metadata.name, value: beat }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_SSL_CA, value: /etc/qnsc/db-ca/ca.crt }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DATABASE_AUTH, value: password }
+          any: true

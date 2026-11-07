@@ -319,6 +319,16 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            {{- /* A service with inheritSecrets: false (kb beat) gets NO database
+                   host or credentials, but still the CA path: the CA is a PUBLIC
+                   certificate, and some apps build their DB engine at import time
+                   and refuse to start without a verifiable CA (kb beat crashed with
+                   "DATABASE_SSL_CA is required when ENVIRONMENT=production",
+                   2026-11-07). */}}
+            {{- if and (eq (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres $.Values.data.postgres.caFile }}
+            - name: DATABASE_SSL_CA
+              value: {{ $.Values.data.postgres.caFile | quote }}
+            {{- end }}
             {{- /* ── §7.1/§7.3 — THE GRAPH CERTIFICATE IS A FILE, WORKER ONLY ──
                    The Service app's certificate credential (one combined PEM)
                    is mounted from the secret named in
@@ -399,7 +409,7 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- /* CNPG server CA — every DB-using service of the product. */}}
-            {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres.caFile }}
+            {{- if and $.Values.data $.Values.data.postgres.caFile }}
             - name: db-ca
               mountPath: {{ $.Values.data.postgres.caFile }}
               subPath: ca.crt
@@ -467,7 +477,8 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and (ne (toString $svc.inheritSecrets) "false") $.Values.data $.Values.data.postgres.caFile }}
+        {{- /* The CNPG CA is public — mounted even for inheritSecrets: false. */}}
+        {{- if and $.Values.data $.Values.data.postgres.caFile }}
         - name: db-ca
           secret:
             secretName: {{ include "qnsc.product" $ }}-db-ca
