@@ -7,7 +7,7 @@ Owner decision 2026-11-02: option A, cloud-native; **go** (2026-11-06).
 
 | File | Object |
 |---|---|
-| `values.yaml` | the Coder chart values (OCI `ghcr.io/coder/chart/coder`, 2.38.1) |
+| `values.yaml` | the Coder chart values (OCI `ghcr.io/coder/chart/coder`, 2.38.6) |
 | `database.yaml` | Coder's env Secret (`CODER_PG_CONNECTION_URL`, OIDC) |
 | `tls.yaml` | namespaced ACME Issuers (staging + prod) and the wildcard Certificate |
 | `networkpolicy.yaml` | control-plane ingress (cloudflared only) and bounded egress (incl. pg-coder in data-prod) |
@@ -34,10 +34,13 @@ database) and PSA `baseline`.
 
 ## Version pin
 
-2.38.1 (2026-10-20) is the newest patch of the stable 2.38 line that is older
-than this repo's two-week age floor. 2.39.0 / 2.38.6 / 2.37.10 were all
-published 2026-11-03. The OCI manifest digest
-(`sha256:4c2be43f…`) is recorded in `versions.yaml`; Renovate can bump the tag,
+2.38.6 (2026-11-03) is the newest patch of the stable 2.38 line (2.39 is
+mainline). It is younger than this repo's 14-day release-age floor, but the
+bump is deliberate: the release carries the gomarkdown GHSA-cv23-7vc5-jfh7
+fix, CSRF exemption-pattern anchoring, org-scoped OIDC group sync and a
+go-jose bump. `coder server --help` and the chart's default values are
+identical between 2.38.1 and 2.38.6, and there are no new database migrations.
+The OCI manifest digest (`sha256:b38e8746…`) is recorded in `versions.yaml`;
 the digest line is the cross-check.
 
 ## Owner prerequisites (values never in Git)
@@ -84,8 +87,8 @@ above is the group object id.
 
 Entra OIDC is the ONLY listed provider: `CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLE=false`
 and `CODER_EXTERNAL_AUTH_GITHUB_DEFAULT_PROVIDER_ENABLE=false` remove the GitHub OAuth2 app and
-the default GitHub external-auth provider that 2.38.1 otherwise injects, and
-`CODER_DISABLE_PASSWORD_AUTH=true` closes password accounts. Steps:
+the default GitHub external-auth provider that the 2.38 line otherwise
+injects, and `CODER_DISABLE_PASSWORD_AUTH=true` closes password accounts. Steps:
 
 1. Open `https://coder.qnsc.vn` over WARP and click **Sign in with Microsoft**
    (the OIDC button; `CODER_OIDC_SIGN_IN_TEXT`).
@@ -97,16 +100,18 @@ the default GitHub external-auth provider that 2.38.1 otherwise injects, and
    Microsoft setting). A guest/B2B identity fails both the domain and the group
    checks.
 3. **The first successful sign-in becomes the Owner.** No extra env or command:
-   v2.38.1 `coderd/userauth.go` assigns `rbac.RoleOwner()` when `userCount == 0`
-   (the same branch that creates the OIDC user). After that, `/setup` is gone and
+   `coderd/userauth.go` assigns `rbac.RoleOwner()` when `userCount == 0` (the
+   same branch that creates the OIDC user; verified on 2.38.1 and unchanged in
+   2.38.6). After that, `/setup` is gone and
    every further OIDC sign-in is a normal member unless promoted.
 4. Promote the second owner: as the first owner, `coder` CLI or the UI adds the
    `owner` role to the next account (the group claim already gates who may sign in).
 
 ### Break-glass
 
-`CODER_DISABLE_PASSWORD_AUTH=true` refuses **every** password login in 2.38.1, Owner
-included — verified 2026-11-07 (`POST /api/v2/users/login` for the break-glass Owner
+`CODER_DISABLE_PASSWORD_AUTH=true` refuses **every** password login in the 2.38
+line, Owner included — verified on 2.38.1 and the check is unchanged in 2.38.6
+(`POST /api/v2/users/login` for the break-glass Owner
 returns "Password authentication is disabled."; the `--help` sentence that implies
 Owners are exempt does not hold). The account and the password are therefore useless
 until the flag is flipped, so the procedure is:
@@ -178,11 +183,11 @@ export VLSI_NODE_SSH=qnsc@vlsi-01               # storage gate: local-path must 
 ./scripts/coder-push-template.sh
 ```
 
-The script runs the pinned `ghcr.io/coder/coder:2.38.1` CLI in Docker (with
+The script runs the pinned `ghcr.io/coder/coder:2.38.6` CLI in Docker (with
 `--entrypoint /opt/coder`: the image entrypoint already runs `coder server`),
 pipes the directory in over stdin so nothing on the host is writable from the
 container, activates the version and sets the 2 h default TTL. Provider pins come
-from the committed `.terraform.lock.hcl`. There is no max-TTL on OSS 2.38.1
+from the committed `.terraform.lock.hcl`. There is no max-TTL on OSS 2.38.6
 (`--max-ttl` is absent from `templates edit --help`), so the 2 h default plus the
 agent's activity bump is the policy. A CI job can
 call the same script with the token delivered by ESO; the token is read from

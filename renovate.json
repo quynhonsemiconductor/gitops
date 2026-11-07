@@ -58,6 +58,19 @@
     },
     {
       "customType": "regex",
+      "description": "The push script's pinned Coder CLI image. Same depName as the server image, so the package rule below moves every pin (chart tag+digest, server image tag+digest, this CLI image, ArgoCD targetRevision) in one PR.",
+      "fileMatch": [
+        "^scripts/coder-push-template\\.sh$"
+      ],
+      "matchStrings": [
+        "IMAGE=\"ghcr\\.io/coder/coder:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/coder/coder",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "The Coder template's qnsc-eda image. The digest is the identity; the moving `main` tag (moved by the qnsc-eda publish job) is what lets Renovate detect a new build and update the digest.",
       "fileMatch": [
         "^platform/coder/templates/[^/]+/main\\.tf$"
