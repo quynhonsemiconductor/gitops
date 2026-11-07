@@ -576,6 +576,8 @@ spec:
               value: kb-beat
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: service.namespace=kb,deployment.environment=dev,service.version=
+            - name: DATABASE_SSL_CA
+              value: "/etc/qnsc/db-ca/ca.crt"
             - name: ENVIRONMENT
               value: production
             - name: DEPLOYMENT_ENV
@@ -633,9 +635,17 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/qnsc/db-ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: kb-db-ca
+            items: [{ key: ca.crt, path: ca.crt }]
 
 ---
 # Source: qnsc-service/templates/deployment.yaml
