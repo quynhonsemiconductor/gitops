@@ -33,6 +33,34 @@ with `lsblk` on vlsi-01 before assuming a storage bug.
 3. `kubectl -n coder logs deploy/coder` — OIDC/allowed-groups failures name the
    claim (`CODER_OIDC_GROUP_FIELD=groups`).
 
+## Workspace apps (code-server, Surfer web, waveforms)
+
+- VS Code: app slug `code`, served by `code-server` on 127.0.0.1:13337.
+  `kubectl -n vlsi-ws exec <pod> -c workspace -- tail /tmp/code-server.log` when
+  the app shows 502 (a missing binary says so there).
+- Surfer web: the static WASM bundle from `/opt/surfer-web`, copied to
+  `$HOME/.surfer-www` at start and served on 127.0.0.1:8080
+  (`/tmp/surfer-web.log`). The copy contains `waves -> $HOME`, so a user opens
+  `<surfer app url>/?load_url=waves/sim/foo.fst` for `~/sim/foo.fst`.
+  `surver` is NOT started; it is a waveform server that needs file arguments
+  (`surver --port <port> <file>`), useful only by hand for very large files.
+- If `/tmp/surfer-web.log` says the bundle is missing, the image digest is older
+  than E's web build: update `var.image` in the template and re-push.
+
+## Build interrupted mid-create ("Unexpected Identity Change")
+
+The kubernetes provider 2.38 can fail a create after the object exists
+(`Unexpected Identity Change`), leaving a pod/PVC Terraform no longer tracks.
+Recovery:
+
+1. In the Coder UI delete the workspace **with Orphan resources** (so Terraform
+   does not try to delete what it lost track of).
+2. Remove the leftovers in `vlsi-ws` by id:
+   `kubectl -n vlsi-ws delete pod coder-<workspace-id> --ignore-not-found`
+   `kubectl -n vlsi-ws delete pvc coder-<workspace-id>-home --ignore-not-found`
+   (object names are the workspace id, never the username — see the template).
+3. Re-create the workspace; the next build starts clean.
+
 ## Template push
 
 `scripts/coder-push-template.sh` (CODER_URL/CODER_SESSION_TOKEN from the
