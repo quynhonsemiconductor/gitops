@@ -45,7 +45,7 @@ with `lsblk` on vlsi-01 before assuming a storage bug.
   `surver` is NOT started; it is a waveform server that needs file arguments
   (`surver --port <port> <file>`), useful only by hand for very large files.
 - If `/tmp/surfer-web.log` says the bundle is missing, the image digest is older
-  than E's web build: update `var.image` in the template and re-push.
+  than E's web build: update `local.image` in the template and re-push.
 
 ## Build interrupted mid-create ("Unexpected Identity Change")
 

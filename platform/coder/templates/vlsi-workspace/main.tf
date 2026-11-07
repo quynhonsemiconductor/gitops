@@ -51,18 +51,19 @@ locals {
   workspace_label = trim(substr(lower(replace(data.coder_workspace.me.name, "/[^A-Za-z0-9_.-]/", "-")), 0, 63), "-.")
 }
 
-variable "image" {
-  type        = string
-  description = "qnsc-eda digest from E (ghcr.io/quynhonsemiconductor/qnsc-eda@sha256:...). The image is PUBLIC (OSS tools only; anonymous pull verified 2026-11-06), so NO pull secret is needed. A new digest is a reviewed change to this file."
-  # E's main build of 2026-11-07 (after qnsc-eda#4): amd64/linux, ubuntu:26.04
-  # base, code-server 4.145.0 and the static Surfer bundle at /opt/surfer-web.
-  # USER 1001:1001 (`coder`), HOME=/home/coder. Digest pin, never a tag.
-  default = "ghcr.io/quynhonsemiconductor/qnsc-eda:main@sha256:97480692c237c5558e862596a8f94e561bab9efd58c09029cd0e3a36254c80da"
-}
-
-variable "home_size" {
-  type    = string
-  default = "10Gi"
+# Image and home size are LOCALS, not template variables: Coder keeps a
+# template variable's previously stored VALUE across `templates push`, so a new
+# `default` never reached running workspaces (2026-11-07: the template carried
+# the new digest, the rebuilt workspace still ran the old image). A local is
+# part of the template source itself — a new digest here is a reviewed change
+# and every push applies it.
+locals {
+  # qnsc-eda main build of 2026-11-07 (after qnsc-eda#4): amd64/linux,
+  # ubuntu:26.04 base, code-server 4.145.0 and the static Surfer bundle at
+  # /opt/surfer-web. USER 1001:1001 (`coder`), HOME=/home/coder. PUBLIC image
+  # (OSS tools only), so no pull secret. Digest pin, never a tag.
+  image     = "ghcr.io/quynhonsemiconductor/qnsc-eda:main@sha256:97480692c237c5558e862596a8f94e561bab9efd58c09029cd0e3a36254c80da"
+  home_size = "10Gi"
 }
 
 resource "coder_agent" "main" {
@@ -146,7 +147,7 @@ resource "coder_metadata" "workspace" {
   resource_id = coder_agent.main.id
   item {
     key   = "image"
-    value = var.image
+    value = local.image
   }
   item {
     key   = "pool"
@@ -154,7 +155,7 @@ resource "coder_metadata" "workspace" {
   }
   item {
     key   = "home"
-    value = "${var.home_size} local-path-retain"
+    value = "${local.home_size} local-path-retain"
   }
 }
 
@@ -177,7 +178,7 @@ resource "kubernetes_persistent_volume_claim" "home" {
     access_modes       = ["ReadWriteOnce"]
     storage_class_name = "local-path-retain"
     resources {
-      requests = { storage = var.home_size }
+      requests = { storage = local.home_size }
     }
   }
   wait_until_bound = false
@@ -224,7 +225,7 @@ resource "kubernetes_pod" "main" {
     }
     container {
       name              = "workspace"
-      image             = var.image
+      image             = local.image
       image_pull_policy = "IfNotPresent"
       command           = ["sh", "-c", coder_agent.main.init_script]
       security_context {

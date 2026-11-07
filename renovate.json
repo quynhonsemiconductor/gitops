@@ -76,7 +76,7 @@
         "^platform/coder/templates/[^/]+/main\\.tf$"
       ],
       "matchStrings": [
-        "default = \"ghcr\\.io/(?<depName>quynhonsemiconductor/qnsc-eda):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+        "image\\s*=\\s*\"ghcr\\.io/(?<depName>quynhonsemiconductor/qnsc-eda):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose"
