@@ -16,21 +16,21 @@
 services:
   api:
     image:
-      tag: v0.4.10
-      digest: sha256:ac56075e2055b15c0eda131fb66b785d50cd6304802486bd4ca8886ae2b90d6a
+      tag: v0.4.11
+      digest: sha256:00429448742439e8fd1d4e84d92f9347a38bbbf60e41e5bd83c0ae0a09624fbf
   migrator:
     image:
-      tag: v0.4.10
-      digest: sha256:724ef889cf414b46a77f4c4fdde030ec26638dcc507708e03093947392ca73d3
+      tag: v0.4.11
+      digest: sha256:1fed108d00aa6e1542dd484d716e77f2aabada91b768a9638c87b404f6b29858
   worker:
     image:
-      tag: v0.4.10
-      digest: sha256:34aa8a250d43365cc1fc4387b43b9745206c64ce58d43c701c47a6528f940b92
+      tag: v0.4.11
+      digest: sha256:74a56e2ee32a2097d57c294fab8250ec909427f418c3ea3074ec02f0c44a1c85
 # ── the SPA image (web) ──────────────────────────────────────────────────────
 # NOT under `services:`: web is not a service, so the chart reads it from
 # `.Values.web` (values.schema.json, "web"). Same release commit as the three
 # above (a5f72f941ed9 = v0.4.9): build-once, promoted by digest.
 web:
   image:
-    tag: v0.4.10
+    tag: v0.4.11
     digest: sha256:414f7b78249fc6bbaabe9780faec379b892766fc6f98b09747b007500dd0165b
